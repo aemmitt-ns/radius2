@@ -1,8 +1,5 @@
 
-const INSTR_NUM: usize = 16;
-
 use r2pipe::R2Pipe;
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use std::u64;
 use hex;
@@ -26,15 +23,36 @@ impl Endian {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Instruction {
     pub offset: u64,
     pub size: u64,
+
+    #[serde(default="invalid")]
     pub opcode: String,
+
+    #[serde(default="blank")]
     pub esil: String,
+
     pub bytes: String,
+
+    #[serde(default="invalid")]
     pub r#type: String,
+
+    #[serde(default="zero")]
     pub type_num: u64  
+}
+
+fn invalid() -> String {
+    "invalid".to_string()
+}
+
+fn blank() -> String {
+    "".to_string()
+}
+
+fn zero() -> u64 {
+    0
 }
 
 #[derive(Debug)]
@@ -94,12 +112,24 @@ pub struct Information {
 // #[derive(DerefMut)]
 pub struct R2Api {
     pub r2p: R2Pipe,
-    pub instructions: HashMap<u64, Instruction>,
-    pub permissions: HashMap<u64, Permission>,
+    //pub instructions: HashMap<u64, Instruction>,
+    //pub permissions: HashMap<u64, Permission>,
     pub info: Option<Information>
 }
 
 impl R2Api {
+    pub fn new(filename: Option<String>) -> R2Api {
+        let mut r2api = R2Api {
+            r2p: open_pipe!(filename).unwrap(),
+            //instructions: HashMap::new(),
+            //permissions: HashMap::new(),
+            info: None
+        };
+    
+        r2api.get_info();
+        r2api
+    }
+
     fn get_info(&mut self) {
         if self.info.is_none() {
             let json = self.r2p.cmd("ij").unwrap();
@@ -122,21 +152,18 @@ impl R2Api {
         u64::from_str_radix(&val[2..val.len()-1], 16).unwrap()
     }
 
-    pub fn disassemble(&mut self, addr: u64) -> &Instruction {
-        if self.instructions.contains_key(&addr) {
-            return self.instructions.get(&addr).unwrap()
-        }
+    pub fn seek(&mut self, addr: u64) {
+        let _r = self.r2p.cmd(format!("s {}", addr).as_str());
+    }
 
-        let cmd = format!("pdj {} @ {}", INSTR_NUM, addr);
+    pub fn init_vm(&mut self) {
+        let _r = self.r2p.cmd("aei; aeim");
+    }
+
+    pub fn disassemble(&mut self, addr: u64, num: usize) -> Vec<Instruction> {
+        let cmd = format!("pdj {} @ {}", num, addr);
         let json = self.r2p.cmd(cmd.as_str()).unwrap();
-        let instructions: Vec<Instruction> = 
-            serde_json::from_str(json.as_str()).unwrap();
-
-        for instr in instructions {
-            self.instructions.insert(instr.offset, instr);
-        }
-
-        self.instructions.get(&addr).unwrap()
+        serde_json::from_str(json.as_str()).unwrap()
     }
 
     pub fn read(&mut self, addr: u64, length: usize) -> Vec<u8> {
@@ -147,22 +174,10 @@ impl R2Api {
 
     pub fn write(&mut self, addr: u64, data: Vec<u8>) {
         let cmd = format!("wx {} @ {}", hex::encode(data), addr);
-        self.r2p.cmd(cmd.as_str());
+        let _r = self.r2p.cmd(cmd.as_str());
     }
 
-    fn close(&mut self) {
+    pub fn close(&mut self) {
         self.r2p.close();
     }
-}
-
-pub fn create(filename: Option<String>) -> R2Api {
-    let mut r2api = R2Api {
-        r2p: open_pipe!(filename).unwrap(),
-        instructions: HashMap::new(),
-        permissions: HashMap::new(),
-        info: None
-    };
-
-    r2api.get_info();
-    r2api
 }
