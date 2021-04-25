@@ -102,6 +102,19 @@ impl Registers {
     }
 
     #[inline]
+    pub fn is_sub(&mut self, r1: usize, r2: usize) -> bool {
+        let reg1 = &self.indexes[r1];
+        let reg2 = &self.indexes[r2];
+
+        let start1 = reg1.reg_info.offset;
+        let start2 = reg2.reg_info.offset;
+        let end1 = reg1.reg_info.offset + reg1.reg_info.size;
+        let end2 = reg2.reg_info.offset + reg2.reg_info.size;
+
+        start2 >= start1 && end2 <= end1
+    }
+
+    #[inline]
     pub fn get_value(&mut self, index: usize) -> Value {
         let register = &self.indexes[index];
 

@@ -730,7 +730,7 @@ pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations,
         Operations::Duplicate => {
             let item = state.stack.pop().unwrap();
             state.stack.push(item.clone());
-            state.stack.push(item.clone());
+            state.stack.push(item);
         },
         Operations::Number => {
             let arg1 = pop_value(state, false, false);

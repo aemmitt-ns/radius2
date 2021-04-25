@@ -142,6 +142,10 @@ impl State {
         }
     }
 
+    pub fn is_sat(&mut self) -> bool {
+        self.solver.sat() == SolverResult::Sat
+    }
+
     pub fn evaluate_many(&mut self, bv: &BV<Rc<Btor>>) -> Vec<u64> {
         let mut solutions: Vec<u64> = vec!();
         let new_bv = self.translate(bv).unwrap();

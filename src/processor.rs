@@ -1,6 +1,6 @@
 use crate::r2_api::{R2Api, Instruction};
 use crate::value::{Value, value_to_bv};
-use crate::operations::{Operations, pop_value, pop_stack_value, do_operation, OPS};
+use crate::operations::{Operations, pop_value, pop_stack_value, pop_concrete, do_operation, OPS};
 use std::collections::HashMap;
 use crate::state::{State, StackItem, ExecMode};
 use std::time::SystemTime;
@@ -29,7 +29,9 @@ pub struct InstructionEntry {
 }
 
 const DEBUG: bool = false; // show instructions
-const LAZY: bool = true; // dont check sat on ite PCs
+const LAZY: bool  = true;  // dont check sat on ite PCs
+const OPT: bool   = true;  // optimize by removing unread flag sets
+const BFS: bool   = true;  // dequeue states instead of popping
 
 #[inline]
 pub fn print_instr(instr: &Instruction) {
@@ -126,7 +128,7 @@ impl Processor {
             self.pc = Some(state.registers.regs.get(
                 &pc_reg.reg).unwrap().index);
         }
-        
+
         let words = self.tokenize(state, &String::from(esil));
         self.parse(r2api, state, &words);
     }
@@ -241,6 +243,22 @@ impl Processor {
 
                             state.esil.mode = ExecMode::Uncon;
                         },
+                        Operations::GoTo => {
+                            let n = pop_concrete(state, false, false);
+                            if let Some(_cond) = &state.condition {
+                                panic!("Hit symbolic GOTO");
+                                //cond.assert();
+                            }
+                            state.esil.mode = ExecMode::Uncon;
+                            word_index = n as usize;
+                        },
+                        Operations::Break => {
+                            if let Some(_cond) = &state.condition {
+                                panic!("Hit symbolic BREAK");
+                                //cond.assert();
+                            }
+                            break;
+                        },
                         _ => do_operation(r2api, state, op.clone(), self.pc.unwrap())
                     }
                 },
@@ -251,6 +269,104 @@ impl Processor {
         }
     }
 
+    // removes words that weak set flag values that are never read
+    pub fn optimize(&mut self, state: &mut State, prev_pc: u64, curr_instr: &InstructionEntry) {
+        let prev_instr = &self.instructions[&prev_pc];
+        if  !prev_instr.instruction.esil.contains(":=") ||
+            !curr_instr.instruction.esil.contains(":=")
+        {
+            return;
+        }
+
+        let mut regs_read: Vec<usize> = vec!();
+        let mut regs_written: Vec<usize> = vec!();
+
+        // this is some ugly fucking code
+        let len = curr_instr.tokens.len();
+        for (i, word) in curr_instr.tokens.iter().enumerate() {
+            if let Word::Register(index) = word {
+                if i+1 < len {
+                    let next = &curr_instr.tokens[i+1];
+                    if let Word::Operator(op) = next {
+                        if let Operations::WeakEqual = op {
+                            regs_written.push(*index);
+                        } else if let Operations::Equal = op {
+                            regs_written.push(*index);
+                        } else {
+                            regs_read.push(*index);
+                        }
+                    } else {
+                        regs_read.push(*index);
+                    }
+                }
+            }
+        }
+
+        let mut remove: Vec<usize> = vec!();
+        for (i, word) in prev_instr.tokens.iter().enumerate() {
+            if let Word::Operator(op) = word {
+                if let Operations::WeakEqual = op {
+                    let reg = &prev_instr.tokens[i-1];
+                    
+                    if let Word::Register(index) = reg {
+                        // if its written but not read
+                        let mut written = false;
+                        let mut read = false;
+
+                        for regr in &regs_read {
+                            if state.registers.is_sub(*regr, *index) {
+                                read = true;
+                                break;
+                            }
+                        }
+
+                        if read {
+                            continue
+                        }
+
+                        for regw in &regs_written {
+                            if state.registers.is_sub(*regw, *index) {
+                                written = true;
+                                break;
+                            }
+                        }
+
+                        if written {
+                            let val = &prev_instr.tokens[i-2];
+                            if let Word::Operator(op) = val {
+                                match op {
+                                    Operations::Zero => remove.extend(vec!(i-2, i-1, i)),
+                                    Operations::Carry => remove.extend(vec!(i-3, i-2, i-1, i)),
+                                    Operations::Borrow => remove.extend(vec!(i-3, i-2, i-1, i)),
+                                    Operations::Parity => remove.extend(vec!(i-2, i-1, i)),
+                                    Operations::Overflow => remove.extend(vec!(i-3, i-2, i-1, i)),
+                                    Operations::S => remove.extend(vec!(i-3, i-2, i-1, i)),
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if remove.len() > 0 {
+            let mut mut_prev_instr = prev_instr.clone();
+            let mut new_tokens: Vec<Word> = vec!();
+
+            for (i, word) in prev_instr.tokens.iter().enumerate() {
+                if !remove.contains(&i) {
+                    new_tokens.push(word.clone());
+                }
+            }
+
+            //println!("before {:?}", mut_prev_instr.tokens);
+            mut_prev_instr.tokens = new_tokens;
+            //println!("after {:?}", mut_prev_instr.tokens);
+            self.instructions.insert(prev_pc, mut_prev_instr);
+        }
+    }
+
     pub fn execute(&mut self, r2api: &mut R2Api, state: &mut State, 
         pc_index: usize, pc_val: u64) {
         
@@ -258,6 +374,9 @@ impl Processor {
 
         if let Some(instr_entry) = instr_opt {
             print_instr(&instr_entry.instruction);
+            /*if instr_entry.instruction.opcode == "invalid" {
+                panic!("invalid instr");
+            }*/
             let size = instr_entry.instruction.size;
             let new_pc = Value::Concrete(pc_val+size);
             state.registers.set_value(pc_index, new_pc);
@@ -268,6 +387,7 @@ impl Processor {
             let mut pc_tmp = pc_val;
             let instrs = r2api.disassemble(pc_val, INSTR_NUM);
 
+            let mut prev: Option<u64> = None;
             for instr in instrs {
                 let size = instr.size;
                 let words = self.tokenize(state, &instr.esil);
@@ -284,6 +404,12 @@ impl Processor {
                     tokens: words,
                 };
 
+                if OPT {
+                    if let Some(prev_pc) = prev {
+                        self.optimize(state, prev_pc, &instr_entry);
+                    }
+                    prev = Some(pc_tmp);
+                }
                 self.instructions.insert(pc_tmp, instr_entry);
                 pc_tmp += size;
             }
@@ -317,15 +443,25 @@ impl Processor {
                 } else {
                     pcs = state.evaluate_many(&pc_val);
                 }
-                //println!("{:?}", pcs);
 
-                for new_pc_val in pcs {
+                if pcs.len() == 0 {
+                    return states;
+                }
+
+                let last = pcs.len()-1;
+                for new_pc_val in &pcs[..last] {
                     let mut new_state = state.duplicate();
                     let pc_bv = new_state.translate(&pc_val).unwrap();
-                    pc_bv._eq(&new_state.bvv(new_pc_val, pc_bv.get_width())).assert();
-                    new_state.registers.set_value(pc_index, Value::Concrete(new_pc_val));
+                    pc_bv._eq(&new_state.bvv(*new_pc_val, pc_bv.get_width())).assert();
+                    new_state.registers.set_value(pc_index, Value::Concrete(*new_pc_val));
                     states.push(new_state);
                 }
+                
+                let new_pc_val = pcs[last];
+                let pc_bv = state.translate(&pc_val).unwrap();
+                pc_bv._eq(&state.bvv(new_pc_val, pc_bv.get_width())).assert();
+                state.registers.set_value(pc_index, Value::Concrete(new_pc_val));
+                states.push(state);
             }
         }
 
@@ -345,13 +481,15 @@ impl Processor {
         let now = SystemTime::now();
         let mut states = vec!(state);
         
-        while let Some(current_state) = states.pop() {
+        while !states.is_empty() {
+            let current_state;
+            if BFS {
+                current_state = states.remove(0);
+            } else {
+                current_state = states.pop().unwrap();
+            }
 
-            //if count % 100 == 0 {
-            // println!("count: {} zf: {:?}", count, current_state.registers.get("zf"));
-            //}
-
-            let pc = &current_state.registers.values[pc_register.index];
+            let pc = &current_state.registers.values[pc_register.value_index];
 
             if let Value::Concrete(pc_val) = pc {
                 if *pc_val == addr {
