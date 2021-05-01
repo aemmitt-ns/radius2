@@ -1,8 +1,8 @@
-use crate::r2_api::{R2Api, Instruction};
+use crate::r2_api::{R2Api, Instruction, CallingConvention};
 use crate::value::{Value, value_to_bv};
 use crate::operations::{Operations, pop_value, pop_stack_value, pop_concrete, do_operation, OPS};
 use std::collections::HashMap;
-use crate::state::{State, StackItem, ExecMode};
+use crate::state::{State, StateStatus, StackItem, ExecMode};
 use std::time::SystemTime;
 use boolector::BV;
 
@@ -16,22 +16,40 @@ pub enum Word {
     Unknown(String)
 }
 
+#[derive(Clone)]
 pub struct Processor {
     pub pc: Option<usize>,
-    pub instructions: HashMap<u64, InstructionEntry>
+    pub instructions: HashMap<u64, InstructionEntry>,
+    pub hooks: HashMap<u64, Vec<fn (&mut State) -> bool>>,
+    pub sims: HashMap<u64, fn (&mut State, Vec<Value>) -> Value>,
+    pub breakpoints: HashMap<u64, bool>,
+    pub mergepoints: HashMap<u64, bool>,
+    pub avoidpoints: HashMap<u64, bool>,
+    //pub states: Vec<State>
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum InstructionStatus {
+    None,
+    Hook,
+    Sim,
+    Merge,
+    Avoid,
+    Break
 }
 
 #[derive(Debug, Clone)]
 pub struct InstructionEntry {
     instruction: Instruction,
     tokens: Vec<Word>,
-    // next: Option<Rc<InstructionEntry>>
+    status: InstructionStatus
+    // next: Option<Arc<InstructionEntry>>
 }
 
 const DEBUG: bool = false; // show instructions
-const LAZY: bool  = true;  // dont check sat on ite PCs
-const OPT: bool   = true;  // optimize by removing unread flag sets
-const BFS: bool   = true;  // dequeue states instead of popping
+const LAZY:  bool = true;  // dont check sat on ite PCs
+const OPT:   bool = true;  // optimize by removing unread flag sets
+const BFS:   bool = false; // dequeue states instead of popping
 
 #[inline]
 pub fn print_instr(instr: &Instruction) {
@@ -44,11 +62,17 @@ impl Processor {
     pub fn new() -> Self {
         Processor {
             pc: None,
-            instructions: HashMap::new()
+            instructions: HashMap::new(),
+            hooks:        HashMap::new(),
+            sims:         HashMap::new(),
+            breakpoints:  HashMap::new(),
+            mergepoints:  HashMap::new(),
+            avoidpoints:  HashMap::new(),
+            //states: vec!()
         }
     }
 
-    pub fn tokenize(&mut self, state: &mut State, esil: &String) -> Vec<Word> {
+    pub fn tokenize(&self, state: &mut State, esil: &String) -> Vec<Word> {
         let mut tokens: Vec<Word> = vec!();
         let split_esil = esil.split(",");
 
@@ -57,7 +81,7 @@ impl Processor {
             if let Some(register) = self.get_register(state, s) {
                 tokens.push(register);
             } else if let Some(literal) = self.get_literal(s) {
-                tokens.push(literal)
+                tokens.push(literal);
             } else if let Some(operator) = self.get_operator(s) {
                 tokens.push(operator);
 
@@ -91,7 +115,7 @@ impl Processor {
         tokens
     }
 
-    pub fn get_literal(&mut self, word: &str) -> Option<Word> {
+    pub fn get_literal(&self, word: &str) -> Option<Word> {
         let parsed = word.parse::<i64>();
         
         if parsed.is_ok() {
@@ -105,7 +129,7 @@ impl Processor {
         }
     }
 
-    pub fn get_register(&mut self,  state: &mut State, word: &str) -> Option<Word> {
+    pub fn get_register(&self,  state: &mut State, word: &str) -> Option<Word> {
         if let Some(reg) = state.registers.get_register(&String::from(word)) {
             Some(Word::Register(reg.index))
         } else {
@@ -113,7 +137,7 @@ impl Processor {
         }
     }
 
-    pub fn get_operator(&mut self, word: &str) -> Option<Word> {
+    pub fn get_operator(&self, word: &str) -> Option<Word> {
         let op = Operations::from_str(word);
         match op {
             Operations::Unknown => None,
@@ -121,19 +145,19 @@ impl Processor {
         }
     }
 
-    // for one off parsing of strings
-    pub fn parse_expression(&mut self, r2api: &mut R2Api, state: &mut State, esil: &str) {
-        if self.pc.is_none() {
+    // for one-off parsing of strings
+    pub fn parse_expression(&self, state: &mut State, esil: &str) {
+        /*if self.pc.is_none() {
             let pc_reg = &state.registers.aliases["PC"];
             self.pc = Some(state.registers.regs.get(
                 &pc_reg.reg).unwrap().index);
-        }
+        }*/
 
         let words = self.tokenize(state, &String::from(esil));
-        self.parse(r2api, state, &words);
+        self.parse(state, &words);
     }
 
-    pub fn parse(&self, r2api: &mut R2Api, state: &mut State, words: &Vec<Word>) {
+    pub fn parse(&self, state: &mut State, words: &Vec<Word>) {
         state.stack.clear();
         state.esil.pcs.clear();
         
@@ -259,7 +283,7 @@ impl Processor {
                             }
                             break;
                         },
-                        _ => do_operation(r2api, state, op.clone(), self.pc.unwrap())
+                        _ => do_operation(state, op.clone(), self.pc.unwrap())
                     }
                 },
                 Word::Unknown(s) => {
@@ -367,44 +391,112 @@ impl Processor {
         }
     }
 
-    pub fn execute(&mut self, r2api: &mut R2Api, state: &mut State, 
+    #[inline]
+    pub fn update(&self, state: &mut State, pc_index: usize, instr: &Instruction, 
+        status: &InstructionStatus, words: &Vec<Word>) {
+
+        let pc = instr.offset;
+        let new_pc = instr.offset + instr.size;
+
+        match status {
+            InstructionStatus::None => {
+                let pc_val = Value::Concrete(new_pc);
+                state.registers.set_value(pc_index, pc_val);
+                self.parse(state, words);
+            },
+            InstructionStatus::Hook => {
+                let mut skip = false;
+                let hooks = &self.hooks[&pc];
+                for hook in hooks {
+                    skip = !hook(state) || skip;
+                }
+                let pc_val = Value::Concrete(new_pc);
+                state.registers.set_value(pc_index, pc_val);
+                if !skip {
+                    self.parse(state, words);
+                }
+            },
+            InstructionStatus::Sim => {
+                let sim = &self.sims[&pc];
+                let pc_val = Value::Concrete(new_pc);
+                state.registers.set_value(pc_index, pc_val);
+
+                let cc = state.r2api.get_cc(pc);
+                let mut args = vec!();
+                for arg in cc.args {
+                    args.push(state.registers.get(arg.as_str()));
+                }
+                let ret = sim(state, args);
+                state.registers.set(cc.ret.as_str(), ret);
+                self.ret(state);
+            },
+            InstructionStatus::Break => state.status = StateStatus::Break,
+            InstructionStatus::Merge => state.status = StateStatus::Merge,
+            InstructionStatus::Avoid => state.status = StateStatus::Inactive
+        };
+    }
+
+    // weird method that just performs a return 
+    pub fn ret(&self, state: &mut State) {
+        let ret_esil = state.r2api.get_ret();
+        self.parse_expression(state, ret_esil.as_str());
+    }
+
+    pub fn execute(&mut self, state: &mut State, 
         pc_index: usize, pc_val: u64) {
         
         let instr_opt = self.instructions.get(&pc_val);
-
+        
         if let Some(instr_entry) = instr_opt {
             print_instr(&instr_entry.instruction);
             /*if instr_entry.instruction.opcode == "invalid" {
                 panic!("invalid instr");
             }*/
-            let size = instr_entry.instruction.size;
-            let new_pc = Value::Concrete(pc_val+size);
-            state.registers.set_value(pc_index, new_pc);
-
+            //let size = instr_entry.instruction.size;
             let words = &instr_entry.tokens;
-            self.parse(r2api, state, words);
+            self.update(state, pc_index, &instr_entry.instruction, 
+                &instr_entry.status, words);
+
         } else {
             let mut pc_tmp = pc_val;
-            let instrs = r2api.disassemble(pc_val, INSTR_NUM);
+            let instrs = state.r2api.disassemble(pc_val, INSTR_NUM);
 
             let mut prev: Option<u64> = None;
             for instr in instrs {
                 let size = instr.size;
                 let words = self.tokenize(state, &instr.esil);
 
+                let mut status = InstructionStatus::None;
+                let mut opt = OPT;
+                if self.hooks.contains_key(&pc_tmp) {
+                    status = InstructionStatus::Hook;
+                } else if self.breakpoints.contains_key(&pc_tmp) {
+                    status = InstructionStatus::Break;
+                } else if self.mergepoints.contains_key(&pc_tmp) {
+                    status = InstructionStatus::Merge;
+                } else if self.avoidpoints.contains_key(&pc_tmp) {
+                    status = InstructionStatus::Avoid;
+                } else if self.sims.contains_key(&pc_tmp) {
+                    status = InstructionStatus::Sim;
+                }
+
+                // don't optimize if hooked / bp for accuracy
+                if status != InstructionStatus::None {
+                    opt = false;
+                }
+
                 if pc_tmp == pc_val {
                     print_instr(&instr);
-                    let new_pc = Value::Concrete(pc_tmp+size);
-                    state.registers.set_value(pc_index, new_pc);
-                    self.parse(r2api, state, &words);
+                    self.update(state, pc_index, &instr, &status, &words);
                 } 
 
                 let instr_entry = InstructionEntry {
                     instruction: instr,
                     tokens: words,
+                    status: status
                 };
 
-                if OPT {
+                if opt {
                     if let Some(prev_pc) = prev {
                         self.optimize(state, prev_pc, &instr_entry);
                     }
@@ -416,20 +508,19 @@ impl Processor {
         }
     }
 
-    pub fn step(&mut self, r2api: &mut R2Api, mut state: State) -> Vec<State> {
+    pub fn step(&mut self, mut state: State) -> Vec<State> {
         let mut states: Vec<State> = vec!();
         let pc_index = self.pc.unwrap();
 
         let pc_value = state.registers.get_value(pc_index);
 
         if let Value::Concrete(pc_val) = pc_value {
-            self.execute(r2api, &mut state, pc_index, pc_val);
+            self.execute(&mut state, pc_index, pc_val);
         } else {
             println!("got an unexpected sym PC: {:?}", pc_value);
         }
 
         let new_pc = state.registers.get_value(pc_index);
-
         match new_pc {
             Value::Concrete(_pc_val) => {
                 states.push(state);
@@ -468,17 +559,13 @@ impl Processor {
         states
     }
 
-    pub fn run_until(&mut self, r2api: &mut R2Api, state: State, addr: u64, avoid: u64) -> Option<State> {
-        let mut count = 0;
-
+    pub fn run_until(&mut self, state: State, addr: u64, avoid: Vec<u64>) -> Option<State> {
         if self.pc.is_none() {
             let pc_reg = &state.registers.aliases["PC"];
             self.pc = Some(state.registers.regs.get(
                 &pc_reg.reg).unwrap().index);
         }
         let pc_register = &state.registers.indexes[self.pc.unwrap()].clone();
-
-        let now = SystemTime::now();
         let mut states = vec!(state);
         
         while !states.is_empty() {
@@ -493,19 +580,52 @@ impl Processor {
 
             if let Value::Concrete(pc_val) = pc {
                 if *pc_val == addr {
-                    println!("count: {} ({})", count, 
-                        now.elapsed().unwrap().as_micros());
                     return Some(current_state);
-                } else if *pc_val == avoid {
+                } else if avoid.contains(pc_val) {
                     continue;
                 }
             } 
 
-            let new_states = self.step(r2api, current_state);
+            let new_states = self.step(current_state);
             states.extend(new_states);
-            count += 1;
         }
 
         None
+    }
+
+    pub fn run(&mut self, state: State, split: bool) -> Vec<State> {
+
+        let mut states = vec!();
+        if self.pc.is_none() {
+            let pc_reg = &state.registers.aliases["PC"];
+            self.pc = Some(state.registers.regs.get(
+                &pc_reg.reg).unwrap().index);
+        }
+        states.push(state);
+
+        // run until empty for single threaded, until split for multi
+        while !states.is_empty() && (!split || states.len() == 1){
+            let current_state;
+            if BFS {
+                current_state = states.remove(0);
+            } else {
+                current_state = states.pop().unwrap();
+            }
+
+            match current_state.status {
+                StateStatus::Active => {
+                    states.extend(self.step(current_state));
+                },
+                StateStatus::Break => {
+                    return vec!(current_state);
+                },
+                StateStatus::Merge => {
+                    // TODO
+                },
+                _ => {}
+            }
+        }
+
+        states
     }
 }

@@ -2,9 +2,18 @@ use std::collections::HashMap;
 use crate::r2_api;
 use crate::value::Value;
 use crate::boolector::{BV, Btor};
-use std::rc::Rc;
+use std::sync::Arc;
 
-const MASKS: [u64; 65] = [0, 1, 3, 7, 15, 31, 63, 127, 255, 511, 1023, 2047, 4095, 8191, 16383, 32767, 65535, 131071, 262143, 524287, 1048575, 2097151, 4194303, 8388607, 16777215, 33554431, 67108863, 134217727, 268435455, 536870911, 1073741823, 2147483647, 4294967295, 8589934591, 17179869183, 34359738367, 68719476735, 137438953471, 274877906943, 549755813887, 1099511627775, 2199023255551, 4398046511103, 8796093022207, 17592186044415, 35184372088831, 70368744177663, 140737488355327, 281474976710655, 562949953421311, 1125899906842623, 2251799813685247, 4503599627370495, 9007199254740991, 18014398509481983, 36028797018963967, 72057594037927935, 144115188075855871, 288230376151711743, 576460752303423487, 1152921504606846975, 2305843009213693951, 4611686018427387903, 9223372036854775807, 18446744073709551615];
+const MASKS: [u64; 65] = [0, 1, 3, 7, 15, 31, 63, 127, 255, 511, 1023, 2047, 4095,
+    8191, 16383, 32767, 65535, 131071, 262143, 524287, 1048575, 2097151, 4194303, 
+    8388607, 16777215, 33554431, 67108863, 134217727, 268435455, 536870911, 1073741823, 
+    2147483647, 4294967295, 8589934591, 17179869183, 34359738367, 68719476735, 137438953471, 
+    274877906943, 549755813887, 1099511627775, 2199023255551, 4398046511103, 8796093022207, 
+    17592186044415, 35184372088831, 70368744177663, 140737488355327, 281474976710655, 
+    562949953421311, 1125899906842623, 2251799813685247, 4503599627370495, 9007199254740991, 
+    18014398509481983, 36028797018963967, 72057594037927935, 144115188075855871, 
+    288230376151711743, 576460752303423487, 1152921504606846975, 2305843009213693951, 
+    4611686018427387903, 9223372036854775807, 18446744073709551615];
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Bounds {
@@ -21,9 +30,10 @@ pub struct Register {
     pub value_index: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Registers {
-    pub solver: Rc<Btor>,
+    pub solver:  Arc<Btor>,
+    pub r2api:   r2_api::R2Api,
     pub aliases: HashMap<String, r2_api::AliasInfo>,
     pub regs:    HashMap<String, Register>,
     pub indexes: Vec<Register>,
@@ -31,13 +41,13 @@ pub struct Registers {
 }
 
 impl Registers {
-    pub fn new(r2api: &mut r2_api::R2Api, btor: Rc<Btor>,) -> Self {
+    pub fn new(r2api: &mut r2_api::R2Api, btor: Arc<Btor>,) -> Self {
         let mut reg_info = r2api.get_registers();
         reg_info.reg_info.sort_by(|a, b| b.size.partial_cmp(&a.size).unwrap());
 
-    
         let mut registers = Registers {
             solver: btor,
+            r2api: r2api.clone(),
             aliases: HashMap::new(),
             regs:    HashMap::new(),
             indexes: vec!(),
@@ -58,7 +68,6 @@ impl Registers {
     
             let old_bounds = bounds_map.keys();
             let mut in_bounds = false;
-
             for bound in old_bounds {
                 if bounds.start >= bound.start && bounds.end <= bound.end {
                     in_bounds = true;

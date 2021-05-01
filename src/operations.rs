@@ -1,6 +1,5 @@
-use crate::r2_api::R2Api;
 use crate::value::{Value, cond_value};
-use crate::state::{State, StackItem, ExecMode};
+use crate::state::{State, StackItem};
 use std::f64;
 
 pub const OPS: [&str; 16] = ["+", "-", "++", "--", "*", "/", "<<", ">>", "|", "&", "^", "%", "!", ">>>>", ">>>", "<<<"];
@@ -55,6 +54,7 @@ pub enum Operations {
     DoubleToFloat,
     FloatToDouble,
     FloatCompare,
+    FloatLessThan,
     FloatAdd,
     FloatSubtract,
     FloatMultiply,
@@ -157,6 +157,7 @@ impl Operations {
             "F*" => Operations::FloatMultiply,
             "F/" => Operations::FloatDivide,
             "F==" => Operations::FloatCompare,
+            "F<" => Operations::FloatLessThan,
             "NAN" => Operations::NaN,
             "-F" => Operations::FloatNegate,
             "SWAP" => Operations::Swap,
@@ -363,7 +364,7 @@ pub fn genmask(bits: u64) -> u64 {
     }
 }
 
-pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations, pc_index: usize) {
+pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
     match operation {
         Operations::Trap => {},
         Operations::Syscall => {},
@@ -372,30 +373,9 @@ pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations,
             let pc = state.registers.get(&pc_reg);
             state.stack.push(StackItem::StackValue(pc));
         },
-        Operations::If => {
-            let arg1 = pop_value(state, false, false);
-
-            match (arg1, &state.esil.mode) {
-                (Value::Concrete(val1), ExecMode::Uncon) => {
-                    if val1 == 0 {
-                        state.esil.mode = ExecMode::NoExec;
-                    } else {
-                        state.esil.mode = ExecMode::Exec;
-                    }
-                },
-                _ => {}
-            }
-        },
-        Operations::Else => {
-            match &state.esil.mode {
-                ExecMode::Exec => state.esil.mode = ExecMode::NoExec,
-                ExecMode::NoExec => state.esil.mode = ExecMode::Exec,
-                _ => {}
-            }
-        },
-        Operations::EndIf => {
-            state.esil.mode = ExecMode::Uncon;
-        },
+        Operations::If => {}, // these are handled in processor
+        Operations::Else => {},
+        Operations::EndIf => {},
         Operations::Compare => {
             let arg1 = pop_value(state, true, false);
             let arg2 = pop_value(state, false, false);
@@ -504,7 +484,7 @@ pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations,
             let arg2 = pop_value(state, false, false);
             state.stack.push(StackItem::StackValue(arg1 * arg2))
         },
-        // here, unlike anywhere else, long means 128 bit
+        // here, unlike anywhere else, long means 128 bit, it should be long long long long multiply
         Operations::LongMultiply => {
             let arg1 = pop_value(state, false, false);
             let arg2 = pop_value(state, false, false);
@@ -517,7 +497,33 @@ pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations,
                     state.stack.push(StackItem::StackValue(
                         Value::Concrete(val as u64)));
                 },
-                _ => {}
+                (Value::Symbolic(val1), Value::Concrete(val2)) => {
+                    let sval1 = val1.uext(64);
+                    let sval2 = state.bvv(val2, 128);
+                    let prod  = sval1.mul(&sval2);
+                    state.stack.push(StackItem::StackValue(
+                        Value::Symbolic(prod.slice(127, 64))));
+                    state.stack.push(StackItem::StackValue(
+                        Value::Symbolic(prod.slice(63, 0))));
+                },
+                (Value::Concrete(val1), Value::Symbolic(val2)) => {
+                    let sval2 = val2.uext(64);
+                    let sval1 = state.bvv(val1, 128);
+                    let prod  = sval1.mul(&sval2);
+                    state.stack.push(StackItem::StackValue(
+                        Value::Symbolic(prod.slice(127, 64))));
+                    state.stack.push(StackItem::StackValue(
+                        Value::Symbolic(prod.slice(63, 0))));
+                },
+                (Value::Symbolic(val1), Value::Symbolic(val2)) => {
+                    let sval1 = val1.uext(64);
+                    let sval2 = val2.uext(64);
+                    let prod  = sval1.mul(&sval2);
+                    state.stack.push(StackItem::StackValue(
+                        Value::Symbolic(prod.slice(127, 64))));
+                    state.stack.push(StackItem::StackValue(
+                        Value::Symbolic(prod.slice(63, 0))));
+                },
             }
         },
         Operations::Divide => {
@@ -566,7 +572,7 @@ pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations,
             // TODO: fix to allow symbolic
             let addr = pop_concrete(state, false, false);
 
-            let val = state.memory.read_value(r2api, addr, n);
+            let val = state.memory.read_value(addr, n);
             state.esil.current = val.clone();
             state.stack.push(StackItem::StackValue(val));
 
@@ -578,7 +584,7 @@ pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations,
             let value = pop_value(state, false, false);
 
             if let Some(cond) = &state.condition.clone() {
-                let mut prev = state.memory.read_value(r2api, addr, n);
+                let mut prev = state.memory.read_value(addr, n);
                 prev = state.translate_value(&prev);
                 
                 state.memory.write_value(addr, 
@@ -597,7 +603,7 @@ pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations,
             let value = pop_value(state, false, false);
 
             if let Some(cond) = &state.condition.clone() {
-                let mut prev = state.memory.read_value(r2api, addr, n);
+                let mut prev = state.memory.read_value(addr, n);
                 prev = state.translate_value(&prev);
                 
                 state.memory.write_value(addr, 
@@ -621,7 +627,23 @@ pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations,
             state.stack.push(StackItem::StackValue(addr.clone()));
             state.esil.stored_address = None;
         },
-        Operations::PopCount => {}, // TODO for r2ghidra ESIL
+        Operations::PopCount => {
+            let arg1 = pop_value(state, false, false);
+            match arg1 {
+                Value::Concrete(val) => {
+                    let value = Value::Concrete(val.count_ones() as u64);
+                    state.stack.push(StackItem::StackValue(value));
+                },
+                Value::Symbolic(val) => {
+                    let mut sym_val = state.bvv(0, 64);
+                    for i in 0..val.get_width() {
+                        sym_val = sym_val.add(&val.slice(i+1, i).uext(63));
+                    }
+                    let value = Value::Symbolic(sym_val);
+                    state.stack.push(StackItem::StackValue(value));
+                }
+            }
+        }, // TODO for r2ghidra ESIL
         Operations::Ceiling => {
             let arg1 = pop_double(state);
             let value = Value::Concrete(f64::to_bits(arg1.ceil()));
@@ -659,11 +681,13 @@ pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations,
         },
         Operations::FloatToDouble => {
             let arg1 = pop_float(state);
+            let _size = pop_value(state, false, false);
             let value = Value::Concrete(f64::to_bits(arg1 as f64)); 
             state.stack.push(StackItem::StackValue(value));
         },
         Operations::DoubleToFloat => {
             let arg1 = pop_double(state);
+            let _size = pop_value(state, false, false);
             // these casts will need casts when i'm done with em
             let value = Value::Concrete(f32::to_bits(arg1 as f32) as u64); 
             state.stack.push(StackItem::StackValue(value));
@@ -696,6 +720,12 @@ pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations,
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
             let value = Value::Concrete((arg1 - arg2 == 0.0) as u64);
+            state.stack.push(StackItem::StackValue(value));
+        },
+        Operations::FloatLessThan => {
+            let arg1 = pop_double(state);
+            let arg2 = pop_double(state);
+            let value = Value::Concrete((arg1 < arg2) as u64);
             state.stack.push(StackItem::StackValue(value));
         },
         Operations::NaN => {
@@ -770,14 +800,22 @@ pub fn do_operation(r2api: &mut R2Api, state: &mut State, operation: Operations,
             state.stack.push(StackItem::StackValue(cf));
         },
         Operations::Parity => {
-            let c1 = Value::Concrete(0x0101010101010101);
-            let c2 = Value::Concrete(0x8040201008040201);
-            let c3 = Value::Concrete(0x1ff);
+            match &state.esil.current {
+                Value::Concrete(val) => {
+                    let pf = Value::Concrete(!(val.count_ones()%2) as u64);
+                    state.stack.push(StackItem::StackValue(pf));
+                },
+                Value::Symbolic(_val) => {
+                    let c1 = Value::Concrete(0x0101010101010101);
+                    let c2 = Value::Concrete(0x8040201008040201);
+                    let c3 = Value::Concrete(0x1ff);
 
-            let cur = state.esil.current.clone();
-            let lsb = cur & Value::Concrete(0xff); 
-            let pf = !((((lsb * c1) & c2) % c3) & Value::Concrete(1));
-            state.stack.push(StackItem::StackValue(pf));
+                    let cur = state.esil.current.clone();
+                    let lsb = cur & Value::Concrete(0xff); 
+                    let pf = !((((lsb * c1) & c2) % c3) & Value::Concrete(1));
+                    state.stack.push(StackItem::StackValue(pf));
+                }
+            }
         },
         Operations::Overflow => {
             let bits = pop_concrete(state, false, false);

@@ -1,21 +1,28 @@
 
 use boolector::{Btor, BV};
-use std::rc::Rc;
+use std::sync::Arc;
 use std::ops;
 
-pub const LOG: [u32; 65] = [0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6];
+// hyper efficient log_2 
+pub const LOG: [u32; 65] = 
+   [0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6];
 
 #[derive(Debug, Clone)]
 pub enum Value {
     Concrete(u64),
-    Symbolic(BV<Rc<Btor>>)
+    Symbolic(BV<Arc<Btor>>)
 }
 
-pub fn make_bv(bv: &BV<Rc<Btor>>, val: u64, n: u32) -> BV<Rc<Btor>> {
+#[inline]
+pub fn make_bv(bv: &BV<Arc<Btor>>, val: u64, n: u32) -> BV<Arc<Btor>> {
     BV::from_u64(bv.get_btor().clone(), val, n)
 }
 
-pub fn value_to_bv(btor: Rc<Btor>, value: Value) -> BV<Rc<Btor>> {
+#[inline]
+pub fn value_to_bv(btor: Arc<Btor>, value: Value) -> BV<Arc<Btor>> {
     match value {
         Value::Concrete(val) => {
             BV::from_u64(btor.clone(), val, 64)
@@ -24,7 +31,8 @@ pub fn value_to_bv(btor: Rc<Btor>, value: Value) -> BV<Rc<Btor>> {
     }
 }
 
-pub fn cond_value(cond: &BV<Rc<Btor>>, v1: Value, v2: Value) -> BV<Rc<Btor>> {
+#[inline]
+pub fn cond_value(cond: &BV<Arc<Btor>>, v1: Value, v2: Value) -> BV<Arc<Btor>> {
     cond.cond_bv(
         &value_to_bv(cond.get_btor().clone(), v1), 
         &value_to_bv(cond.get_btor().clone(), v2)
@@ -34,6 +42,7 @@ pub fn cond_value(cond: &BV<Rc<Btor>>, v1: Value, v2: Value) -> BV<Rc<Btor>> {
 impl ops::Add<Value> for Value {
     type Output = Value;
 
+    #[inline]
     fn add(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -64,6 +73,7 @@ impl ops::Add<Value> for Value {
 impl ops::Sub<Value> for Value {
     type Output = Value;
 
+    #[inline]
     fn sub(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -94,6 +104,7 @@ impl ops::Sub<Value> for Value {
 impl ops::Mul<Value> for Value {
     type Output = Value;
 
+    #[inline]
     fn mul(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -124,6 +135,7 @@ impl ops::Mul<Value> for Value {
 impl ops::Div<Value> for Value {
     type Output = Value;
 
+    #[inline]
     fn div(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -154,6 +166,7 @@ impl ops::Div<Value> for Value {
 impl ops::Rem<Value> for Value {
     type Output = Value;
 
+    #[inline]
     fn rem(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -184,6 +197,7 @@ impl ops::Rem<Value> for Value {
 impl ops::BitAnd<Value> for Value {
     type Output = Value;
 
+    #[inline]
     fn bitand(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -214,6 +228,7 @@ impl ops::BitAnd<Value> for Value {
 impl ops::BitOr<Value> for Value {
     type Output = Value;
 
+    #[inline]
     fn bitor(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -244,6 +259,7 @@ impl ops::BitOr<Value> for Value {
 impl ops::BitXor<Value> for Value {
     type Output = Value;
 
+    #[inline]
     fn bitxor(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -274,6 +290,7 @@ impl ops::BitXor<Value> for Value {
 impl ops::Not for Value {
     type Output = Value;
 
+    #[inline]
     fn not(self) -> Value {
         match self {
             Value::Concrete(a) => {
@@ -290,6 +307,7 @@ impl ops::Not for Value {
 impl ops::Shl<Value> for Value {
     type Output = Value;
 
+    #[inline]
     fn shl(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -313,6 +331,7 @@ impl ops::Shl<Value> for Value {
 impl ops::Shr<Value> for Value {
     type Output = Value;
 
+    #[inline]
     fn shr(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -335,6 +354,8 @@ impl ops::Shr<Value> for Value {
 }
 
 impl Value {
+
+    #[inline]
     pub fn sdiv(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -361,6 +382,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn srem(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -387,6 +409,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn asr(self, rhs: Value, sz: u32) -> Value {
         //println!("{:?}, {:?}", rhs, sz);
         match (self, rhs) {
@@ -409,6 +432,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn ror(self, rhs: Value, sz: u32) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -432,6 +456,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn rol(self, rhs: Value, sz: u32) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -456,6 +481,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn eq(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -482,6 +508,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn slt(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -508,6 +535,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn ult(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -534,6 +562,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn uext(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -555,6 +584,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn sext(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
