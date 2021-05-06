@@ -2,14 +2,13 @@ use crate::r2_api::{R2Api, Endian};
 use crate::registers::Registers;
 use crate::memory::Memory;
 use crate::value::Value;
-use boolector::{Btor, BV, SolverResult};
-use boolector::option::{BtorOption, ModelGen, NumberFormat};
+use crate::solver::Solver;
+use boolector::{Btor, BV};
 use std::sync::Arc;
 use std::u8;
+use std::collections::HashMap;
 
 // use backtrace::Backtrace;
-
-const EVAL_MAX: u64 = 256;
 
 #[derive(Debug, Clone)]
 pub enum ExecMode {
@@ -47,14 +46,15 @@ pub enum StateStatus {
 
 #[derive(Clone)]
 pub struct State {
-    pub solver:    Arc<Btor>,
+    pub solver:    Solver,
     pub r2api:     R2Api,
     pub stack:     Vec<StackItem>,
     pub esil:      EsilState,
     pub condition: Option<BV<Arc<Btor>>>,
     pub registers: Registers,
     pub memory:    Memory,
-    pub status:    StateStatus
+    pub status:    StateStatus,
+    pub context:   HashMap<String, Vec<Value>>
 }
 
 impl State {
@@ -67,27 +67,23 @@ impl State {
             stored_address: None,
             pcs: vec!()
         };
-    
-        let btor = Arc::new(Btor::new());
-        btor.set_opt(BtorOption::ModelGen(ModelGen::All));
-        btor.set_opt(BtorOption::Incremental(true));
-        btor.set_opt(BtorOption::OutputNumberFormat(NumberFormat::Hexadecimal));
-        //btor.set_opt(BtorOption::PrettyPrint(true));
 
+        let solver = Solver::new();
         State {
-            solver: btor.clone(),
+            solver: solver.clone(),
             r2api: r2api.clone(),
             stack: vec!(),
             esil: esil_state,
             condition: None,
-            registers: Registers::new(r2api, btor.clone()),
-            memory: Memory::new(r2api, btor.clone()),
-            status: StateStatus::Active
+            registers: Registers::new(r2api, solver.clone()),
+            memory: Memory::new(r2api, solver.clone()),
+            status: StateStatus::Active,
+            context: HashMap::new()
         }
     }
 
     pub fn duplicate(&mut self) -> Self {
-        let solver = Arc::new(self.solver.duplicate());
+        let solver = self.solver.duplicate();
 
         let mut registers = self.registers.clone();
         registers.solver = solver.clone();
@@ -103,67 +99,50 @@ impl State {
             condition: None,
             registers: registers,
             memory: memory,
-            status: self.status.clone()
+            status: self.status.clone(),
+            context: self.context.clone()
         }
     }
 
     #[inline]
     pub fn bv(&mut self, s: &str, n: u32) -> BV<Arc<Btor>>{
-        BV::new(self.solver.clone(), n, Some(s))
+        self.solver.bv(s, n)
     }
 
     #[inline]
     pub fn bvv(&mut self, v: u64, n: u32) -> BV<Arc<Btor>>{
-        BV::from_u64(self.solver.clone(), v, n)
+        self.solver.bvv(v, n)
     }
 
     #[inline]
     pub fn translate(&mut self, bv: &BV<Arc<Btor>>) -> Option<BV<Arc<Btor>>> {
-        //let bt = Backtrace::new();
-        //println!("wtffff: {:?}", bt);
-        //println!("hmmm {:?}", bv);
-
-        let trans = Btor::get_matching_bv(self.solver.clone(), bv);
-        //println!("fuck {:?}", trans);
-
-        trans
+        self.solver.translate(bv)
     }
 
     #[inline]
     pub fn translate_value(&mut self, value: &Value) -> Value {
-        match value {
-            Value::Concrete(val) => Value::Concrete(*val),
-            Value::Symbolic(val) => Value::Symbolic(
-                self.translate(val).unwrap())
-        }
+        self.solver.translate_value(value)
+    }
+
+    #[inline]
+    pub fn eval(&mut self, val: &Value) -> Option<Value> {
+        self.solver.eval(val)
     }
 
     #[inline]
     pub fn evaluate(&mut self, bv: &BV<Arc<Btor>>) -> Option<Value> {
-        let new_bv = self.translate(bv).unwrap();
-        if self.solver.sat() == SolverResult::Sat {
-            Some(Value::Concrete(new_bv.get_a_solution().as_u64().unwrap()))
-        } else {
-            None
-        }
+        self.solver.evaluate(bv)
     }
 
     // evaluate and constrain the symbol to the value
     #[inline]
     pub fn evalcon(&mut self, bv: &BV<Arc<Btor>>) -> Option<u64> {
-        let new_bv = self.translate(bv).unwrap();
-        if self.solver.sat() == SolverResult::Sat {
-            let conval = new_bv.get_a_solution().as_u64().unwrap();
-            new_bv._eq(&self.bvv(conval, new_bv.get_width())).assert();
-            Some(conval)
-        } else {
-            None
-        }
+        self.solver.evalcon(bv)
     }
 
     #[inline]
     pub fn is_sat(&mut self) -> bool {
-        if self.solver.sat() == SolverResult::Sat {
+        if self.solver.is_sat() {
             true
         } else {
             self.status = StateStatus::Unsat;
@@ -172,48 +151,13 @@ impl State {
     }
 
     pub fn evaluate_many(&mut self, bv: &BV<Arc<Btor>>) -> Vec<u64> {
-        let mut solutions: Vec<u64> = vec!();
-        let new_bv = self.translate(bv).unwrap();
-        self.solver.push(1);
-        for _i in 0..EVAL_MAX {
-            if self.solver.sat() == SolverResult::Sat {
-                let sol = new_bv.get_a_solution().as_u64().unwrap();
-                solutions.push(sol);
-                let sol_bv = BV::from_u64(
-                    self.solver.clone(), sol, new_bv.get_width());
-
-                new_bv._eq(&sol_bv).not().assert();
-            } else {
-                break
-            }
-        }
-        self.solver.pop(1);
-
-        solutions 
-    }
-
-    // this isn't right
-    pub fn _evaluate_bytes(&mut self, bytes: Vec<Value>) -> String {
-        let mut data: Vec<u8> = vec!();
-        for b in bytes {
-            match b {
-                Value::Concrete(val) => {
-                    data.push(val as u8);
-                },
-                Value::Symbolic(val) => {
-                    let conval = self.evalcon(&val).unwrap();
-                    data.push(conval as u8);
-                }
-            }
-        }
-
-        String::from_utf8(data).unwrap()
+        self.solver.evaluate_many(bv)
     }
 
     pub fn evaluate_string(&mut self, bv: &BV<Arc<Btor>>) -> Option<String> {
         let new_bv = self.translate(bv).unwrap();
         let mut data: Vec<u8> = vec!();
-        if self.solver.sat() == SolverResult::Sat {
+        if self.solver.is_sat() {
             let one_sol = new_bv.get_a_solution().disambiguate();
             let solution = one_sol.as_01x_str(); 
             for i in 0..(new_bv.get_width()/8) as usize {

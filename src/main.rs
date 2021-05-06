@@ -13,6 +13,7 @@ pub mod state;
 pub mod operations;
 pub mod memory;
 pub mod radius;
+pub mod solver;
 
 use crate::radius::Radius;
 use crate::value::Value;
@@ -87,6 +88,26 @@ fn callback(state: &mut State) -> bool {
     true
 }
 
+fn symmem() {
+    let mut radius = Radius::new("/home/alkali/hacking/symmem");
+    let main = radius.r2api.get_address("main");
+    let mut state = radius.call_state(main);
+    let len: usize = 8;
+    let bv = state.bv("flag", 8*len as u32);
+    //bv._eq(&state.bvv(3, 64)).not().assert();
+
+    state.registers.set("rdi", Value::Symbolic(bv.clone()));
+
+    let mut new_state = radius.run_until(
+        state, 0x119c, vec!(0x119e)).unwrap();
+
+    let eax = new_state.registers.get("eax");
+    //println!("eax: {:?}", eax);
+    println!("val: {:?}", new_state.eval(&eax));
+
+    radius.r2api.close();
+}
+
 //#[test]
 fn ioscrackme() {
     let mut radius = Radius::new("ipa:///home/alkali/hacking/ioscrackme.ipa");
@@ -125,5 +146,5 @@ fn main() {
     /*let c = Value::Concrete(0b110100);
     let rot = Value::Concrete(3);
     println!("{:?}", c.ror(rot, 6));*/
-    r100();
+    symmem();
 }

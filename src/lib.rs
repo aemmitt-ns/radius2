@@ -13,6 +13,7 @@ pub mod state;
 pub mod operations;
 pub mod memory;
 pub mod radius;
+pub mod solver;
 
 use crate::radius::Radius;
 use crate::value::Value;

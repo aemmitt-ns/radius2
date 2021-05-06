@@ -68,7 +68,6 @@ impl Radius {
 
     pub fn run(&mut self, state: Option<State>, threads: usize) -> Option<State> {
         let mut handles = vec!();
-
         if let Some(s) = state {
             self.states.lock().unwrap().push(s);
         }

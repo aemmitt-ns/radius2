@@ -49,7 +49,7 @@ pub struct InstructionEntry {
 const DEBUG: bool = false; // show instructions
 const LAZY:  bool = true;  // dont check sat on ite PCs
 const OPT:   bool = true;  // optimize by removing unread flag sets
-const BFS:   bool = false; // dequeue states instead of popping
+const BFS:   bool = true;  // dequeue states instead of popping
 
 #[inline]
 pub fn print_instr(instr: &Instruction) {
@@ -209,7 +209,7 @@ impl Processor {
                                     state.esil.mode = ExecMode::If;
                                     temp_stack1 = state.stack.clone();
                                     let cond_bv = val1._eq(
-                                        &BV::zero(state.solver.clone(), val1.get_width())).not();
+                                        &state.bvv(0, val1.get_width())).not();
 
                                     state.condition = Some(cond_bv);
                                 }
@@ -253,8 +253,8 @@ impl Processor {
                                     let if_val = pop_stack_value(state, &mut tmp, false, false);
                                     let else_val = pop_stack_value(state, &mut new_temp, false, false);
                                     let cond_val = state.condition.as_ref().unwrap().cond_bv(
-                                        &value_to_bv(state.solver.clone(), if_val),
-                                        &value_to_bv(state.solver.clone(), else_val)
+                                        &value_to_bv(state.solver.btor.clone(), if_val),
+                                        &value_to_bv(state.solver.btor.clone(), else_val)
                                     );
 
                                     new_stack.push(StackItem::StackValue(Value::Symbolic(cond_val)));

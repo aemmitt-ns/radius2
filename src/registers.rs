@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use crate::r2_api;
 use crate::value::Value;
-use crate::boolector::{BV, Btor};
-use std::sync::Arc;
+use crate::solver::Solver;
 
 const MASKS: [u64; 65] = [0, 1, 3, 7, 15, 31, 63, 127, 255, 511, 1023, 2047, 4095,
     8191, 16383, 32767, 65535, 131071, 262143, 524287, 1048575, 2097151, 4194303, 
@@ -32,7 +31,7 @@ pub struct Register {
 
 #[derive(Clone)]
 pub struct Registers {
-    pub solver:  Arc<Btor>,
+    pub solver:  Solver,
     pub r2api:   r2_api::R2Api,
     pub aliases: HashMap<String, r2_api::AliasInfo>,
     pub regs:    HashMap<String, Register>,
@@ -41,12 +40,12 @@ pub struct Registers {
 }
 
 impl Registers {
-    pub fn new(r2api: &mut r2_api::R2Api, btor: Arc<Btor>,) -> Self {
+    pub fn new(r2api: &mut r2_api::R2Api, btor: Solver) -> Self {
         let mut reg_info = r2api.get_registers();
         reg_info.reg_info.sort_by(|a, b| b.size.partial_cmp(&a.size).unwrap());
 
         let mut registers = Registers {
-            solver: btor,
+            solver: btor.clone(),
             r2api: r2api.clone(),
             aliases: HashMap::new(),
             regs:    HashMap::new(),
@@ -136,7 +135,7 @@ impl Registers {
                     return Value::Concrete(*val);
                 },
                 Value::Symbolic(val) => {
-                    let trans_val = Btor::get_matching_bv(self.solver.clone(), val).unwrap();
+                    let trans_val = self.solver.translate(val).unwrap();
                     return Value::Symbolic(trans_val);
                 }
             }
@@ -150,7 +149,7 @@ impl Registers {
                 Value::Concrete((val >> offset) & mask)
             },
             Value::Symbolic(val) => {
-                let trans_val = Btor::get_matching_bv(self.solver.clone(), val).unwrap();
+                let trans_val = self.solver.translate(val).unwrap();
                 Value::Symbolic(trans_val.slice(
                     (offset+size-1) as u32, offset as u32))
             }
@@ -182,19 +181,16 @@ impl Registers {
                     return;
                 },
                 (Value::Concrete(new), Value::Symbolic(old)) => {
-                    let solv = self.solver.clone();
-                    new_sym = BV::from_u64(solv.clone(), new, size as u32);
-                    old_sym = Btor::get_matching_bv(solv, &old).unwrap();
+                    new_sym = self.solver.bvv(new, size as u32);
+                    old_sym = self.solver.translate(&old).unwrap();
                 },
                 (Value::Symbolic(new), Value::Concrete(old)) => {
-                    let solv = self.solver.clone();
-                    old_sym = BV::from_u64(solv.clone(), old, bound_size);
-                    new_sym = Btor::get_matching_bv(solv, &new).unwrap();
+                    old_sym = self.solver.bvv(old, bound_size);
+                    new_sym = self.solver.translate(&new).unwrap();
                 },
                 (Value::Symbolic(new), Value::Symbolic(old)) => {
-                    let solv = self.solver.clone();
-                    old_sym = Btor::get_matching_bv(solv.clone(), &old).unwrap();
-                    new_sym = Btor::get_matching_bv(solv, &new).unwrap();
+                    old_sym = self.solver.translate(&old).unwrap();
+                    new_sym = self.solver.translate(&new).unwrap();
                 }
             }
 

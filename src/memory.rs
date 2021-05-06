@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use crate::r2_api::{R2Api, Endian};
 use crate::value::Value;
-use crate::boolector::{Btor, BV};
-use std::sync::Arc;
+use crate::solver::Solver;
 
 // const CHUNK: u64 = 8;
+const READ_CACHE: usize = 256;
 
 #[derive(Clone)]
 pub struct Memory {
-    pub solver: Arc<Btor>,
+    pub solver: Solver,
     pub r2api:  R2Api,
     pub mem:    HashMap<u64, Value>,
     pub bits:   u64,
@@ -16,16 +16,68 @@ pub struct Memory {
 }
 
 impl Memory {
-    pub fn new(r2api: &mut R2Api, btor: Arc<Btor>) -> Memory {
+    pub fn new(r2api: &mut R2Api, btor: Solver) -> Memory {
         let info = r2api.info.as_ref().unwrap();
         let endian = info.bin.endian.as_str();
     
         Memory {
-            solver: btor,
+            solver: btor.clone(),
             r2api: r2api.clone(),
             mem: HashMap::new(),
             bits: info.bin.bits,
             endian: Endian::from_string(endian)
+        }
+    }
+
+    pub fn read_sym(&mut self, address: &Value, length: &Value) -> Value {
+        // TODO "correctly" handle 
+        let len = match length {
+            Value::Concrete(l) => *l,
+            Value::Symbolic(l) => self.solver.evalcon(l).unwrap()
+        } as usize;
+
+        match address {
+            Value::Concrete(addr) => {
+                self.read_value(*addr, len)
+            },
+            Value::Symbolic(addr) => {
+                let addrs = self.solver.evaluate_many(addr);
+                //println!("addrs: {:?}", addrs);
+                let mut value = Value::Symbolic(self.solver.bvv(0, 64));
+                for a in addrs {
+                    let read_val = self.read_value(a, len);
+                    let bv = self.solver.bvv(a, 64);
+                    let cond = Value::Symbolic(addr._eq(&bv));
+                    value = self.solver.conditional(&cond, &read_val, &value);
+                }
+                //println!("value: {:?}", value);
+                value
+            }
+        }
+    }
+
+    pub fn write_sym(&mut self, address: &Value, value: Value, length: &Value) {
+        // TODO "correctly" handle 
+        let len = match length {
+            Value::Concrete(l) => *l,
+            Value::Symbolic(l) => self.solver.evalcon(l).unwrap()
+        } as usize;
+
+        match address {
+            Value::Concrete(addr) => {
+                self.write_value(*addr, value, len)
+            },
+            Value::Symbolic(addr) => {
+                let addrs = self.solver.evaluate_many(addr);
+                //let mut value = Value::Symbolic(self.solver.bvv(0, 64));
+                for a in addrs {
+                    let read_val = self.read_value(a, len);
+                    let bv = self.solver.bvv(a, 64);
+                    let cond = Value::Symbolic(addr._eq(&bv));
+                    let new_val = self.solver.conditional(&cond, &value, &read_val);
+                    self.write_value(a, new_val, len);
+                }
+            }
         }
     }
 
@@ -49,10 +101,12 @@ impl Memory {
                     data.push(byte.clone());
                 },
                 None => {
-                    let byte = self.r2api.read(caddr, 1).pop().unwrap();
-                    let new_data = Value::Concrete(byte as u64);
-                    self.mem.insert(caddr, new_data.clone());
-                    data.push(new_data);
+                    let bytes = self.r2api.read(caddr, READ_CACHE);
+                    data.push(Value::Concrete(bytes[0] as u64));
+                    for byte in bytes {
+                        let new_data = Value::Concrete(byte as u64);
+                        self.mem.insert(caddr, new_data);
+                    }
                 }
             }
         }
@@ -88,7 +142,8 @@ impl Memory {
             new_data.reverse();
         }
 
-        let mut is_sym = false;
+        // if length > 64 use sym to cheat
+        let mut is_sym = length > 64; 
         for datum in new_data {
             if let Value::Symbolic(_val) = datum {
                 is_sym = true;
@@ -98,14 +153,13 @@ impl Memory {
 
         if is_sym {
             // this value isn't used, idk
-            let mut sym_val = BV::zero(self.solver.clone(), 1);
+            let mut sym_val = self.solver.bvv(0, 1);
 
             for count in 0..length {
                 let datum = new_data.get(count).unwrap();
                 match &datum {
                     Value::Symbolic(val) => {
-                        let trans_val = Btor::get_matching_bv(
-                            self.solver.clone(), val).unwrap();
+                        let trans_val = self.solver.translate(val).unwrap();
 
                         if sym_val.get_width() == 1 {
                             sym_val = trans_val.slice(7, 0);
@@ -114,8 +168,7 @@ impl Memory {
                         }
                     },
                     Value::Concrete(val) => {
-                        let new_val = BV::from_u64(
-                            self.solver.clone(), val << (8*count as u64), 8);
+                        let new_val = self.solver.bvv(val << (8*count as u64), 8);
 
                         if sym_val.get_width() == 1 {
                             sym_val = new_val;
@@ -148,14 +201,14 @@ impl Memory {
             },
             Value::Symbolic(val) => {
                 for count in 0..length {
-                    let trans_val = Btor::get_matching_bv(
-                        self.solver.clone(), &val).unwrap();
+                    let trans_val = self.solver.translate(&val).unwrap();
                     let bv = trans_val.slice(((count as u32)+1)*8-1, (count as u32)*8);
-                    if bv.is_const() {
+                    /*if bv.is_const() { // don't do this here for taint analysis sake
                         data.push(Value::Concrete(bv.as_u64().unwrap()));
                     } else {
                         data.push(Value::Symbolic(bv));
-                    }
+                    }*/
+                    data.push(Value::Symbolic(bv));
                 }
             }
         }
