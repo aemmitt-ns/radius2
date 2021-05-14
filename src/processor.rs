@@ -1,10 +1,12 @@
-use crate::r2_api::{R2Api, Instruction, CallingConvention};
-use crate::value::{Value, value_to_bv};
-use crate::operations::{Operations, pop_value, pop_stack_value, pop_concrete, do_operation, OPS};
+use crate::r2_api::Instruction;
+use crate::value::Value;
+use crate::operations::{Operations, pop_value, 
+    pop_stack_value, pop_concrete, do_operation, OPS};
+
 use std::collections::HashMap;
 use crate::state::{State, StateStatus, StackItem, ExecMode};
-use std::time::SystemTime;
-use boolector::BV;
+//use std::time::SystemTime;
+//use boolector::BV;
 
 const INSTR_NUM: usize = 64;
 
@@ -78,6 +80,7 @@ impl Processor {
 
         for s in split_esil {
 
+            // nice, pretty, simple
             if let Some(register) = self.get_register(state, s) {
                 tokens.push(register);
             } else if let Some(literal) = self.get_literal(s) {
@@ -253,8 +256,8 @@ impl Processor {
                                     let if_val = pop_stack_value(state, &mut tmp, false, false);
                                     let else_val = pop_stack_value(state, &mut new_temp, false, false);
                                     let cond_val = state.condition.as_ref().unwrap().cond_bv(
-                                        &value_to_bv(state.solver.btor.clone(), if_val),
-                                        &value_to_bv(state.solver.btor.clone(), else_val)
+                                        &state.solver.to_bv(&if_val, 64),
+                                        &state.solver.to_bv(&else_val, 64)
                                     );
 
                                     new_stack.push(StackItem::StackValue(Value::Symbolic(cond_val)));

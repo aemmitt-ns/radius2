@@ -14,6 +14,7 @@ pub mod operations;
 pub mod memory;
 pub mod radius;
 pub mod solver;
+pub mod sims;
 
 use crate::radius::Radius;
 use crate::value::Value;

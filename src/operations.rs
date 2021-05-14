@@ -97,7 +97,7 @@ impl Operations {
     pub fn from_str(s: &str) -> Self {
         match s {
             "TRAP" => Operations::Trap,
-            "$" => Operations::Syscall,
+            "()" => Operations::Syscall,
             "$$" => Operations::PcAddress,
             "?{" => Operations::If,
             "}{" => Operations::Else,
@@ -338,8 +338,8 @@ pub fn do_equal(state: &mut State, reg: StackItem, value: Value,
                         state.esil.pcs.push(val);
                     }
                 }
-                state.registers.set_value(index, Value::Symbolic(
-                    cond_value(cond, value.clone(), prev.clone())));
+                state.registers.set_value(index, state.solver.conditional(
+                    &Value::Symbolic(cond.clone()), &value, &prev));
             } else {
                 state.registers.set_value(index, value.clone());
             }
@@ -491,7 +491,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
 
             match (arg1, arg2) {
                 (Value::Concrete(val1), Value::Concrete(val2)) => {
-                    let val = (val1 as u128) << (val2 as u128);
+                    let val = (val1 as u128) * (val2 as u128);
                     state.stack.push(StackItem::StackValue(
                         Value::Concrete((val >> 64) as u64)));
                     state.stack.push(StackItem::StackValue(
@@ -572,8 +572,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             // TODO: fix to allow symbolic (sort of done)
             let addr = pop_value(state, false, false);
 
-            let len = Value::Concrete(n as u64);
-            let val = state.memory.read_sym(&addr, &len);
+            let val = state.memory.read_sym(&addr, n);
             state.esil.current = val.clone();
             state.stack.push(StackItem::StackValue(val));
 
@@ -583,16 +582,15 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         Operations::Poke(n) => {
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
-            let len = Value::Concrete(n as u64);
 
             if let Some(cond) = &state.condition.clone() {
-                let mut prev = state.memory.read_sym(&addr, &len);
+                let mut prev = state.memory.read_sym(&addr, n);
                 prev = state.translate_value(&prev);
                 
                 state.memory.write_sym(&addr, 
-                    Value::Symbolic(cond_value(cond, value, prev)), &len);
+                    Value::Symbolic(cond_value(cond, value, prev)), n);
             } else {
-                state.memory.write_sym(&addr, value.clone(), &len);
+                state.memory.write_sym(&addr, value.clone(), n);
             }
 
             //state.memory.write_value(addr, value, n);
@@ -602,17 +600,16 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         Operations::PokeSize => {
             let addr = pop_value(state, false, false);
             let n = (get_size(state)/8) as usize;
-            let len = Value::Concrete(n as u64);
             let value = pop_value(state, false, false);
 
             if let Some(cond) = &state.condition.clone() {
-                let mut prev = state.memory.read_sym(&addr, &len);
+                let mut prev = state.memory.read_sym(&addr, n);
                 prev = state.translate_value(&prev);
                 
                 state.memory.write_sym(&addr, 
-                    Value::Symbolic(cond_value(cond, value, prev)), &len);
+                    Value::Symbolic(cond_value(cond, value, prev)), n);
             } else {
-                state.memory.write_sym(&addr, value.clone(), &len);
+                state.memory.write_sym(&addr, value.clone(), n);
             }
 
             //state.memory.write_value(addr, value, n);

@@ -10,7 +10,7 @@ pub const LOG: [u32; 65] =
     5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 
     5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6];
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Concrete(u64),
     Symbolic(BV<Arc<Btor>>)
@@ -411,7 +411,7 @@ impl Value {
 
     #[inline]
     pub fn asr(self, rhs: Value, sz: u32) -> Value {
-        //println!("{:?}, {:?}", rhs, sz);
+        //println!("{:?}, {:?}, {:?}", self, rhs, sz);
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
                 let shift = 64 - sz as i64;
@@ -419,12 +419,12 @@ impl Value {
                 Value::Concrete(((sign_ext as i64) >> (b as i64)) as u64)
             },
             (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, LOG[a.get_width() as usize]);
+                let bv = make_bv(&a, b, LOG[sz as usize]);
                 Value::Symbolic(a.slice(sz-1, 0).sra(&bv))
             },
             (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, 64);
-                Value::Symbolic(bv.slice(sz-1, 0).sra(&b.slice(5, 0)))
+                let bv = make_bv(&b, a, sz);
+                Value::Symbolic(bv.sra(&b.slice(LOG[sz as usize]-1, 0)))
             },
             (Value::Symbolic(a), Value::Symbolic(b)) => {
                 Value::Symbolic(a.slice(sz-1, 0).sra(&b.slice(LOG[sz as usize]-1, 0)))
@@ -481,6 +481,7 @@ impl Value {
         }
     }
 
+    // get whether values are equivalent
     #[inline]
     pub fn eq(self, rhs: Value) -> Value {
         match (self, rhs) {
@@ -504,6 +505,33 @@ impl Value {
                 } else {
                     Value::Symbolic(b._eq(&a.uext(-width_diff as u32)))
                 }
+            }
+        }
+    }
+
+    // check if values are *identical*
+    #[inline]
+    pub fn id(self, rhs: Value) -> Value {
+        match (self, rhs) {
+            (Value::Concrete(a), Value::Concrete(b)) => {
+                Value::Concrete((a == b) as u64)
+            },
+            (Value::Symbolic(a), Value::Concrete(b)) => {
+                if a.is_const() {
+                    Value::Concrete((a.as_u64().unwrap() == b) as u64)
+                } else {
+                    Value::Concrete(0)
+                }
+            },
+            (Value::Concrete(a), Value::Symbolic(b)) => {
+                if b.is_const() {
+                    Value::Concrete((b.as_u64().unwrap() == a) as u64)
+                } else {
+                    Value::Concrete(0)
+                }
+            },
+            (Value::Symbolic(a), Value::Symbolic(b)) => {
+                Value::Concrete((a == b) as u64)
             }
         }
     }
@@ -536,6 +564,21 @@ impl Value {
     }
 
     #[inline]
+    pub fn slte(self, rhs: Value) -> Value {
+        self.clone().ult(rhs.clone()) | self.eq(rhs)
+    }
+
+    #[inline]
+    pub fn sgt(self, rhs: Value) -> Value {
+        !self.clone().ult(rhs.clone()) & !self.eq(rhs)
+    }
+
+    #[inline]
+    pub fn sgte(self, rhs: Value) -> Value {
+        !self.ult(rhs)
+    }
+    
+    #[inline]
     pub fn ult(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
@@ -560,6 +603,21 @@ impl Value {
                 }
             }
         }
+    }
+
+    #[inline]
+    pub fn ulte(self, rhs: Value) -> Value {
+        self.clone().ult(rhs.clone()) | self.eq(rhs)
+    }
+
+    #[inline]
+    pub fn ugt(self, rhs: Value) -> Value {
+        !self.clone().ult(rhs.clone()) & !self.eq(rhs)
+    }
+
+    #[inline]
+    pub fn ugte(self, rhs: Value) -> Value {
+        !self.ult(rhs)
     }
 
     #[inline]
@@ -603,6 +661,17 @@ impl Value {
                 // uh hopefully this doesnt happen
                 let szdiff = 64 - a.get_width();
                 Value::Symbolic(a.sext(szdiff))
+            }
+        }
+    }
+
+    pub fn slice(self, high: u64, low: u64) -> Value {
+        match self {
+            Value::Concrete(a) => {
+                Value::Concrete(a & (((1 << (high-low+1))-1) << low))
+            },
+            Value::Symbolic(a) => {
+                Value::Symbolic(a.slice(high as u32, low as u32))
             }
         }
     }

@@ -168,7 +168,7 @@ impl R2Api {
     }
 
     pub fn get_ret(&mut self) -> String {
-        // simple as that
+        // simple as that?
         self.cmd("pae ret").unwrap()
     }
 
@@ -181,6 +181,10 @@ impl R2Api {
 
     pub fn seek(&mut self, addr: u64) {
         let _r = self.cmd(format!("s {}", addr).as_str());
+    }
+
+    pub fn breakpoint(&mut self, addr: u64) {
+        let _r = self.cmd(format!("db {}", addr).as_str());
     }
 
     pub fn init_vm(&mut self) {
@@ -208,6 +212,10 @@ impl R2Api {
         let cmd = format!("?v {}", symbol);
         let val = self.cmd(cmd.as_str()).unwrap();
         u64::from_str_radix(&val[2..val.len()-1], 16).unwrap()
+    }
+
+    pub fn clear(&mut self) {
+        
     }
 
     pub fn close(&mut self) {

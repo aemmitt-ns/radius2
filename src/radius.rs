@@ -34,6 +34,10 @@ impl Radius {
         State::new(&mut self.r2api)
     }
 
+    pub fn init_state(&mut self) -> State {
+        State::new(&mut self.r2api)
+    }
+
     pub fn hook(&mut self, addr: u64, hook_callback: fn (&mut State) -> bool) {
         let hooks = self.processor.hooks.remove(&addr);
         if let Some(mut hook_vec) = hooks {
@@ -107,5 +111,12 @@ impl Radius {
                 break None
             }
         }
+    }
+
+    // clear cached data from r2api and processors 
+    pub fn clear(&mut self) {
+        self.r2api.clear();
+        self.processors.lock().unwrap().clear();
+        self.processor = Processor::new();
     }
 }

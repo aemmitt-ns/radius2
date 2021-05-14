@@ -111,15 +111,40 @@ impl Solver {
                 Some(Value::Concrete(*val))
             },
             Value::Symbolic(bv) => {
-                let new_bv = self.translate(bv).unwrap();
-                if self.btor.sat() == SolverResult::Sat {
-                    Some(Value::Concrete(
-                        new_bv.get_a_solution().as_u64().unwrap()))
-                } else {
-                    None
-                }
+                self.evaluate(&bv)
             }
         }
+    }
+
+    #[inline]
+    pub fn eval_to_u64(&self, value: &Value) -> Option<u64> {
+        if let Some(Value::Concrete(val)) = self.eval(value) {
+            Some(val)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn evalcon_to_u64(&self, value: &Value) -> Option<u64> {
+        match value {
+            Value::Concrete(val) => {
+                Some(*val)
+            },
+            Value::Symbolic(bv) => {
+                self.evalcon(&bv)
+            }
+        }
+    }
+
+    #[inline]
+    pub fn push(&self, n: u32) {
+        self.btor.push(n)
+    }
+
+    #[inline]
+    pub fn pop(&self, n: u32) {
+        self.btor.pop(n)
     }
 
     // evaluate and constrain the symbol to the value
@@ -168,6 +193,80 @@ impl Solver {
         }
         self.btor.pop(1);
 
+        if solutions.len() == EVAL_MAX as usize {
+            // if there are more possibilities than EVAL_MAX
+            // constrain it to be in the eval subset
+            self.assert_in(bv, &solutions);
+        }
+
         solutions 
+    }
+
+    pub fn solution(&self, bv: &BV<Arc<Btor>>) -> Option<String> {
+        let new_bv = self.translate(bv).unwrap();
+        if self.is_sat() {
+            let solution = new_bv.get_a_solution();
+            let sol_str = solution.as_01x_str(); 
+            Some(sol_str.to_string())
+        } else {
+            None
+        }
+    }
+
+    // surprisingly fast binary search to max
+    pub fn max(&self, bv: &BV<Arc<Btor>>) -> u64 {
+        let new_bv = self.translate(bv).unwrap();
+        let len = new_bv.get_width();
+        let mut low = 0; 
+        let mut high = 1 << (len-1);
+
+        while high != low {
+            new_bv.ugte(&self.bvv(high, len)).assume();
+            while !self.is_sat() && high != low {
+                high = low + (high - low) / 2;
+                new_bv.ugte(&self.bvv(high, len)).assume();
+            }
+
+            let tmp = high;
+            high = high + (high - low) / 2;
+            low = tmp;
+        }
+
+        low
+    }
+
+    pub fn min(&self, bv: &BV<Arc<Btor>>) -> u64 {
+        let new_bv = self.translate(bv).unwrap();
+        let len = new_bv.get_width();
+        let mut low = 0; 
+        let mut high = 1 << (len-1);
+        
+        while high != low {
+            new_bv.ult(&self.bvv(high, len)).assume();
+            while self.is_sat() && high != low {
+                high = low + (high - low) / 2;
+                new_bv.ult(&self.bvv(high, len)).assume();
+            }
+
+            let tmp = high;
+            high = high + (high - low) / 2;
+            low = tmp;
+        }
+
+        low
+    }
+
+    pub fn max_value(&self, value: &Value) -> u64 {
+        match value {
+            Value::Concrete(val) => *val,
+            Value::Symbolic(val) => self.max(val)
+        }
+    }
+
+    pub fn min_value(&self, value: &Value) -> u64 {
+        match value {
+            Value::Concrete(val) => *val,
+            Value::Symbolic(val) => self.min(val)
+        }
     }
 }
