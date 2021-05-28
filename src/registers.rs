@@ -45,7 +45,7 @@ impl Registers {
         reg_info.reg_info.sort_by(|a, b| b.size.partial_cmp(&a.size).unwrap());
 
         let mut registers = Registers {
-            solver: btor.clone(),
+            solver: btor,
             r2api: r2api.clone(),
             aliases: HashMap::new(),
             regs:    HashMap::new(),
@@ -105,7 +105,7 @@ impl Registers {
     }
 
     #[inline]
-    pub fn get_register(&mut self, reg: &String) -> Option<&Register> {
+    pub fn get_register(&mut self, reg: &str) -> Option<&Register> {
         self.regs.get(reg)
     }
 

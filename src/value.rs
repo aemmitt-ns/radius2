@@ -18,14 +18,14 @@ pub enum Value {
 
 #[inline]
 pub fn make_bv(bv: &BV<Arc<Btor>>, val: u64, n: u32) -> BV<Arc<Btor>> {
-    BV::from_u64(bv.get_btor().clone(), val, n)
+    BV::from_u64(bv.get_btor(), val, n)
 }
 
 #[inline]
 pub fn value_to_bv(btor: Arc<Btor>, value: Value) -> BV<Arc<Btor>> {
     match value {
         Value::Concrete(val) => {
-            BV::from_u64(btor.clone(), val, 64)
+            BV::from_u64(btor, val, 64)
         },
         Value::Symbolic(val) => val 
     }
@@ -34,8 +34,8 @@ pub fn value_to_bv(btor: Arc<Btor>, value: Value) -> BV<Arc<Btor>> {
 #[inline]
 pub fn cond_value(cond: &BV<Arc<Btor>>, v1: Value, v2: Value) -> BV<Arc<Btor>> {
     cond.cond_bv(
-        &value_to_bv(cond.get_btor().clone(), v1), 
-        &value_to_bv(cond.get_btor().clone(), v2)
+        &value_to_bv(cond.get_btor(), v1), 
+        &value_to_bv(cond.get_btor(), v2)
     )
 }
 
@@ -297,7 +297,7 @@ impl ops::Not for Value {
                 Value::Concrete((a == 0) as u64)
             },
             Value::Symbolic(a) => {
-                let zero = BV::zero(a.get_btor().clone(), a.get_width());
+                let zero = BV::zero(a.get_btor(), a.get_width());
                 Value::Symbolic(a._eq(&zero).uext(a.get_width()-1))
             }
         }
@@ -483,17 +483,17 @@ impl Value {
 
     // get whether values are equivalent
     #[inline]
-    pub fn eq(self, rhs: Value) -> Value {
-        match (self, rhs) {
+    pub fn eq(&self, rhs: Value) -> Value {
+        match (self, &rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
-                Value::Concrete((a == b) as u64)
+                Value::Concrete((*a == *b) as u64)
             },
             (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, a.get_width());
+                let bv = make_bv(&a, *b, a.get_width());
                 Value::Symbolic(a._eq(&bv))
             },
             (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, b.get_width());
+                let bv = make_bv(&b, *a, b.get_width());
                 Value::Symbolic(bv._eq(&b))
             },
             (Value::Symbolic(a), Value::Symbolic(b)) => {
@@ -537,17 +537,17 @@ impl Value {
     }
 
     #[inline]
-    pub fn slt(self, rhs: Value) -> Value {
-        match (self, rhs) {
+    pub fn slt(&self, rhs: Value) -> Value {
+        match (self, &rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
-                Value::Concrete(((a as i64) < (b as i64)) as u64)
+                Value::Concrete(((*a as i64) < (*b as i64)) as u64)
             },
             (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, a.get_width());
+                let bv = make_bv(&a, *b, a.get_width());
                 Value::Symbolic(a.slt(&bv))
             },
             (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, b.get_width());
+                let bv = make_bv(&b, *a, b.get_width());
                 Value::Symbolic(bv.slt(&b))
             },
             (Value::Symbolic(a), Value::Symbolic(b)) => {
@@ -565,12 +565,12 @@ impl Value {
 
     #[inline]
     pub fn slte(self, rhs: Value) -> Value {
-        self.clone().ult(rhs.clone()) | self.eq(rhs)
+        self.ult(rhs.clone()) | self.eq(rhs)
     }
 
     #[inline]
     pub fn sgt(self, rhs: Value) -> Value {
-        !self.clone().ult(rhs.clone()) & !self.eq(rhs)
+        !self.ult(rhs.clone()) & !self.eq(rhs)
     }
 
     #[inline]
@@ -579,17 +579,17 @@ impl Value {
     }
     
     #[inline]
-    pub fn ult(self, rhs: Value) -> Value {
-        match (self, rhs) {
+    pub fn ult(&self, rhs: Value) -> Value {
+        match (self, &rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
-                Value::Concrete((a < b) as u64)
+                Value::Concrete((*a < *b) as u64)
             },
             (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, a.get_width());
+                let bv = make_bv(&a, *b, a.get_width());
                 Value::Symbolic(a.ult(&bv))
             },
             (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, b.get_width());
+                let bv = make_bv(&b, *a, b.get_width());
                 Value::Symbolic(bv.ult(&b))
             },
             (Value::Symbolic(a), Value::Symbolic(b)) => {
@@ -606,17 +606,17 @@ impl Value {
     }
 
     #[inline]
-    pub fn ulte(self, rhs: Value) -> Value {
-        self.clone().ult(rhs.clone()) | self.eq(rhs)
+    pub fn ulte(&self, rhs: Value) -> Value {
+        self.ult(rhs.clone()) | self.eq(rhs)
     }
 
     #[inline]
-    pub fn ugt(self, rhs: Value) -> Value {
-        !self.clone().ult(rhs.clone()) & !self.eq(rhs)
+    pub fn ugt(&self, rhs: Value) -> Value {
+        !self.ult(rhs.clone()) & !self.eq(rhs)
     }
 
     #[inline]
-    pub fn ugte(self, rhs: Value) -> Value {
+    pub fn ugte(&self, rhs: Value) -> Value {
         !self.ult(rhs)
     }
 
@@ -665,14 +665,21 @@ impl Value {
         }
     }
 
-    pub fn slice(self, high: u64, low: u64) -> Value {
+    pub fn slice(&self, high: u64, low: u64) -> Value {
         match self {
             Value::Concrete(a) => {
-                Value::Concrete(a & (((1 << (high-low+1))-1) << low))
+                Value::Concrete(*a & (((1 << (high-low+1))-1) << low))
             },
             Value::Symbolic(a) => {
                 Value::Symbolic(a.slice(high as u32, low as u32))
             }
+        }
+    }
+
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            Value::Concrete(a) => Some(*a),
+            Value::Symbolic(a) => a.as_u64()
         }
     }
 

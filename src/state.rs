@@ -3,6 +3,8 @@ use crate::registers::Registers;
 use crate::memory::Memory;
 use crate::value::Value;
 use crate::solver::Solver;
+use crate::sims::fs::SimFilesytem;
+
 use boolector::{Btor, BV};
 use std::sync::Arc;
 use std::u8;
@@ -53,8 +55,10 @@ pub struct State {
     pub condition: Option<BV<Arc<Btor>>>,
     pub registers: Registers,
     pub memory:    Memory,
+    pub filesystem:SimFilesytem,
     pub status:    StateStatus,
-    pub context:   HashMap<String, Vec<Value>>
+    pub context:   HashMap<String, Vec<Value>>,
+    pub pid:       u64
 }
 
 impl State {
@@ -76,9 +80,11 @@ impl State {
             esil: esil_state,
             condition: None,
             registers: Registers::new(r2api, solver.clone()),
-            memory: Memory::new(r2api, solver.clone()),
+            memory: Memory::new(r2api, solver),
+            filesystem: SimFilesytem::new(),
             status: StateStatus::Active,
-            context: HashMap::new()
+            context: HashMap::new(),
+            pid: 1337 // sup3rh4x0r
         }
     }
 
@@ -92,15 +98,17 @@ impl State {
         memory.solver = solver.clone();
 
         State {
-            solver: solver,
+            solver,
             r2api: self.r2api.clone(),
             stack: self.stack.clone(),
             esil: self.esil.clone(),
             condition: None,
-            registers: registers,
-            memory: memory,
+            registers,
+            memory,
+            filesystem: self.filesystem.clone(),
             status: self.status.clone(),
-            context: self.context.clone()
+            context: self.context.clone(),
+            pid: self.pid
         }
     }
 

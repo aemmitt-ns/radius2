@@ -94,7 +94,7 @@ pub enum Operations {
 }
 
 impl Operations {
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_string(s: &str) -> Self {
         match s {
             "TRAP" => Operations::Trap,
             "()" => Operations::Syscall,
@@ -318,40 +318,36 @@ pub fn pop_float(state: &mut State) -> f32 {
 pub fn do_equal(state: &mut State, reg: StackItem, value: Value, 
     set_esil: bool, pc_index: usize) {
 
-    match reg {
-        StackItem::StackRegister(index) => {
-            let register = state.registers.indexes.get(index).unwrap();
-            let size = register.reg_info.size as usize;
-            let mut prev = state.registers.get_value(index);
-            prev = state.translate_value(&prev);
+    if let StackItem::StackRegister(index) = reg {
+        let register = state.registers.indexes.get(index).unwrap();
+        let size = register.reg_info.size as usize;
+        let mut prev = state.registers.get_value(index);
+        prev = state.translate_value(&prev);
 
-            if let Some(cond) = &state.condition {
+        if let Some(cond) = &state.condition {
 
-                // tortured logic for lazy execution
-                if index == pc_index {
-                    if let Value::Concrete(val) = value {
-                        if let Value::Concrete(pc) = prev {
-                            if state.esil.pcs.is_empty() {
-                                state.esil.pcs.push(pc);
-                            }
+            // tortured logic for lazy execution
+            if index == pc_index {
+                if let Value::Concrete(val) = value {
+                    if let Value::Concrete(pc) = prev {
+                        if state.esil.pcs.is_empty() {
+                            state.esil.pcs.push(pc);
                         }
-                        state.esil.pcs.push(val);
                     }
+                    state.esil.pcs.push(val);
                 }
-                state.registers.set_value(index, state.solver.conditional(
-                    &Value::Symbolic(cond.clone()), &value, &prev));
-            } else {
-                state.registers.set_value(index, value.clone());
             }
+            state.registers.set_value(index, state.solver.conditional(
+                &Value::Symbolic(cond.clone()), &value, &prev));
+        } else {
+            state.registers.set_value(index, value.clone());
+        }
 
-            if set_esil {
-                state.esil.last_sz = size;
-                state.esil.current = value;
-                state.esil.previous = prev;
-            }
-
-        },
-        _ => {} // shouldn't happen
+        if set_esil {
+            state.esil.last_sz = size;
+            state.esil.current = value;
+            state.esil.previous = prev;
+        }
     }
 }
 
@@ -590,7 +586,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
                 state.memory.write_sym(&addr, 
                     Value::Symbolic(cond_value(cond, value, prev)), n);
             } else {
-                state.memory.write_sym(&addr, value.clone(), n);
+                state.memory.write_sym(&addr, value, n);
             }
 
             //state.memory.write_value(addr, value, n);
@@ -609,7 +605,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
                 state.memory.write_sym(&addr, 
                     Value::Symbolic(cond_value(cond, value, prev)), n);
             } else {
-                state.memory.write_sym(&addr, value.clone(), n);
+                state.memory.write_sym(&addr, value, n);
             }
 
             //state.memory.write_value(addr, value, n);
@@ -752,7 +748,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         Operations::ReversePick => {
             let n = pop_concrete(state, false, false);
             let item = state.stack[n as usize].clone();
-            state.stack.push(item.clone());
+            state.stack.push(item);
         },
         Operations::Pop => {
             state.stack.pop();
@@ -839,15 +835,14 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let mask1 = genmask(bits & 0x3f);
             let mask2 = genmask((bits + 0x3f) & 0x3f);
 
-            match (&state.esil.current, &state.esil.previous) {
-                (Value::Concrete(cur), Value::Concrete(old)) => {
-                    let c0 = (((old-cur) & mask1) == (1 << bits)) as u64;
-                    let c_in = ((cur & mask1) < (old & mask1)) as u64;
-                    let c_out = ((cur & mask2) < (old & mask2)) as u64;
-                    let of = Value::Concrete((((c0 ^ c_in) ^ c_out) == 1) as u64);
-                    state.stack.push(StackItem::StackValue(of));
-                },
-                _ => {}
+            if let (Value::Concrete(cur), Value::Concrete(old)) = 
+                (&state.esil.current, &state.esil.previous) {
+                
+                let c0 = (((old-cur) & mask1) == (1 << bits)) as u64;
+                let c_in = ((cur & mask1) < (old & mask1)) as u64;
+                let c_out = ((cur & mask2) < (old & mask2)) as u64;
+                let of = Value::Concrete((((c0 ^ c_in) ^ c_out) == 1) as u64);
+                state.stack.push(StackItem::StackValue(of));
             }
         },
         Operations::S => {

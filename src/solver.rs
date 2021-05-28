@@ -41,8 +41,7 @@ impl Solver {
 
     #[inline]
     pub fn translate(&self, bv: &BV<Arc<Btor>>) -> Option<BV<Arc<Btor>>> {
-        let trans = Btor::get_matching_bv(self.btor.clone(), bv);
-        trans
+        Btor::get_matching_bv(self.btor.clone(), bv)
     }
 
     #[inline]
@@ -161,7 +160,7 @@ impl Solver {
     }
 
     #[inline]
-    pub fn assert_in(&self, bv: &BV<Arc<Btor>>, values: &Vec<u64>) {
+    pub fn assert_in(&self, bv: &BV<Arc<Btor>>, values: &[u64]) {
         let mut cond = self.bvv(1, 1);
         for val in values {
             let nbv = self.bvv(*val, 64);
@@ -172,7 +171,7 @@ impl Solver {
 
     #[inline]
     pub fn is_sat(&self) -> bool {
-        return self.btor.sat() == SolverResult::Sat 
+        self.btor.sat() == SolverResult::Sat 
     }
 
     pub fn evaluate_many(&self, bv: &BV<Arc<Btor>>) -> Vec<u64> {

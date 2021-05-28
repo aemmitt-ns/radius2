@@ -1,7 +1,8 @@
 use crate::r2_api::R2Api;
-use crate::processor::Processor;
+use crate::processor::{Processor, HookMethod};
 use crate::state::{State, StateStatus};
-use crate::value::Value;
+//use crate::value::Value;
+use crate::sims::{get_sims, SimMethod};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -15,10 +16,13 @@ pub struct Radius {
 impl Radius {
     pub fn new(filename: &str) -> Self {
         let file = String::from(filename);
-        let r2api = R2Api::new(Some(file));
-        let processor = Processor::new();
+        let mut r2api = R2Api::new(Some(file));
+        let mut processor = Processor::new();
         let processors = Arc::new(Mutex::new(vec!()));
         let states = Arc::new(Mutex::new(vec!()));
+
+        // this is weird, idk
+        Radius::register_sims(&mut r2api, &mut processor);
 
         Radius {
             r2api,
@@ -38,7 +42,7 @@ impl Radius {
         State::new(&mut self.r2api)
     }
 
-    pub fn hook(&mut self, addr: u64, hook_callback: fn (&mut State) -> bool) {
+    pub fn hook(&mut self, addr: u64, hook_callback: HookMethod) {
         let hooks = self.processor.hooks.remove(&addr);
         if let Some(mut hook_vec) = hooks {
             hook_vec.push(hook_callback);
@@ -48,7 +52,22 @@ impl Radius {
         }
     }
 
-    pub fn simulate(&mut self, addr: u64, sim: fn (&mut State, Vec<Value>) -> Value) {
+    pub fn register_sims(r2api: &mut R2Api, processor: &mut Processor) {
+        let sims = get_sims();
+
+        // TODO expand this to handle other symbols
+        let prefix = "sym.imp.";
+        for sim in sims {
+            let sym = String::from(prefix) + sim.symbol.as_str();
+            let addr = r2api.get_address(sym.as_str());
+
+            if addr != 0 {
+                processor.sims.insert(addr, sim.function);
+            }
+        }
+    }
+
+    pub fn simulate(&mut self, addr: u64, sim: SimMethod) {
         self.processor.sims.insert(addr, sim);
     }
 

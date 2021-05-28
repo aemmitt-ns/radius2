@@ -5,6 +5,8 @@ use crate::operations::{Operations, pop_value,
 
 use std::collections::HashMap;
 use crate::state::{State, StateStatus, StackItem, ExecMode};
+use crate::sims::SimMethod;
+
 //use std::time::SystemTime;
 //use boolector::BV;
 
@@ -18,12 +20,14 @@ pub enum Word {
     Unknown(String)
 }
 
+pub type HookMethod = fn (&mut State) -> bool;
+
 #[derive(Clone)]
 pub struct Processor {
     pub pc: Option<usize>,
     pub instructions: HashMap<u64, InstructionEntry>,
-    pub hooks: HashMap<u64, Vec<fn (&mut State) -> bool>>,
-    pub sims: HashMap<u64, fn (&mut State, Vec<Value>) -> Value>,
+    pub hooks: HashMap<u64, Vec<HookMethod>>,
+    pub sims: HashMap<u64, SimMethod>,
     pub breakpoints: HashMap<u64, bool>,
     pub mergepoints: HashMap<u64, bool>,
     pub avoidpoints: HashMap<u64, bool>,
@@ -74,9 +78,9 @@ impl Processor {
         }
     }
 
-    pub fn tokenize(&self, state: &mut State, esil: &String) -> Vec<Word> {
+    pub fn tokenize(&self, state: &mut State, esil: &str) -> Vec<Word> {
         let mut tokens: Vec<Word> = vec!();
-        let split_esil = esil.split(",");
+        let split_esil = esil.split(',');
 
         for s in split_esil {
 
@@ -121,19 +125,19 @@ impl Processor {
     pub fn get_literal(&self, word: &str) -> Option<Word> {
         let parsed = word.parse::<i64>();
         
-        if parsed.is_ok() {
-            let val = Value::Concrete(parsed.unwrap() as u64);
+        if let Ok(i) = parsed {
+            let val = Value::Concrete(i as u64);
             Some(Word::Literal(val))
         } else if word.len() > 2 && &word[0..2] == "0x" {
-            let int_val = u64::from_str_radix(&word[2..word.len()], 16).unwrap();
-            Some(Word::Literal(Value::Concrete(int_val)))
+            let val = u64::from_str_radix(&word[2..word.len()], 16).unwrap();
+            Some(Word::Literal(Value::Concrete(val)))
         } else {
             None
         }
     }
 
     pub fn get_register(&self,  state: &mut State, word: &str) -> Option<Word> {
-        if let Some(reg) = state.registers.get_register(&String::from(word)) {
+        if let Some(reg) = state.registers.get_register(word) {
             Some(Word::Register(reg.index))
         } else {
             None
@@ -141,7 +145,7 @@ impl Processor {
     }
 
     pub fn get_operator(&self, word: &str) -> Option<Word> {
-        let op = Operations::from_str(word);
+        let op = Operations::from_string(word);
         match op {
             Operations::Unknown => None,
             _ => Some(Word::Operator(op))
@@ -156,11 +160,11 @@ impl Processor {
                 &pc_reg.reg).unwrap().index);
         }*/
 
-        let words = self.tokenize(state, &String::from(esil));
+        let words = self.tokenize(state, esil);
         self.parse(state, &words);
     }
 
-    pub fn parse(&self, state: &mut State, words: &Vec<Word>) {
+    pub fn parse(&self, state: &mut State, words: &[Word]) {
         state.stack.clear();
         state.esil.pcs.clear();
         
@@ -396,7 +400,7 @@ impl Processor {
 
     #[inline]
     pub fn update(&self, state: &mut State, pc_index: usize, instr: &Instruction, 
-        status: &InstructionStatus, words: &Vec<Word>) {
+        status: &InstructionStatus, words: &[Word]) {
 
         let pc = instr.offset;
         let new_pc = instr.offset + instr.size;
@@ -496,7 +500,7 @@ impl Processor {
                 let instr_entry = InstructionEntry {
                     instruction: instr,
                     tokens: words,
-                    status: status
+                    status
                 };
 
                 if opt {
@@ -538,7 +542,7 @@ impl Processor {
                     pcs = state.evaluate_many(&pc_val);
                 }
 
-                if pcs.len() == 0 {
+                if pcs.is_empty() {
                     return states;
                 }
 

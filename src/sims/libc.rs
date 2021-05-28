@@ -1,62 +1,67 @@
 use crate::value::Value;
-use crate::state::State;
-use rand::Rng;
+use crate::state::{State, StateStatus};
+use crate::sims::fs::FileMode;
 
-pub fn puts(state: &mut State, addr: Value) -> Value {
-    let length = strlen(state, addr.clone());
-    let minlen = state.solver.min_value(length) as usize;
-    let value = state.memory.read_string(addr, minlen);
-    println!("{}", value);
-    Value::Concrete(value.len() as u64)
+const MAX_LEN: u64 = 8192;
+
+// TODO everything that interacts with errno in any way
+// I forget how errno works, i know its weird 
+
+// now using sim fs
+pub fn puts(state: &mut State, args: Vec<Value>) -> Value {
+    let addr = &args[0];
+    let length = strlen(state, vec!(addr.clone()));
+    let mut data = state.memory.read_sym_len(addr, &length);
+    data.push(Value::Concrete('\n' as u64)); // add newline
+    //println!("{}", value);
+    state.filesystem.write(1, data);
+    length
 }
 
-pub fn printf(state: &mut State, addr: Value, a1, a2, a3, a4, a5, a6, a7) -> Value {
-    puts(state, addr)
+// TODO you know, all this
+pub fn printf(state: &mut State, args: Vec<Value>) -> Value {
+    puts(state, args)
 }
 
-const MAX_LEN: u64 = 9192;
-
-pub fn memmove(state: &mut State, dst: Value, src: Value, num: Value) -> Value {
-    state.memory.memmove(&dst, &src, &num);
-    dst
+pub fn memmove(state: &mut State, args: Vec<Value>) -> Value {
+    state.memory.memmove(&args[0], &args[1], &args[2]);
+    args[0].clone()
 }
 
-pub fn memcpy(state: &mut State, dst: Value, src: Value, num: Value) -> Value {
+pub fn memcpy(state: &mut State, args: Vec<Value>) -> Value {
     // TODO make actual memcpy that does overlaps right
     // how often do memcpys actually do that? next to never probably
-    state.memory.memmove(&dst, &src, &num);
-    dst
+    state.memory.memmove(&args[0], &args[1], &args[2]);
+    args[0].clone()
 }
 
-pub fn bcopy(state: &mut State, src: Value, dst: Value, num: Value) -> Value {
-    state.memory.memmove(&dst, &src, &num);
+pub fn bcopy(state: &mut State, args: Vec<Value>) -> Value {
+    state.memory.memmove(&args[0], &args[1], &args[2]);
     Value::Concrete(0)
 }
 
-pub fn bzero(state: &mut State, dst: Value, num: Value) -> Value {
-    memset(state, dst, Value::Concrete(0), num);
+pub fn bzero(state: &mut State, args: Vec<Value>) -> Value {
+    memset(state, vec!(args[0].clone(), Value::Concrete(0), args[1].clone()));
     Value::Concrete(0)
 }
 
-pub fn mempcpy(state: &mut State, dst: Value, src: Value, num: Value) -> Value {
-    memcpy(state, dst, src, num.clone()) + num
+pub fn mempcpy(state: &mut State, args: Vec<Value>) -> Value {
+    memcpy(state, args.clone()) + args[2].clone()
 }
 
-pub fn memccpy(state: &mut State, dst: Value, src: Value, ch: Value, num: Value) -> Value {
-    c = z3.Extract(7, 0, ch)
-    length, last = state.mem_search(src, [c], num)
-    newlen = z3.If(length < num, length, num)
-    result = mempcpy(state: &mut State, dst, src, newlen)
-    return z3.If(length == state.memory.error, ZERO, result)
+pub fn memccpy(state: &mut State, args: Vec<Value>) -> Value {
+    memcpy(state, args)
 }
 
-pub fn memfrob(state: &mut State, addr: Value, num: Value) -> Value {
+pub fn memfrob(state: &mut State, args: Vec<Value>) -> Value {
     //state.proc.parse_expression( // this is the fun way to do it
     //"0,A1,-,DUP,DUP,?{,A1,-,A0,+,DUP,[1],0x2a,^,SWAP,=[1],1,+,1,GOTO,}", state)
+    let addr = &args[0];
+    let num = &args[1];
 
     let x = Value::Concrete(0x2a);
     let data = state.memory.read_sym_len(&addr, &num);
-    let new_data = vec!();
+    let mut new_data = vec!();
     for d in data {
         new_data.push(d.clone() ^ x.clone());
     }
@@ -66,163 +71,177 @@ pub fn memfrob(state: &mut State, addr: Value, num: Value) -> Value {
     Value::Concrete(0)
 }
 
-pub fn strlen(state: &mut State, addr: Value) -> Value {
-    state.memory.strlen(&src, &Value::Concrete(MAX_LEN))
+pub fn strlen(state: &mut State, args: Vec<Value>) -> Value {
+    state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN))
 }
 
-pub fn strnlen(state: &mut State, addr: Value, n: Value) -> Value {
-    state.memory.strlen(&src, &n)
+pub fn strnlen(state: &mut State, args: Vec<Value>) -> Value {
+    state.memory.strlen(&args[0], &args[1])
 }
 
-/*pub fn gets(state: &mut State, addr: Value): // just a maybe useful default
-    length = state.fs.stdin_chunk
-    read(state: &mut State, STDIN, addr, length)
-    return addr
+// TODO implement this with sim fs
+pub fn gets(state: &mut State, args: Vec<Value>) -> Value {
+    let bv = state.bv(format!("gets_{:?}", &args[0]).as_str(), 256*8);
+    state.memory.write_sym(&args[0], Value::Symbolic(bv), 256);
+    args[0].clone()
+}
 
-pub fn fgets(state: &mut State, addr: Value, length: Value, f: Value):
+/*pub fn fgets(state: &mut State, addr: Value, length: Value, f: Value):
     fd = fileno(state: &mut State, f)
     read(state: &mut State, BV(fd), addr, length)
     return addr*/
 
-pub fn strcpy(state: &mut State, dst: Value, src: Value) -> Value {
-    let length = state.memory.strlen(&src, &Value::Concrete(MAX_LEN));
-    state.memory.memmove(&dst, &src, &length);
-    dst
+pub fn strcpy(state: &mut State, args: Vec<Value>) -> Value {
+    let length = state.memory.strlen(&args[1], &Value::Concrete(MAX_LEN))
+        +Value::Concrete(1);
+    state.memory.memmove(&args[0], &args[1], &length);
+    args[0].clone()
 }
 
-pub fn stpcpy(state: &mut State, dst: Value, src: Value) -> Value {
-    let length = state.memory.strlen(&src, &Value::Concrete(MAX_LEN));
-    strcpy(state, dst, src) + length
+pub fn stpcpy(state: &mut State, args: Vec<Value>) -> Value {
+    let length = state.memory.strlen(&args[1], &Value::Concrete(MAX_LEN));
+    strcpy(state, args) + length
 }
 
-pub fn strdup(state: &mut State, addr: Value) -> Value {
-    let length = state.memory.strlen(&addr, &Value::Concrete(MAX_LEN));
-    let new_addr = Value::Concrete(malloc(state, length));
-    state.memory.memmove(new_addr.clone(), addr, length);
+pub fn strdup(state: &mut State, args: Vec<Value>) -> Value {
+    let length = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN))
+        +Value::Concrete(1);
+    let new_addr = malloc(state, vec!(length.clone()));
+    state.memory.memmove(&new_addr, &args[0], &length);
     new_addr
 }
 
-pub fn strdupa(state: &mut State, addr: Value) -> Value {
-    let length = state.memory.strlen(&addr, &Value::Concrete(MAX_LEN));
-    strdup(state, addr) + length
+pub fn strdupa(state: &mut State, args: Vec<Value>) -> Value {
+    let length = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN))
+        +Value::Concrete(1);
+    strdup(state, args) + length
 }
 
-pub fn strndup(state: &mut State, addr: Value, num: Value) -> Value {
-    let length = state.memory.strlen(&addr, &num);
-    let new_addr = Value::Concrete(malloc(state, length));
-    state.memory.memmove(new_addr.clone(), addr, length);
+// TODO for strn stuff I may need to add a null?
+pub fn strndup(state: &mut State, args: Vec<Value>) -> Value {
+    let length = state.memory.strlen(&args[0], &args[1]);
+    let new_addr = malloc(state, vec!(length.clone()));
+    state.memory.memmove(&new_addr, &args[0], &length);
     new_addr
 }
 
-pub fn strndupa(state: &mut State, addr: Value, num: Value) -> Value {
-    let length = state.memory.strlen(&addr, &num);
-    strndup(state, addr, num) + length
+pub fn strndupa(state: &mut State, args: Vec<Value>) -> Value {
+    let length = state.memory.strlen(&args[0], &args[1]);
+    strndup(state, args) + length
 }
 
-pub fn strfry(state: &mut State, addr: Value) -> Value {
+pub fn strfry(_state: &mut State, args: Vec<Value>) -> Value {
     /*length, last = state.mem_search(addr, [BZERO])
     data = state.mem_read(addr, length)
     // random.shuffle(data) // i dont actually want to do this?
     state.mem_copy(addr, data, length)*/
-    addr
+    args[0].clone()
 }
 
-pub fn strncpy(state: &mut State, dst: Value, src: Value, num: Value) -> Value {
-    let length = state.memory.strlen(&src, &num);
-    state.memory.memmove(&dst, &src, &length);
-    dst
+pub fn strncpy(state: &mut State, args: Vec<Value>) -> Value {
+    let length = state.memory.strlen(&args[1], &args[2]);
+    state.memory.memmove(&args[0], &args[1], &length);
+    args[0].clone()
 }
 
-pub fn strcat(state: &mut State, dst: Value, src: Value) -> Value {
-    let length1 = state.memory.strlen(&dst, &Value::Concrete(MAX_LEN));
-    let length2 = state.memory.strlen(&src, &Value::Concrete(MAX_LEN));
-    state.memory.memmove(&(dst.clone() + length1), &src, &length2);
-    dst
+pub fn strcat(state: &mut State, args: Vec<Value>) -> Value {
+    let length1 = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let length2 = state.memory.strlen(&args[1], &Value::Concrete(MAX_LEN))+Value::Concrete(1);
+    state.memory.memmove(&(args[0].clone() + length1), &args[1], &length2);
+    args[0].clone()
 }
 
-pub fn strncat(state: &mut State, dst: Value, src: Value, num: Value) -> Value {
-    let length1 = state.memory.strlen(&dst, &num);
-    let length2 = state.memory.strlen(&src, &num);
-    state.memory.memmove(&(dst.clone() + length1), &src, &length2);
-    dst
+pub fn strncat(state: &mut State, args: Vec<Value>) -> Value {
+    let length1 = state.memory.strlen(&args[0], &args[2]);
+    let length2 = state.memory.strlen(&args[1], &args[2])+Value::Concrete(1);
+    state.memory.memmove(&(args[0].clone() + length1), &args[1], &length2);
+    args[0].clone()
 }
- 
-pub fn memset(state: &mut State, dst: Value, ch: Value, num: Value) -> Value {
-    let data = vec!();
-    let length = state.solver.max_value(&num);
+
+pub fn memset(state: &mut State, args: Vec<Value>) -> Value {
+    let mut data = vec!();
+    let length = state.solver.max_value(&args[2]);
 
     for _ in 0..length {
-        data.push(ch.clone());
+        data.push(args[1].clone());
     }
 
-    state.memory.write_sym_len(&dst, data, &num);
-    dst
+    state.memory.write_sym_len(&args[0], data, &args[2]);
+    args[0].clone()
 }
 
-pub fn memchr_help(state: &mut State, dst: Value, ch: Value, num: Value, reverse: bool) -> Value {
-    state.memory.search(&dst, &ch, &num, reverse)
+pub fn memchr_help(state: &mut State, args: Vec<Value>, reverse: bool) -> Value {
+    state.memory.search(&args[0], &args[1], &args[2], reverse)
 }
 
-pub fn memchr(state: &mut State, dst: Value, ch: Value, num: Value) -> Value {
-    memchr_help(state, dst, ch, num, false)
+pub fn memchr(state: &mut State, args: Vec<Value>) -> Value {
+    memchr_help(state, args, false)
 }
 
-pub fn memrchr(state: &mut State, dst: Value, ch: Value, num: Value) -> Value {
-    memchr_help(state, dst, ch, num, true)
+pub fn memrchr(state: &mut State, args: Vec<Value>) -> Value {
+    memchr_help(state, args, true)
 }
 
-pub fn strchr_help(state: &mut State, dst: Value, ch: Value, reverse: bool) -> Value {
-    let length = state.memory.strlen(&dst, &Value::Concrete(MAX_LEN));
-    memchr_help(state, dst, ch, length, reverse)
+pub fn strchr_help(state: &mut State, args: Vec<Value>, reverse: bool) -> Value {
+    let length = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
+    memchr_help(state, vec!(args[0].clone(), args[1].clone(), length), reverse)
 }
 
-pub fn strchr(state: &mut State, dst: Value, ch: Value) -> Value {
-    strchr_help(state: &mut State, dst, ch, false)
+pub fn strchr(state: &mut State, args: Vec<Value>) -> Value {
+    strchr_help(state, args, false)
 }
 
-pub fn strrchr(state: &mut State, dst: Value, ch: Value) -> Value {
-    strchr_help(state: &mut State, dst, ch, true)
+pub fn strrchr(state: &mut State, args: Vec<Value>) -> Value {
+    strchr_help(state, args, true)
 }
 
-pub fn memcmp(state: &mut State, dst: Value, src: Value, num: Value) -> Value {
-    state.memory.compare(&dst, &src, &num)
+pub fn memcmp(state: &mut State, args: Vec<Value>) -> Value {
+    state.memory.compare(&args[0], &args[1], &args[2])
 }
 
-pub fn strcmp(state: &mut State, dst: Value, src: Value) -> Value {
-    let length = state.memory.strlen(&dst, &Value::Concrete(MAX_LEN));
-    state.memory.compare(&dst, &src, &length)
+pub fn strcmp(state: &mut State, args: Vec<Value>) -> Value {    
+    let len1 = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let len2 = state.memory.strlen(&args[1], &Value::Concrete(MAX_LEN));
+    let length  = state.solver.conditional(&(len1.clone().ult(len2.clone())), 
+        &len1, &len2)+Value::Concrete(1);
+
+    state.memory.compare(&args[0], &args[1], &length)
 }
 
-pub fn strncmp(state: &mut State, dst: Value, src: Value, num: Value) -> Value {
-    let length = state.memory.strlen(&dst, &num);
-    state.memory.compare(&dst, &src, &length)
+pub fn strncmp(state: &mut State, args: Vec<Value>) -> Value {
+    let len1 = state.memory.strlen(&args[0], &args[2]);
+    let len2 = state.memory.strlen(&args[1], &args[2]);
+    let length  = state.solver.conditional(&(len1.clone().ult(len2.clone())), 
+        &len1, &len2)+Value::Concrete(1);
+
+    state.memory.compare(&args[0], &args[1], &length)
 }
 
 // TODO properly handle sym slens
-pub fn memmem(state: &mut State, addr: Value, dlen: Value, needle: Value, slen: Value) -> Value {
+pub fn memmem(state: &mut State, args: Vec<Value>) -> Value {
+    let len = state.solver.min_value(&args[3]) as usize;
+    let needle_val = state.memory.read_sym(&args[2], len);
+    memchr_help(state, vec!(args[0].clone(), needle_val, args[1].clone()), false)
+}
+
+pub fn strstr(state: &mut State, args: Vec<Value>) -> Value {
+    let dlen = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let slen = state.memory.strlen(&args[1], &Value::Concrete(MAX_LEN));
     let len = state.solver.min_value(&slen) as usize;
-    let needle_val = state.memory.read_sym(&needle, len);
-    memchr_help(state, addr, needle_val, dlen, false)
+    let needle_val = state.memory.read_sym(&args[0], len);
+    memchr_help(state, vec!(args[0].clone(), needle_val, dlen), false)
 }
 
-pub fn strstr(state: &mut State, addr: Value, needle: Value) -> Value {
-    let dlen = state.memory.strlen(&addr, &Value::Concrete(MAX_LEN))
-    let slen = state.memory.strlen(&needle, &Value::Concrete(MAX_LEN));
-    let len = state.solver.min_value(&slen) as usize;
-    let needle_val = state.memory.read_sym(&needle, len);
-    memchr_help(state, addr, needle_val, dlen, false)
+pub fn malloc(state: &mut State, args: Vec<Value>) -> Value {
+    Value::Concrete(state.memory.alloc(&args[0]))
 }
 
-pub fn malloc(state: &mut State, length: Value) -> Value {
-    Value::Concrete(state.memory.alloc(length))
+pub fn calloc(state: &mut State, args: Vec<Value>) -> Value {
+    Value::Concrete(state.memory.alloc(&(args[0].clone()*args[1].clone())))
 }
 
-pub fn calloc(state: &mut State, n: Value, sz: Value) -> Value {
-    Value::Concrete(state.memory.alloc(n*sz))
-}
-
-pub fn free(state: &mut State, addr: Value) -> Value {
-    state.memory.free(addr);
+pub fn free(state: &mut State, args: Vec<Value>) -> Value {
+    state.memory.free(&args[0]);
     Value::Concrete(0)
 }
 
@@ -307,105 +326,123 @@ pub fn itoa_helper(state: &mut State, value, string, base, sign=True):
 pub fn itoa(state: &mut State, value, string, base):
     return itoa_helper(state: &mut State, value, string, base)
 */
-pub fn islower(state: &mut State, ch: Value) -> Value {
-    let c = ch.slice(7, 0);
-    c.clone().ult(Value::Concrete(0x7b)) & !c.ult(Value::Concrete(0x61))
+
+pub fn islower(_state: &mut State, args: Vec<Value>) -> Value {
+    let c = args[0].clone().slice(7, 0);
+    c.ult(Value::Concrete(0x7b)) & !c.ult(Value::Concrete(0x61))
 }
 
-pub fn isupper(state: &mut State, ch: Value) -> Value {
-    let c = ch.slice(7, 0);
-    c.clone().ult(Value::Concrete(0x5b)) & !c.ult(Value::Concrete(0x41))
+pub fn isupper(_state: &mut State, args: Vec<Value>) -> Value {
+    let c = args[0].clone().slice(7, 0);
+    c.ult(Value::Concrete(0x5b)) & !c.ult(Value::Concrete(0x41))
 }
 
-pub fn isalpha(state: &mut State, ch: Value) -> Value {
-    isupper(state, ch.clone()) | islower(state, ch)
+pub fn isalpha(state: &mut State, args: Vec<Value>) -> Value {
+    isupper(state, args.clone()) | islower(state, args)
 }
 
-pub fn isdigit(state: &mut State, ch: Value) -> Value {
-    let c = ch.slice(7, 0);
-    c.clone().ult(Value::Concrete(0x3a)) & !c.ult(Value::Concrete(0x30))
+pub fn isdigit(_state: &mut State, args: Vec<Value>) -> Value {
+    let c = args[0].clone().slice(7, 0);
+    c.ult(Value::Concrete(0x3a)) & !c.ult(Value::Concrete(0x30))
 }
 
-pub fn isalnum(state: &mut State, ch: Value) -> Value {
-    isalpha(state, ch.clone()) | isdigit(state, ch)
+pub fn isalnum(state: &mut State, args: Vec<Value>) -> Value {
+    isalpha(state, args.clone()) | isdigit(state, args)
 }
 
-pub fn isblank(state: &mut State, ch: Value) -> Value {
-    let c = ch.slice(7, 0);
-    c.eq(Value::Concrete(0x20)) | c.eq(Value::Concrete(0x09))
+pub fn isblank(_state: &mut State, args: Vec<Value>) -> Value {
+    let c = args[0].clone().slice(7, 0);
+    c.clone().eq(Value::Concrete(0x20)) | c.eq(Value::Concrete(0x09))
 }
 
-pub fn iscntrl(state: &mut State, ch: Value) -> Value {
-    let c = ch.slice(7, 0);
+pub fn iscntrl(_state: &mut State, args: Vec<Value>) -> Value {
+    let c = args[0].clone().slice(7, 0);
     (c.ugte(Value::Concrete(0)) & c.ulte(Value::Concrete(0x1f)))
         | c.eq(Value::Concrete(0x7f))
 }
 
-pub fn toupper(state: &mut State, ch: Value) -> Value {
-    state.solver.conditional(islower(state, ch.clone()), 
-        ch.clone()-Value::Concrete(0x20), ch)
+pub fn toupper(state: &mut State, args: Vec<Value>) -> Value {
+    let islo = islower(state, args.clone());
+    state.solver.conditional(&islo, 
+        &(args[0].clone()-Value::Concrete(0x20)), &args[0])
 }
 
-pub fn tolower(state: &mut State, ch) -> Value {
-    state.solver.conditional(isupper(state, ch.clone()), 
-        ch.clone()+Value::Concrete(0x20), ch)
+pub fn tolower(state: &mut State, args: Vec<Value>) -> Value {
+    let isup = isupper(state, args.clone());
+    state.solver.conditional(&isup, 
+    &(args[0].clone()+Value::Concrete(0x20)), &args[0])
 }
 
-pub fn rand(state: &mut State) -> Value {
+pub fn zero(_state: &mut State, _args: Vec<Value>) -> Value {
+    Value::Concrete(0)
+}
+
+/*pub fn rand(state: &mut State, _args: Vec<Value>) -> Value {
     let mut rng = rand::thread_rng();
     let rn: u64 = rng.gen();
     Value::Symbolic(state.bv(format!("rand_{}", rn), 32))
 }
 
-pub fn srand(state: &mut State, s: Value) -> Value {
+pub fn srand(state: &mut State, _args: Vec<Value>) -> Value {
     //s = state.evaluate(s).as_long()
     //random.seed(s)
     Value::Concrete(1)
 }
 
-pub fn abs(state: &mut State, i: Value) -> Value {
+pub fn abs(state: &mut State, args: Vec<Value>) -> Value {
     state.solver.conditional(i.sext(
         Value::Concrete(32)).slt(Value::Concrete(0)), -i, i)
 }
 
-pub fn labs(state: &mut State, i: Value) -> Value {
-    state.solver.conditional(i.slt(Value::Concrete(0)), -i, i)
+pub fn labs(state: &mut State, args: Vec<Value>) -> Value {
+    state.solver.conditional(args[0].clone().slt(Value::Concrete(0)), -args[0], i)
 }
 
-pub fn div(state: &mut State, n: Value, d: Value) -> Value {
-    let nn = n.slice(31, 0);
-    let nd = d.slice(31, 0);
+pub fn div(state: &mut State, args: Vec<Value>) -> Value {
+    let nn = args[0].clone().slice(31, 0);
+    let nd = args[1].clone().slice(31, 0);
     nn / nd
 }
 
 pub fn ldiv(state: &mut State, n: Value, d: Value) -> Value {
     n / d 
 }
+*/
+
+pub fn fflush(_state: &mut State, _args: Vec<Value>) -> Value {
+    Value::Concrete(0)
+}
+
+pub fn getpid(state: &mut State, _args: Vec<Value>) -> Value {
+    Value::Concrete(state.pid)
+}
+
+// returning a symbolic pid+1 | 0 | -1
+// will result in a split state when used to branch
+// essentially recreating a fork. pretty cool!
+pub fn fork(state: &mut State, _args: Vec<Value>) -> Value {
+    let cpid = state.pid+1;
+    state.pid = cpid;
+    let pid = state.bv(format!("pid_{}", cpid).as_str(), 64);
+    pid._eq(&state.bvv(cpid, 64)).or(&pid._eq(&state.bvv(0, 64)))
+        .or(&pid._eq(&state.bvv(-1i64 as u64, 64))).assert();
+
+    Value::Symbolic(pid)
+}
+
+pub fn getpagesize(_state: &mut State, _args: Vec<Value>) -> Value {
+    Value::Concrete(0x1000)
+}
+
+pub fn gethostname(state: &mut State, args: Vec<Value>) -> Value {
+    let len = state.solver.max_value(&args[1]);
+    let bv = state.bv("hostname", 8*len as u32);
+    let data = state.memory.unpack(Value::Symbolic(bv), len as usize);
+    state.memory.write_sym_len(&args[0], data, &args[1]);
+    Value::Concrete(0)
+}
 
 /*
-pub fn fflush(state: &mut State, f):
-    sys.stdout.flush()
-    return 0
-
-pub fn getpid(state):
-    return state.pid
-
-pub fn fork(state):
-    if state.fork_mode ==  "child":
-        state.pid += 1
-        return 0
-    else:
-        return state.pid+1
-
-pub fn getpagesize(state):
-    return 0x1000 //idk
-
-pub fn gethostname(state: &mut State, addr, size):
-    size = state.evalcon(size).as_long()
-    hostname = socket.gethostname()
-    state.mem_write(addr, hostname[:size])
-    return 0
-
 pub fn getenv(state: &mut State, addr):
     name, length = state.symbolic_string(addr)
     con_name = state.evaluate_string(name)
@@ -419,7 +456,7 @@ pub fn getenv(state: &mut State, addr):
         return val_addr
 */
 
-pub fn sleep(state: &mut State, secs: Value) -> Value {
+pub fn sleep(_state: &mut State, _args: Vec<Value>) -> Value {
     Value::Concrete(0)
 }
 
@@ -429,14 +466,21 @@ pub fn fileno(state: &mut State, f):
     addr = state.evalcon(f).as_long()
     bv = state.memory[addr]
     return state.evalcon(bv).as_long()
+*/
 
-pub fn open(state: &mut State, path, flags, mode):
-    path = state.symbolic_string(path)[0]
-    path_str = state.evaluate_string(path)
-    flags = state.evalcon(flags).as_long()
-    mode = state.evalcon(mode).as_long()
-    return state.fs.open(path_str, flags, mode)
+pub fn open(state: &mut State, args: Vec<Value>) -> Value {
+    let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
+    let len = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let length = state.solver.evalcon_to_u64(&len).unwrap();
+    let path = state.memory.read_string(addr, length as usize);
+    if let Some(fd) = state.filesystem.open(path.as_str(), FileMode::Read) {
+        Value::Concrete(fd as u64)
+    } else {
+        Value::Concrete(-1i64 as u64)
+    }
+}
 
+/*
 pub fn mode_to_int(mode):
     m = 0
 
@@ -454,6 +498,7 @@ pub fn mode_to_int(mode):
 
     return m
 
+
 pub fn fopen(state: &mut State, path, mode):
     f = state.mem_alloc(8)
     mode = state.evaluate_string(state.symbolic_string(path)[0])
@@ -461,53 +506,74 @@ pub fn fopen(state: &mut State, path, mode):
     fd = open(state: &mut State, path, BV(flags), BV(0o777))
     state.memory[f] = fd
     return f
+*/
 
-pub fn close(state: &mut State, fd):
-    fd = state.evalcon(fd).as_long()
-    return state.fs.close(fd)
+pub fn close(state: &mut State, args: Vec<Value>) -> Value {
+    let fd = state.solver.evalcon_to_u64(&args[0]);
+    state.filesystem.close(fd.unwrap() as usize);
+    Value::Concrete(0)
+}
 
+/*
 pub fn fclose(state: &mut State, f):
     fd = fileno(state: &mut State, f)
     return close(state: &mut State, BV(fd))
+*/
 
-pub fn read(state: &mut State, fd, addr, length):
-    fd = state.evalcon(fd).as_long()
-    //length = state.evalcon(length).as_long()
-    length = z3.simplify(length)
+pub fn read(state: &mut State, args: Vec<Value>) -> Value {
+    let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
+    let length = state.solver.max_value(&args[2]);
+    let data = state.filesystem.read(fd as usize, length as usize);
+    let len = data.len();
+    state.memory.write_sym_len(&args[1], data, &args[2]);
+    Value::Concrete(len as u64)
+}
 
-    if z3.is_bv_value(length):
-        rlen = length.as_long()
-    else:
-        rlen = len(state.mem_read(addr, length)) // hax
-
-    data = state.fs.read(fd, rlen)
-    dlen = BV(len(data))
-    state.mem_copy(addr, data, length)
-    return z3.If(dlen < length, dlen, length)
-
+/*
 pub fn fread(state: &mut State, addr, sz, length, f):
     fd = fileno(state: &mut State, f)
     return read(state: &mut State, BV(fd), addr, sz*length)
+*/
 
-pub fn write(state: &mut State, fd, addr, length):
-    fd = state.evalcon(fd).as_long()
-    length = state.evalcon(length).as_long()
-    data = state.mem_read(addr, length)
-    return state.fs.write(fd, data)
+pub fn write(state: &mut State, args: Vec<Value>) -> Value {
+    let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
+    let data = state.memory.read_sym_len(&args[1], &args[2]);
+    let len = data.len();
+    state.filesystem.write(fd as usize, data);
+    Value::Concrete(len as u64)
+}
 
+/*
 pub fn fwrite(state: &mut State, addr, sz, length, f):
     fd = fileno(state: &mut State, f)
     return write(state: &mut State, BV(fd), addr, sz*length)
+*/
 
-pub fn lseek(state: &mut State, fd, offset, whence):
-    fd = state.evalcon(fd).as_long()
-    offset = state.evalcon(offset).as_long()
-    whence = state.evalcon(whence).as_long()
-    return state.fs.seek(fd, offset, whence)
+pub fn lseek(state: &mut State, args: Vec<Value>) -> Value {
+    let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
+    let pos = state.solver.evalcon_to_u64(&args[2]).unwrap();
+    state.filesystem.seek(fd as usize, pos as usize);
+    Value::Concrete(pos)
+}
 
+pub fn access(state: &mut State, args: Vec<Value>) -> Value {
+    let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
+    let len = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let length = state.solver.evalcon_to_u64(&len).unwrap();
+    let path = state.memory.read_string(addr, length as usize);
+    state.filesystem.access(path.as_str())
+}
+
+pub fn exit(state: &mut State, _args: Vec<Value>) -> Value {
+    state.status = StateStatus::Inactive;
+    Value::Concrete(0)
+}
+
+/*
 pub fn fseek(state: &mut State, f, offset, whence):
     fd = fileno(state: &mut State, f)
     return lseek(state: &mut State, BV(fd), offset, whence)
+
 
 pub fn access(state: &mut State, path, flag): // TODO: complete this
     path = state.symbolic_string(path)[0]
@@ -518,6 +584,7 @@ pub fn stat(state: &mut State, path, data): // TODO: complete this
     path = state.symbolic_string(path)[0]
     path = state.evaluate_string(path)
     return state.fs.exists(path)
+
 
 pub fn system(state: &mut State, cmd):
     string, length = state.symbolic_string(cmd)
@@ -701,3 +768,4 @@ pub fn format_writer(state: &mut State, fmt, vargs):
     return new_fmt % tuple(new_args)
 
 */
+

@@ -5,7 +5,6 @@ extern crate boolector;
 extern crate hex;
 extern crate backtrace;
 
-
 pub mod r2_api;
 pub mod registers;
 pub mod value;
@@ -15,18 +14,43 @@ pub mod operations;
 pub mod memory;
 pub mod radius;
 pub mod solver;
-//pub mod sims;
+pub mod sims;
 
 use crate::radius::Radius;
 use crate::value::Value;
 use crate::state::State;
 
-#[test]
+//#[test]
 fn looper() {
     let mut radius = Radius::new("tests/looper");
     let state = radius.call_state(0x112d);
     let mut new_state = radius.run_until(state, 0x00001168, vec!()).unwrap();
     println!("{:?}", new_state.registers.get("eax"))
+}
+
+fn hello() {
+    let mut radius = Radius::new("tests/hello");
+    let mut state = radius.call_state(0x00001149);
+    let mut new_state = radius.run_until(state, 0x00001163, vec!()).unwrap();
+    //println!("{:?}", new_state.registers.get("eax"))
+}
+
+fn strstuff() {
+    let mut radius = Radius::new("tests/strstuff");
+    let main = radius.r2api.get_address("main");
+    let mut state = radius.call_state(main);
+
+    let bv = state.bv("flag", 10*8);
+    let addr: u64 = 0x1000000;
+    let len = 10;
+    state.memory.write_value(addr+8, Value::Concrete(addr+24), 8);
+    state.memory.write_value(addr+24, Value::Symbolic(bv.clone()), len);
+    state.memory.write_value(addr+34, Value::Concrete(0), 8);
+    state.registers.set("rsi", Value::Concrete(addr));
+
+    let mut new_state = radius.run_until(state, 0x00001208, 
+        vec!(0x0000120f)).unwrap();
+    println!("{:?}", new_state.evaluate_string(&bv))
 }
 
 #[test]
@@ -51,7 +75,7 @@ fn multi() {
 
     let bv = state.bv("num", 64);
     state.registers.set("rdi", Value::Symbolic(bv.clone()));
-    let mut new_state = radius.run_until(state, 0x11c2, vec!(0x11c9)).unwrap();
+    let new_state = radius.run_until(state, 0x11c2, vec!(0x11c9)).unwrap();
 
     println!("{:?}", new_state.solver.evaluate(&bv));
 }
@@ -103,7 +127,7 @@ fn unbreakable() {
     true
 }*/
 
-#[test]
+//#[test]
 fn symmem() {
     let mut radius = Radius::new("tests/symmem");
     let main = radius.r2api.get_address("main");
@@ -135,13 +159,13 @@ fn symmem() {
     state.memory.write_value(0x1000010, Value::Symbolic(x.clone()), 8);
 
     let cmp = state.memory.compare(
-        &Value::Concrete(0x1000000), 
-        &Value::Concrete(0x1000010), 
+        &Value::Concrete(0x1000000),
+        &Value::Concrete(0x1000010),
         &Value::Concrete(8));
 
     if let Value::Symbolic(c) = cmp {
         c._eq(&state.bvv(0, 64)).assert();
-        println!("{}", state.memory.read_string(0x1000010, 8));
+        println!("{}", state.evaluate_string(&x).unwrap());
     }
 
     //println!("cmp: {:?}", cmp);

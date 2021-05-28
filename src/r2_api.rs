@@ -2,7 +2,6 @@
 use r2pipe::R2Pipe;
 use serde::{Deserialize, Serialize};
 use std::u64;
-use hex;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -169,10 +168,11 @@ impl R2Api {
 
     pub fn get_ret(&mut self) -> String {
         // simple as that?
-        self.cmd("pae ret").unwrap()
+        let ret = self.cmd("pae ret").unwrap();
+        ret[0..ret.len()-1].to_owned()
     }
 
-    pub fn get_register_value(&mut self, reg: &String) -> u64 {
+    pub fn get_register_value(&mut self, reg: &str) -> u64 {
         let cmd = format!("aer {}", reg);
         let val = self.cmd(cmd.as_str()).unwrap();
         // println!("val: {}", val);

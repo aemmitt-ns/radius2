@@ -29,7 +29,7 @@ impl Memory {
         let endian = info.bin.endian.as_str();
     
         Memory {
-            solver: btor.clone(),
+            solver: btor,
             r2api: r2api.clone(),
             mem: HashMap::new(),
             heap: HashMap::new(),
@@ -113,7 +113,7 @@ impl Memory {
                 for a in addrs {
                     let read_vals = self.read(a, len);
                     let mut new_vals = vec!();
-                    if values.len() == 0 {
+                    if values.is_empty() {
                         new_vals = read_vals;
                     } else {
                         for count in 0..len {
@@ -153,23 +153,18 @@ impl Memory {
                 let count_val = Value::Concrete(count as u64); 
                 let cond = address.clone().eq(addr_val) & count_val.ult(length.clone());
                 let value = self.solver.conditional(&cond, &values[count], &read_vals[count]);
-                self.write(addr, vec!(value));
+                self.write(addr+count as u64, vec!(value));
             }
         }
     }
 
     pub fn memmove(&mut self, dst: &Value, src: &Value, length: &Value) {
         let data = self.read_sym_len(src, length);
-        self.write_sym_len(dst, data, length);
-    }
+        self.write_sym_len(dst, data, length);    }
 
     pub fn search(&mut self, addr: &Value, needle: &Value, length: &Value, reverse: bool) -> Value {
-        let mut search_data = self.read_sym_len(addr, length);
+        //let mut search_data = self.read_sym_len(addr, length);
         let len = self.solver.max_value(length) as usize;
-
-        if reverse {
-            search_data.reverse();
-        }
 
         // concrete needle ends at null
         // symbolic is given by width
@@ -178,7 +173,7 @@ impl Memory {
                 let mut mask = 0xff;
                 let mut l = 0;
                 while val & mask != 0 {
-                    mask = mask << 8;
+                    mask <<= 8;
                     l += 1;
                 }
                 l + ((l == 0) as u32)
@@ -191,11 +186,10 @@ impl Memory {
 
         for pos in 0..(len - needlen) {
             // get value to test
-            let value = self.pack(&search_data[pos..pos+needlen].to_vec());
             let mut pos_val = addr.clone() + Value::Concrete(pos as u64);
-
+            let value = self.read_sym(&pos_val, needlen);
             if reverse {
-                pos_val = pos_val + length.clone() - Value::Concrete(2*pos as u64);
+                pos_val = addr.clone() + length.clone() - Value::Concrete(pos as u64);
             }
 
             let pos_cond = pos_val.clone().ult(addr.clone() + length.clone()) & 
@@ -204,6 +198,12 @@ impl Memory {
             //println!("{:?}", new_cond);
             result = self.solver.conditional(&new_cond, &pos_val, &result);
             cond = value.eq(needle.clone()) | cond;
+
+            if let Value::Concrete(res) = &result {
+                if *res != 0 {
+                    break;
+                }
+            }
         }
         
         result
@@ -211,13 +211,11 @@ impl Memory {
 
     pub fn strlen(&mut self, addr: &Value, length: &Value) -> Value {
         let end = self.search(addr, &Value::Concrete(0), length, false);
-        let length = self.solver.conditional(
+        self.solver.conditional(
             &(end.clone().eq(Value::Concrete(0))), 
             &length,
             &(end - addr.clone())
-        );
-    
-        length
+        )
     }
 
     pub fn compare(&mut self, addr1: &Value, addr2: &Value, length: &Value) -> Value {
@@ -246,6 +244,12 @@ impl Memory {
                 &Value::Concrete(1), &lt_val);
 
             same = same & result.clone().eq(Value::Concrete(0));
+
+            if let Value::Concrete(res) = &same {
+                if *res != 0 {
+                    break;
+                }
+            }
         }
 
         result
@@ -273,9 +277,11 @@ impl Memory {
                 None => {
                     let bytes = self.r2api.read(caddr, READ_CACHE);
                     data.push(Value::Concrete(bytes[0] as u64));
+                    let mut c = 0;
                     for byte in bytes {
                         let new_data = Value::Concrete(byte as u64);
-                        self.mem.insert(caddr, new_data);
+                        self.mem.entry(caddr + c).or_insert(new_data);
+                        c += 1;
                     }
                 }
             }
@@ -314,7 +320,7 @@ impl Memory {
         }
     }
 
-    pub fn write_ptr(&mut self, addr: u64, data: &Vec<Value>) {
+    pub fn write_ptr(&mut self, addr: u64, data: &[Value]) {
         //println!("write {:?}", data);
         let length = data.len();
         for count in 0..length {
@@ -324,12 +330,12 @@ impl Memory {
     }
 
     // jesus this got huge
-    pub fn pack(&self, data: &Vec<Value>) -> Value {
+    pub fn pack(&self, data: &[Value]) -> Value {
         let new_data = data;
         let length = new_data.len();
 
         if self.endian == Endian::Big {
-            let mut new_data = data.clone();
+            let mut new_data = data.to_owned();
             new_data.reverse();
         }
 
@@ -387,7 +393,7 @@ impl Memory {
         match value {
             Value::Concrete(val) => {
                 for count in 0..length {
-                    data.push(Value::Concrete((val >> 8*count) & 0xff));
+                    data.push(Value::Concrete((val >> (8*count)) & 0xff));
                 }
             },
             Value::Symbolic(val) => {
