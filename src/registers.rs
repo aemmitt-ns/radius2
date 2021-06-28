@@ -3,17 +3,6 @@ use crate::r2_api;
 use crate::value::Value;
 use crate::solver::Solver;
 
-const MASKS: [u64; 65] = [0, 1, 3, 7, 15, 31, 63, 127, 255, 511, 1023, 2047, 4095,
-    8191, 16383, 32767, 65535, 131071, 262143, 524287, 1048575, 2097151, 4194303, 
-    8388607, 16777215, 33554431, 67108863, 134217727, 268435455, 536870911, 1073741823, 
-    2147483647, 4294967295, 8589934591, 17179869183, 34359738367, 68719476735, 137438953471, 
-    274877906943, 549755813887, 1099511627775, 2199023255551, 4398046511103, 8796093022207, 
-    17592186044415, 35184372088831, 70368744177663, 140737488355327, 281474976710655, 
-    562949953421311, 1125899906842623, 2251799813685247, 4503599627370495, 9007199254740991, 
-    18014398509481983, 36028797018963967, 72057594037927935, 144115188075855871, 
-    288230376151711743, 576460752303423487, 1152921504606846975, 2305843009213693951, 
-    4611686018427387903, 9223372036854775807, 18446744073709551615];
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Bounds {
     start: u64,
@@ -109,6 +98,23 @@ impl Registers {
         self.regs.get(reg)
     }
 
+    pub fn get_with_alias(&mut self, alias: &str) -> Value {
+        let mut reg = alias.to_owned();
+        if let Some(r) = self.aliases.get(alias) {
+            reg = r.reg.clone();
+        }
+        self.get_value(self.regs[reg.as_str()].index)
+    }
+
+    pub fn set_with_alias(&mut self, alias: &str, value: Value) {
+        let mut reg = alias.to_owned();
+        if let Some(r) = self.aliases.get(alias) {
+            reg = r.reg.clone();
+        }
+
+        self.set_value(self.regs[reg.as_str()].index, value)
+    }
+
     #[inline]
     pub fn is_sub(&mut self, r1: usize, r2: usize) -> bool {
         let reg1 = &self.indexes[r1];
@@ -135,8 +141,8 @@ impl Registers {
                     return Value::Concrete(*val);
                 },
                 Value::Symbolic(val) => {
-                    let trans_val = self.solver.translate(val).unwrap();
-                    return Value::Symbolic(trans_val);
+                    //let trans_val = self.solver.translate(val).unwrap();
+                    return Value::Symbolic(val.to_owned());
                 }
             }
         }
@@ -145,12 +151,12 @@ impl Registers {
 
         match value {
             Value::Concrete(val) => {
-                let mask: u64 = MASKS[size as usize];
+                let mask: u64 = (1 << size) - 1;
                 Value::Concrete((val >> offset) & mask)
             },
             Value::Symbolic(val) => {
-                let trans_val = self.solver.translate(val).unwrap();
-                Value::Symbolic(trans_val.slice(
+                //let trans_val = self.solver.translate(val).unwrap();
+                Value::Symbolic(val.slice(
                     (offset+size-1) as u32, offset as u32))
             }
         }
@@ -173,7 +179,7 @@ impl Registers {
             let mut old_sym;
             match (value, old_value.clone()) {
                 (Value::Concrete(new), Value::Concrete(old)) => {
-                    let new_mask: u64 = MASKS[size as usize];
+                    let new_mask: u64 = (1 << size) - 1; //MASKS[size as usize];
                     let mask: u64 = 0xffffffffffffffff ^ (new_mask << offset);
 
                     let new_value = (old & mask) + ((new & new_mask) << offset);
@@ -182,15 +188,15 @@ impl Registers {
                 },
                 (Value::Concrete(new), Value::Symbolic(old)) => {
                     new_sym = self.solver.bvv(new, size as u32);
-                    old_sym = self.solver.translate(&old).unwrap();
+                    old_sym = old; //self.solver.translate(&old).unwrap();
                 },
                 (Value::Symbolic(new), Value::Concrete(old)) => {
                     old_sym = self.solver.bvv(old, bound_size);
-                    new_sym = self.solver.translate(&new).unwrap();
+                    new_sym = new; //self.solver.translate(&new).unwrap();
                 },
                 (Value::Symbolic(new), Value::Symbolic(old)) => {
-                    old_sym = self.solver.translate(&old).unwrap();
-                    new_sym = self.solver.translate(&new).unwrap();
+                    old_sym = old; //self.solver.translate(&old).unwrap();
+                    new_sym = new; //self.solver.translate(&new).unwrap();
                 }
             }
 

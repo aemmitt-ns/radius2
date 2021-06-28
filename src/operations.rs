@@ -230,7 +230,7 @@ pub fn pop_value(state: &mut State, set_size: bool, sign_ext: bool) -> Value {
             if ov.is_const() {
                 Value::Concrete(ov.as_u64().unwrap())
             } else {
-                let v = state.translate(&ov).unwrap();
+                let v = ov; //state.translate(&ov).unwrap();
                 let szdiff = SIZE - v.get_width() as u64;
                 if szdiff > 0 {
                     if sign_ext {
@@ -269,7 +269,7 @@ pub fn pop_stack_value(state: &mut State, stack: &mut Vec<StackItem>, set_size: 
             if ov.is_const() {
                 Value::Concrete(ov.as_u64().unwrap())
             } else {
-                let v = state.translate(&ov).unwrap();
+                let v = ov; //state.translate(&ov).unwrap();
                 let szdiff = SIZE - v.get_width() as u64;
                 if szdiff > 0 {
                     if sign_ext {
@@ -296,7 +296,8 @@ pub fn pop_concrete(state: &mut State, set_size: bool, sign_ext: bool) -> u64 {
         Value::Symbolic(val) => {
             let solution = val.get_a_solution().as_u64().unwrap();
             let sol_bv = state.bvv(solution, 64);
-            val._eq(&sol_bv).assert();
+            let a = val._eq(&sol_bv);
+            state.solver.assert(&a);
             solution
         }
     }
@@ -321,8 +322,8 @@ pub fn do_equal(state: &mut State, reg: StackItem, value: Value,
     if let StackItem::StackRegister(index) = reg {
         let register = state.registers.indexes.get(index).unwrap();
         let size = register.reg_info.size as usize;
-        let mut prev = state.registers.get_value(index);
-        prev = state.translate_value(&prev);
+        let prev = state.registers.get_value(index);
+        //prev = state.translate_value(&prev);
 
         if let Some(cond) = &state.condition {
 
@@ -580,8 +581,8 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let value = pop_value(state, false, false);
 
             if let Some(cond) = &state.condition.clone() {
-                let mut prev = state.memory.read_sym(&addr, n);
-                prev = state.translate_value(&prev);
+                let prev = state.memory.read_sym(&addr, n);
+                //prev = state.translate_value(&prev);
                 
                 state.memory.write_sym(&addr, 
                     Value::Symbolic(cond_value(cond, value, prev)), n);
@@ -599,8 +600,8 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let value = pop_value(state, false, false);
 
             if let Some(cond) = &state.condition.clone() {
-                let mut prev = state.memory.read_sym(&addr, n);
-                prev = state.translate_value(&prev);
+                let prev = state.memory.read_sym(&addr, n);
+                //prev = state.translate_value(&prev);
                 
                 state.memory.write_sym(&addr, 
                     Value::Symbolic(cond_value(cond, value, prev)), n);

@@ -42,6 +42,7 @@ pub enum StateStatus {
     Active,
     Break,
     Merge,
+    PostMerge, // so we dont get caught in merge loop
     Unsat,
     Inactive
 }
@@ -58,7 +59,8 @@ pub struct State {
     pub filesystem:SimFilesytem,
     pub status:    StateStatus,
     pub context:   HashMap<String, Vec<Value>>,
-    pub pid:       u64
+    pub pid:       u64,
+    pub backtrace: Vec<u64>
 }
 
 impl State {
@@ -73,23 +75,27 @@ impl State {
         };
 
         let solver = Solver::new();
+        let registers = Registers::new(r2api, solver.clone());
+        let memory = Memory::new(r2api, solver.clone());
+
         State {
-            solver: solver.clone(),
+            solver: solver,
             r2api: r2api.clone(),
             stack: vec!(),
             esil: esil_state,
             condition: None,
-            registers: Registers::new(r2api, solver.clone()),
-            memory: Memory::new(r2api, solver),
+            registers,
+            memory,
             filesystem: SimFilesytem::new(),
             status: StateStatus::Active,
             context: HashMap::new(),
+            backtrace: vec!(),
             pid: 1337 // sup3rh4x0r
         }
     }
 
     pub fn duplicate(&mut self) -> Self {
-        let solver = self.solver.duplicate();
+        let solver = self.solver.clone();
 
         let mut registers = self.registers.clone();
         registers.solver = solver.clone();
@@ -108,6 +114,7 @@ impl State {
             filesystem: self.filesystem.clone(),
             status: self.status.clone(),
             context: self.context.clone(),
+            backtrace: self.backtrace.clone(),
             pid: self.pid
         }
     }
@@ -158,6 +165,11 @@ impl State {
         }
     }
 
+    #[inline]
+    pub fn assert(&mut self, bv: &BV<Arc<Btor>>) {
+        self.solver.assert(bv)
+    }
+
     pub fn evaluate_many(&mut self, bv: &BV<Arc<Btor>>) -> Vec<u64> {
         self.solver.evaluate_many(bv)
     }
@@ -166,8 +178,8 @@ impl State {
         let new_bv = self.translate(bv).unwrap();
         let mut data: Vec<u8> = vec!();
         if self.solver.is_sat() {
-            let one_sol = new_bv.get_a_solution().disambiguate();
-            let solution = one_sol.as_01x_str(); 
+            //let one_sol = new_bv.get_a_solution().disambiguate();
+            let solution = self.solver.solution(&new_bv).unwrap();
             for i in 0..(new_bv.get_width()/8) as usize {
                 let sol = u8::from_str_radix(&solution[i*8..(i+1)*8], 2);
                 data.push(sol.unwrap());

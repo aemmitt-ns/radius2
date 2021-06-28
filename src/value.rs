@@ -676,10 +676,26 @@ impl Value {
         }
     }
 
+    /*
+    not allowed anymore for assertion collecting
+    pub fn assert(&self) {
+        match self {
+            Value::Concrete(_a) => {},
+            Value::Symbolic(a) => a.assert()
+        }
+    }*/
+
     pub fn as_u64(&self) -> Option<u64> {
         match self {
             Value::Concrete(a) => Some(*a),
             Value::Symbolic(a) => a.as_u64()
+        }
+    }
+
+    pub fn as_bv(&self) -> Option<BV<Arc<Btor>>> {
+        match self {
+            Value::Concrete(_a) => None,
+            Value::Symbolic(a) => Some(a.to_owned())
         }
     }
 

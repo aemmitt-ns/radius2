@@ -9,22 +9,65 @@ const READ_CACHE: usize = 256;
 
 // one day I will make a reasonable heap impl
 // today is not that day
-const HEAP_START: u64 = 0x10000000;
-//const HEAP_SIZE:  u64 = 0x1000000;
-const HEAP_CHUNK: u64 = 0x100;
+const HEAP_START: u64 = 0x40000000;
+const HEAP_SIZE:  u64 = 0x4000000;
+// const HEAP_CHUNK: u64 = 0x100;
+
+const STACK_START: u64 = 0x100000;
+const STACK_SIZE:  u64 = 0x78000*2;
+
+pub const CHECK_PERMS: bool = false;
+
+// i think these are different on darwin
+// for some fuckin reason
+const PROT_NONE:  u64 = 0x0;
+const PROT_READ:  u64 = 0x1;
+const PROT_WRITE: u64 = 0x2;
+const PROT_EXEC:  u64 = 0x4;
 
 #[derive(Clone)]
 pub struct Memory {
     pub solver: Solver,
     pub r2api:  R2Api,
     pub mem:    HashMap<u64, Value>,
-    pub heap:   HashMap<u64, u64>,
+    pub heap:   Heap,
     pub bits:   u64,
-    pub endian: Endian
+    pub endian: Endian,
+    pub segs:   Vec<MemorySegment>
+}
+
+pub enum Permission {
+    Read, 
+    Write, 
+    Execute
+}
+
+#[derive(Debug, Clone)]
+pub struct MemorySegment {
+    pub name:  String,
+    pub addr:  u64,
+    pub size:  u64,
+    pub read:  bool,
+    pub write: bool,
+    pub exec:  bool
 }
 
 impl Memory {
     pub fn new(r2api: &mut R2Api, btor: Solver) -> Memory {
+        let segments = r2api.get_segments();
+        let mut segs = vec!();
+
+        for seg in segments {
+            segs.push(MemorySegment {
+                name:  seg.name,
+                addr:  seg.vaddr,
+                size:  seg.size,
+                read:  seg.perm.contains('r'),
+                write: seg.perm.contains('w'),
+                exec:  seg.perm.contains('x')
+            });
+        }
+
         let info = r2api.info.as_ref().unwrap();
         let endian = info.bin.endian.as_str();
     
@@ -32,31 +75,80 @@ impl Memory {
             solver: btor,
             r2api: r2api.clone(),
             mem: HashMap::new(),
-            heap: HashMap::new(),
+            heap: Heap::new(HEAP_START, HEAP_SIZE),
             bits: info.bin.bits,
-            endian: Endian::from_string(endian)
+            endian: Endian::from_string(endian),
+            segs: segs
         }
     }
 
-    //TODO actually do this    
     pub fn alloc(&mut self, length: &Value) -> u64 {
         let len = self.solver.max_value(length);
-
-        let mut addr = HEAP_START;
-        while self.heap.contains_key(&addr) {
-            addr += HEAP_CHUNK;
-        }
-
-        for i in 0..(len/HEAP_CHUNK + 1) {
-            self.heap.insert(addr+i*HEAP_CHUNK, 1);
-        }
-
-        addr
+        self.heap.alloc(len)
     }
 
-    //TODO actually do this
     pub fn free(&mut self, addr: &Value) -> Value {
-        addr.clone()
+        let address = self.solver.evalcon_to_u64(addr).unwrap();
+        if let Some(ret) = self.heap.free(address) {
+            Value::Concrete(ret)
+        } else {
+            Value::Concrete(0) // idk none of this is right
+        }
+    }
+
+    #[inline]
+    pub fn check_permission(&mut self, addr: u64, length: u64, perm: char) -> bool {
+        for seg in &self.segs {
+            if addr >= seg.addr && addr + length <= seg.addr+seg.size {
+                match perm {
+                    'r' => return seg.read,
+                    'w' => return seg.write,
+                    'x' => return seg.exec,
+                     _  => return false // uhhh shouldnt happen
+                }
+            }
+        }
+
+        false
+    }
+
+    pub fn add_segment(&mut self, name: &str, addr: u64, size: u64, perms: &str) {
+        self.segs.push(MemorySegment {
+            name:  name.to_owned(),
+            addr,
+            size,
+            read:  perms.contains('r'),
+            write: perms.contains('w'),
+            exec:  perms.contains('x')
+        });
+    }
+
+    pub fn add_heap(&mut self) {
+        self.add_segment("heap", HEAP_START, HEAP_SIZE, "rw-");
+    }
+
+    pub fn add_stack(&mut self) {
+        self.add_segment("stack", STACK_START, STACK_SIZE, "rw-");
+    }
+
+    pub fn brk(&mut self, address: u64) -> bool {
+        for seg in &mut self.segs {
+            if seg.name == ".data" {
+                seg.size = address-seg.addr;
+                return true;
+            } 
+        }
+        false
+    }
+
+    pub fn sbrk(&mut self, inc: u64) -> u64 {
+        for seg in &mut self.segs {
+            if seg.name == ".data" {
+                seg.size = seg.addr+seg.size+inc;
+                return seg.addr;
+            } 
+        }
+        -1i64 as u64
     }
 
     pub fn read_sym(&mut self, address: &Value, len: usize) -> Value {
@@ -160,7 +252,8 @@ impl Memory {
 
     pub fn memmove(&mut self, dst: &Value, src: &Value, length: &Value) {
         let data = self.read_sym_len(src, length);
-        self.write_sym_len(dst, data, length);    }
+        self.write_sym_len(dst, data, length);    
+    }
 
     pub fn search(&mut self, addr: &Value, needle: &Value, length: &Value, reverse: bool) -> Value {
         //let mut search_data = self.read_sym_len(addr, length);
@@ -171,12 +264,14 @@ impl Memory {
         let needlen = match needle {
             Value::Concrete(val) => {
                 let mut mask = 0xff;
-                let mut l = 0;
-                while val & mask != 0 {
+                let mut l = 1;
+                for i in 1..9 {
+                    if mask & val != 0 {
+                        l = i;
+                    }
                     mask <<= 8;
-                    l += 1;
                 }
-                l + ((l == 0) as u32)
+                l
             },
             Value::Symbolic(val) => val.get_width()/8
         } as usize;
@@ -203,6 +298,9 @@ impl Memory {
                 if *res != 0 {
                     break;
                 }
+            } else if value.id(needle.clone()) == Value::Concrete(1) {
+                // this is weird but cuts searches on identical values
+                break;
             }
         }
         
@@ -266,6 +364,15 @@ impl Memory {
     }
 
     pub fn read(&mut self, addr: u64, length: usize) -> Vec<Value> {
+
+        if CHECK_PERMS {
+            if !self.check_permission(addr, length as u64, 'r') {
+                // everything needs to be reworked to have Result<...> 
+                // so that we can properly handle things like this
+                self.handle_segfault(addr, length as u64, 'r');
+            }
+        }
+
         let mut data: Vec<Value> = vec!();
         for count in 0..length as u64 {
             let caddr = addr + count;
@@ -290,15 +397,41 @@ impl Memory {
         data
     }
 
+    pub fn prot_to_str(&self, prot: u64) -> String {
+        let mut prot_str = String::from("");
+
+        if prot == PROT_NONE {
+            return String::from("---");
+        }
+
+        if prot | PROT_READ != 0 {
+            prot_str = prot_str + "r";
+        } else {
+            prot_str = prot_str + "-";
+        }
+        if prot | PROT_WRITE != 0 {
+            prot_str = prot_str + "w";
+        } else {
+            prot_str = prot_str + "-";
+        }
+        if prot | PROT_EXEC != 0 {
+            prot_str = prot_str + "x";
+        } else {
+            prot_str = prot_str + "-";
+        }
+    
+        prot_str
+    }
+
     //read utf8 string
     pub fn read_string(&mut self, addr: u64, length: usize) -> String {
         let data = self.read(addr, length);
         let mut data_u8 = vec!();
-        self.solver.push(1);
+        self.solver.push();
         for d in data {
-            data_u8.push(self.solver.eval_to_u64(&d).unwrap() as u8);
+            data_u8.push(self.solver.evalcon_to_u64(&d).unwrap() as u8);
         }
-        self.solver.pop(1);
+        self.solver.pop();
         String::from_utf8(data_u8).unwrap()
     }
 
@@ -314,10 +447,23 @@ impl Memory {
     pub fn write(&mut self, addr: u64, mut data: Vec<Value>) {
         //println!("write {:?}", data);
         let length = data.len();
+
+        if CHECK_PERMS {
+            if !self.check_permission(addr, length as u64, 'w') {
+                self.handle_segfault(addr, length as u64, 'w');
+            }
+        }
+
         for count in 0..length {
             let caddr = addr + count as u64;
             self.mem.insert(caddr, data.remove(0));
         }
+    }
+
+    // this sucks, we need to properly do error handling to do this right
+    // TODO make everything not suck
+    pub fn handle_segfault(&self, addr: u64, length: u64, perm: char) {
+        panic!("addr {} length {} does not have perm \"{}\"", addr, length, perm);
     }
 
     pub fn write_ptr(&mut self, addr: u64, data: &[Value]) {
@@ -339,12 +485,14 @@ impl Memory {
             new_data.reverse();
         }
 
-        // if length > 64 use sym to cheat
-        let mut is_sym = length > 64; 
-        for datum in new_data {
-            if let Value::Symbolic(_val) = datum {
-                is_sym = true;
-                break;
+        // if length > 64 bits use sym to cheat
+        let mut is_sym = length > 8; 
+        if !is_sym {
+            for datum in new_data {
+                if let Value::Symbolic(_val) = datum {
+                    is_sym = true;
+                    break;
+                }
             }
         }
 
@@ -356,12 +504,12 @@ impl Memory {
                 let datum = new_data.get(count).unwrap();
                 match &datum {
                     Value::Symbolic(val) => {
-                        let trans_val = self.solver.translate(val).unwrap();
+                        //let trans_val = self.solver.translate(val).unwrap();
 
                         if sym_val.get_width() == 1 {
-                            sym_val = trans_val.slice(7, 0);
+                            sym_val = val.slice(7, 0);
                         } else {
-                            sym_val = trans_val.slice(7, 0).concat(&sym_val);
+                            sym_val = val.slice(7, 0).concat(&sym_val);
                         }
                     },
                     Value::Concrete(val) => {
@@ -398,13 +546,8 @@ impl Memory {
             },
             Value::Symbolic(val) => {
                 for count in 0..length {
-                    let trans_val = self.solver.translate(&val).unwrap();
-                    let bv = trans_val.slice(((count as u32)+1)*8-1, (count as u32)*8);
-                    /*if bv.is_const() { // don't do this here for taint analysis sake
-                        data.push(Value::Concrete(bv.as_u64().unwrap()));
-                    } else {
-                        data.push(Value::Symbolic(bv));
-                    }*/
+                    //let trans_val = self.solver.translate(&val).unwrap();
+                    let bv = val.slice(((count as u32)+1)*8-1, (count as u32)*8);
                     data.push(Value::Symbolic(bv));
                 }
             }
@@ -417,3 +560,55 @@ impl Memory {
     }
 }
 
+#[derive(Clone)]
+pub struct Heap {
+    pub start: u64,
+    pub size:  u64,
+    pub chunks: Vec<Chunk>
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Chunk { 
+    pub addr: u64,
+    pub size: u64
+}
+
+// still a dumb af heap implementation
+impl Heap {
+    pub fn new(start: u64, size: u64) -> Self {
+        Heap {
+            start,
+            size,
+            chunks: vec!(Chunk { addr: start, size: 0 })
+        }
+    }
+
+    pub fn alloc(&mut self, size: u64) -> u64 {
+        let last = &self.chunks[self.chunks.len()-1];
+        let addr = last.addr+last.size;
+        self.chunks.push(Chunk { addr, size });
+        addr
+    }
+
+    pub fn free(&mut self, addr: u64) -> Option<u64> {
+        let last = &self.chunks[self.chunks.len()-1];
+        if addr == last.addr {
+            self.chunks.pop();
+            Some(addr)
+        } else {
+            let mut rem = 0;
+            for (i, chunk) in self.chunks.iter().enumerate() {
+                if chunk.addr == addr {
+                    rem = i;
+                    break;
+                }
+            }
+            if rem != 0 {
+                self.chunks.remove(rem);
+                Some(addr)
+            } else {
+                None
+            }
+        }
+    }
+}

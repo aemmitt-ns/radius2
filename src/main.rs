@@ -16,11 +16,11 @@ pub mod radius;
 pub mod solver;
 pub mod sims;
 
-use crate::radius::Radius;
+use crate::radius::{Radius, RadiusOptions};
 use crate::value::Value;
 use crate::state::State;
 
-//#[test]
+#[test]
 fn looper() {
     let mut radius = Radius::new("tests/looper");
     let state = radius.call_state(0x112d);
@@ -28,20 +28,22 @@ fn looper() {
     println!("{:?}", new_state.registers.get("eax"))
 }
 
+#[test]
 fn hello() {
     let mut radius = Radius::new("tests/hello");
-    let mut state = radius.call_state(0x00001149);
-    let mut new_state = radius.run_until(state, 0x00001163, vec!()).unwrap();
+    let state = radius.call_state(0x00001149);
+    let new_state = radius.run_until(state, 0x00001163, vec!()).unwrap();
     //println!("{:?}", new_state.registers.get("eax"))
 }
 
+#[test]
 fn strstuff() {
     let mut radius = Radius::new("tests/strstuff");
     let main = radius.r2api.get_address("main");
     let mut state = radius.call_state(main);
 
     let bv = state.bv("flag", 10*8);
-    let addr: u64 = 0x1000000;
+    let addr: u64 = 0x100000;
     let len = 10;
     state.memory.write_value(addr+8, Value::Concrete(addr+24), 8);
     state.memory.write_value(addr+24, Value::Symbolic(bv.clone()), len);
@@ -82,10 +84,11 @@ fn multi() {
 
 //#[test]
 fn r100() {
-    let mut radius = Radius::new("tests/r100");
+    let options = vec!(RadiusOptions::Debug(true));
+    let mut radius = Radius::new_with_options("tests/r100", options);
     let mut state = radius.call_state(0x004006fd);
     let bv = state.bv("flag", 12*8);
-    let addr: u64 = 0x1000000;
+    let addr: u64 = 0x100000;
     let len = 12;
     state.memory.write_value(addr, Value::Symbolic(bv.clone()), len);
     state.registers.set("rdi", Value::Concrete(addr));
@@ -97,7 +100,26 @@ fn r100() {
     println!("FLAG: {}", flag);
 
     assert_eq!(flag, "Code_Talkers");
-    radius.r2api.close();
+}
+
+//#[test]
+fn r200() {
+    let mut radius = Radius::new("tests/r200");
+    let mut state = radius.call_state(0x00400886);
+    let bv = state.bv("flag", 6*8);
+
+    let addr = state.registers.get("rsp").as_u64().unwrap();
+    state.memory.write_value(addr-0x18, Value::Symbolic(bv.clone()), 6);
+
+    radius.breakpoint(0x00400843);
+    radius.mergepoint(0x004007fd);
+    radius.avoid(vec!(0x00400832));
+
+    let mut new_state = radius.run(Some(state), 2).unwrap();
+    let flag = new_state.evaluate_string(&bv).unwrap();
+    println!("FLAG: {}", flag);
+
+    assert_eq!(flag, "rotors");
 }
 
 #[test]
@@ -108,7 +130,8 @@ fn unbreakable() {
     let bv = state.bv("flag", 8*len as u32);
 
     // add "CTF{" constraint
-    bv.slice(31, 0)._eq(&state.bvv(0x7b465443, 32)).assert();
+    let assertion = bv.slice(31, 0)._eq(&state.bvv(0x7b465443, 32));
+    state.assert(&assertion);
 
     let addr: u64 = 0x6042c0;
     state.memory.write_value(addr, Value::Symbolic(bv.clone()), len);
@@ -118,8 +141,6 @@ fn unbreakable() {
     let flag = new_state.evaluate_string(&bv).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "CTF{0The1Quick2Brown3Fox4Jumped5Over6The7Lazy8Fox9}");
-
-    radius.r2api.close();
 }
 
 /*fn callback(state: &mut State) -> bool {
@@ -127,7 +148,7 @@ fn unbreakable() {
     true
 }*/
 
-//#[test]
+#[test]
 fn symmem() {
     let mut radius = Radius::new("tests/symmem");
     let main = radius.r2api.get_address("main");
@@ -139,28 +160,34 @@ fn symmem() {
     //println!("x: {:?}", state.solver.max(&x));
 
     let sentence = String::from("this is my string it is a good string I think");
-    state.memory.write_string(0x1000000, sentence.as_str());
-    state.memory.write_value(0x1000008, Value::Symbolic(x.clone()), 8);
+    state.memory.write_string(0x100000, sentence.as_str());
+    state.memory.write_value(0x100008, Value::Symbolic(x.clone()), 8);
 
     let index = state.memory.search(
-        &Value::Concrete(0x1000000), 
+        &Value::Concrete(0x100000), 
         &Value::Concrete(0x646f6f67), 
         &Value::Concrete(64), false);
 
+    //println!("index is {:?}", index);
+
     if let Value::Symbolic(ind) = index {
-        //ind._eq(&state.bvv(0x1000008, 64)).assert();
-        println!("{:?}", state.memory.read_string(0x1000000, 30));
+        state.solver.push();
+        ind._eq(&state.bvv(0x10000a, 64)).assert();
+        println!("{:?}", state.memory.read_string(0x100000, 48));
+        state.solver.pop();
     }
+
+    //return;
 
     let sentence1 = "elephant";
     let sentence2 = "alephant";
 
-    state.memory.write_string(0x1000000, sentence1);
-    state.memory.write_value(0x1000010, Value::Symbolic(x.clone()), 8);
+    state.memory.write_string(0x100000, sentence1);
+    state.memory.write_value(0x100010, Value::Symbolic(x.clone()), 8);
 
     let cmp = state.memory.compare(
-        &Value::Concrete(0x1000000),
-        &Value::Concrete(0x1000010),
+        &Value::Concrete(0x100000),
+        &Value::Concrete(0x100010),
         &Value::Concrete(8));
 
     if let Value::Symbolic(c) = cmp {
@@ -170,7 +197,7 @@ fn symmem() {
 
     //println!("cmp: {:?}", cmp);
 
-    /*println!("good: {:?}", index);
+    /*println!("good: {:?}", index);0
     if let Value::Concrete(good) = index {
         println!("good: {:?}, {:?}", index, sentence.get(..good as usize));
     }*/
@@ -198,7 +225,6 @@ fn ioscrackme() {
     let len: usize = 16;
 
     let validate = radius.r2api.get_address("sym._validate");
-    // radius.hook(0x100005e34, callback);
     let mut state = radius.call_state(validate);
     let bv = state.bv("flag", 8*len as u32);
 
@@ -215,19 +241,15 @@ fn ioscrackme() {
     state.registers.set("x0", Value::Concrete(buf_addr));
     state.memory.write_value(buf_addr, Value::Symbolic(bv.clone()), len);
 
-    //radius.breakpoint(0x10000600c);
-    //radius.avoid(vec!(0x100006044));
+
     let mut new_state = radius.run_until(
         state, 0x10000600c, vec!(0x100006044)).unwrap();
-    //let mut new_state = radius.run(Some(state), 2).unwrap();
+
     let flag = new_state.evaluate_string(&bv);
     println!("FLAG: {}", flag.unwrap());
     radius.r2api.close();
 }
 
 fn main() {
-    /*let c = Value::Concrete(0b110100);
-    let rot = Value::Concrete(3);
-    println!("{:?}", c.ror(rot, 6));*/
-    r100();
+    r200();
 }

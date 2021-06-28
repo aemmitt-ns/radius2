@@ -1,16 +1,21 @@
-use crate::r2_api::Instruction;
+use crate::r2_api::{Instruction, Syscall};
 use crate::value::Value;
 use crate::operations::{Operations, pop_value, 
     pop_stack_value, pop_concrete, do_operation, OPS};
 
 use std::collections::HashMap;
 use crate::state::{State, StateStatus, StackItem, ExecMode};
-use crate::sims::SimMethod;
+use crate::sims::{SimMethod};
+use crate::sims::syscall::syscall;
+use crate::memory::CHECK_PERMS;
 
 //use std::time::SystemTime;
 //use boolector::BV;
 
 const INSTR_NUM: usize = 64;
+
+const CALL_TYPE: u64 = 3;
+const RETN_TYPE: u64 = 5;
 
 #[derive(Debug, Clone)]
 pub enum Word {
@@ -28,9 +33,14 @@ pub struct Processor {
     pub instructions: HashMap<u64, InstructionEntry>,
     pub hooks: HashMap<u64, Vec<HookMethod>>,
     pub sims: HashMap<u64, SimMethod>,
+    pub traps: HashMap<u64, SimMethod>, 
+    pub syscalls: HashMap<u64, Syscall>,
     pub breakpoints: HashMap<u64, bool>,
     pub mergepoints: HashMap<u64, bool>,
     pub avoidpoints: HashMap<u64, bool>,
+    pub optimized: bool,
+    pub debug: bool,
+    pub lazy: bool
     //pub states: Vec<State>
 }
 
@@ -52,28 +62,26 @@ pub struct InstructionEntry {
     // next: Option<Arc<InstructionEntry>>
 }
 
-const DEBUG: bool = false; // show instructions
-const LAZY:  bool = true;  // dont check sat on ite PCs
-const OPT:   bool = true;  // optimize by removing unread flag sets
+//const DEBUG: bool = false; // show instructions
+//const LAZY:  bool = true;  // dont check sat on ite PCs
+//const OPT:   bool = true;  // optimize by removing unread flag sets
 const BFS:   bool = true;  // dequeue states instead of popping
 
-#[inline]
-pub fn print_instr(instr: &Instruction) {
-    if DEBUG {
-        println!("{:016x}:  {:<40} |  {}", instr.offset, instr.opcode, instr.esil);
-    }
-}
-
 impl Processor {
-    pub fn new() -> Self {
+    pub fn new(optimized: bool, debug: bool, lazy: bool) -> Self {
         Processor {
             pc: None,
             instructions: HashMap::new(),
             hooks:        HashMap::new(),
             sims:         HashMap::new(),
+            traps:        HashMap::new(),
+            syscalls:     HashMap::new(),
             breakpoints:  HashMap::new(),
             mergepoints:  HashMap::new(),
             avoidpoints:  HashMap::new(),
+            optimized,
+            debug,
+            lazy
             //states: vec!()
         }
     }
@@ -152,13 +160,42 @@ impl Processor {
         }
     }
 
+    #[inline]
+    pub fn print_instr(&self, instr: &Instruction) {
+        if self.debug {
+            println!("{:016x}:  {:<40} |  {}", instr.offset, instr.disasm, instr.esil);
+        }
+    }
+
+    pub fn do_syscall(&self, state: &mut State) {
+        let sys_val = state.registers.get_with_alias("SN");
+        let sys_num = state.solver.evalcon_to_u64(&sys_val).unwrap();
+        let pc = state.registers.get_value(self.pc.unwrap()).as_u64().unwrap();
+
+        if let Some(sys) = self.syscalls.get(&sys_num) {
+            let cc = state.r2api.get_syscall_cc(pc);
+            let mut args = vec!();
+            for arg in cc.args {
+                args.push(state.registers.get(arg.as_str()));
+            }
+            let ret = syscall(sys.name.as_str(), state, args);
+            state.registers.set(cc.ret.as_str(), ret);
+        }
+    }
+
     // for one-off parsing of strings
     pub fn parse_expression(&self, state: &mut State, esil: &str) {
-        /*if self.pc.is_none() {
+        let words = self.tokenize(state, esil);
+        self.parse(state, &words);
+    }
+
+    // i'm slinging some straight shit code at this point
+    pub fn parse_expression_mut(&mut self, state: &mut State, esil: &str) {
+        if self.pc.is_none() {
             let pc_reg = &state.registers.aliases["PC"];
             self.pc = Some(state.registers.regs.get(
                 &pc_reg.reg).unwrap().index);
-        }*/
+        }
 
         let words = self.tokenize(state, esil);
         self.parse(state, &words);
@@ -290,7 +327,24 @@ impl Processor {
                             }
                             break;
                         },
-                        _ => do_operation(state, op.clone(), self.pc.unwrap())
+                        Operations::Trap => {
+                            let trap = pop_concrete(state, false, false);
+                            let pc = state.registers.get_value(self.pc.unwrap()).as_u64().unwrap();
+
+                            let sys_val = state.registers.get_with_alias("SN");                            
+                            if let Some(trap_sim) = self.traps.get(&trap) {
+                                // provide syscall args
+                                let cc = state.r2api.get_syscall_cc(pc);
+                                let mut args = vec!(sys_val);
+                                for arg in cc.args {
+                                    args.push(state.registers.get(arg.as_str()));
+                                }
+                                let ret = trap_sim(state, args);
+                                state.registers.set(cc.ret.as_str(), ret);
+                            }
+                        },
+                        Operations::Syscall => self.do_syscall(state),
+                        _ => do_operation(state, op.to_owned(), self.pc.unwrap())
                     }
                 },
                 Word::Unknown(s) => {
@@ -402,10 +456,33 @@ impl Processor {
     pub fn update(&self, state: &mut State, pc_index: usize, instr: &Instruction, 
         status: &InstructionStatus, words: &[Word]) {
 
+        if CHECK_PERMS {
+            // this is redundant but i dont want the check itself to panic
+            if !state.memory.check_permission(instr.offset, instr.size, 'x') {
+                state.memory.handle_segfault(instr.offset, instr.size, 'x');
+            }
+        }
+
         let pc = instr.offset;
         let new_pc = instr.offset + instr.size;
 
-        match status {
+        match instr.type_num {
+            CALL_TYPE => { state.backtrace.push(new_pc); },
+            RETN_TYPE => { state.backtrace.pop(); },
+            _ => {}
+        }
+
+        // shit is gettin messy
+        let mut new_status = status;
+        if state.status == StateStatus::PostMerge {
+            if *status == InstructionStatus::Merge {
+                //println!("leaving merge on {}", pc);
+                state.status = StateStatus::Active;
+                new_status = &InstructionStatus::None;
+            }
+        }
+
+        match new_status {
             InstructionStatus::None => {
                 let pc_val = Value::Concrete(new_pc);
                 state.registers.set_value(pc_index, pc_val);
@@ -435,6 +512,7 @@ impl Processor {
                 }
                 let ret = sim(state, args);
                 state.registers.set(cc.ret.as_str(), ret);
+                state.backtrace.pop();
                 self.ret(state);
             },
             InstructionStatus::Break => state.status = StateStatus::Break,
@@ -455,7 +533,7 @@ impl Processor {
         let instr_opt = self.instructions.get(&pc_val);
         
         if let Some(instr_entry) = instr_opt {
-            print_instr(&instr_entry.instruction);
+            self.print_instr(&instr_entry.instruction);
             /*if instr_entry.instruction.opcode == "invalid" {
                 panic!("invalid instr");
             }*/
@@ -474,7 +552,7 @@ impl Processor {
                 let words = self.tokenize(state, &instr.esil);
 
                 let mut status = InstructionStatus::None;
-                let mut opt = OPT;
+                let mut opt = self.optimized;
                 if self.hooks.contains_key(&pc_tmp) {
                     status = InstructionStatus::Hook;
                 } else if self.breakpoints.contains_key(&pc_tmp) {
@@ -493,7 +571,7 @@ impl Processor {
                 }
 
                 if pc_tmp == pc_val {
-                    print_instr(&instr);
+                    self.print_instr(&instr);
                     self.update(state, pc_index, &instr, &status, &words);
                 } 
 
@@ -521,7 +599,7 @@ impl Processor {
 
         let pc_value = state.registers.get_value(pc_index);
 
-        if let Value::Concrete(pc_val) = pc_value {
+        if let Some(pc_val) = pc_value.as_u64() {
             self.execute(&mut state, pc_index, pc_val);
         } else {
             println!("got an unexpected sym PC: {:?}", pc_value);
@@ -534,8 +612,13 @@ impl Processor {
             },
             Value::Symbolic(pc_val) => {
                 // this is weird and bad
+
+                if self.debug {
+                    println!("\nsymbolic PC: {:?}\n", pc_val);
+                }
+
                 let pcs;
-                if LAZY && state.esil.pcs.len() == 2 {
+                if self.lazy && state.esil.pcs.len() == 2 {
                     pcs = state.esil.pcs;
                     state.esil.pcs = vec!();
                 } else {
@@ -548,16 +631,18 @@ impl Processor {
 
                 let last = pcs.len()-1;
                 for new_pc_val in &pcs[..last] {
-                    let mut new_state = state.duplicate();
-                    let pc_bv = new_state.translate(&pc_val).unwrap();
-                    pc_bv._eq(&new_state.bvv(*new_pc_val, pc_bv.get_width())).assert();
+                    let mut new_state = state.clone();
+                    let pc_bv = &pc_val; //new_state.translate(&pc_val).unwrap();
+                    let a = pc_bv._eq(&new_state.bvv(*new_pc_val, pc_bv.get_width()));
+                    new_state.solver.assert(&a);
                     new_state.registers.set_value(pc_index, Value::Concrete(*new_pc_val));
                     states.push(new_state);
                 }
                 
                 let new_pc_val = pcs[last];
-                let pc_bv = state.translate(&pc_val).unwrap();
-                pc_bv._eq(&state.bvv(new_pc_val, pc_bv.get_width())).assert();
+                let pc_bv = pc_val; //state.translate(&pc_val).unwrap();
+                let a = pc_bv._eq(&state.bvv(new_pc_val, pc_bv.get_width()));
+                state.solver.assert(&a);
                 state.registers.set_value(pc_index, Value::Concrete(new_pc_val));
                 states.push(state);
             }
@@ -611,7 +696,7 @@ impl Processor {
         states.push(state);
 
         // run until empty for single threaded, until split for multi
-        while !states.is_empty() && (!split || states.len() == 1){
+        while !states.is_empty() && (!split || states.len() == 1) {
             let current_state;
             if BFS {
                 current_state = states.remove(0);
@@ -620,14 +705,14 @@ impl Processor {
             }
 
             match current_state.status {
-                StateStatus::Active => {
+                StateStatus::Active | StateStatus::PostMerge => {
                     states.extend(self.step(current_state));
                 },
                 StateStatus::Break => {
                     return vec!(current_state);
                 },
                 StateStatus::Merge => {
-                    // TODO
+                    return vec!(current_state); // hmmm
                 },
                 _ => {}
             }

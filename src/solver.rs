@@ -7,7 +7,9 @@ const EVAL_MAX: u64 = 256;
 
 #[derive(Debug, Clone)]
 pub struct Solver {
-    pub btor: Arc<Btor>
+    pub btor: Arc<Btor>,
+    pub assertions: Vec<BV<Arc<Btor>>>, // yo dawg i heard you like types
+    pub indexes: Vec<usize>
 }
 
 impl Solver {
@@ -19,13 +21,31 @@ impl Solver {
         btor.set_opt(BtorOption::OutputNumberFormat(NumberFormat::Hexadecimal));
 
         Solver {
-            btor
+            btor,
+            assertions: vec!(),
+            indexes: vec!()
         }
     }
 
     pub fn duplicate(&self) -> Self {
+        let btor = Arc::new(self.btor.duplicate());
+        let mut assertions = vec!();
+
+        for assertion in &self.assertions {
+            let new_assert = Btor::get_matching_bv(btor.clone(), assertion);
+            assertions.push(new_assert.unwrap());
+        }
+
         Solver {
-            btor: Arc::new(self.btor.duplicate())
+            btor,
+            assertions,
+            indexes: self.indexes.clone()
+        }
+    }
+
+    pub fn apply_assertions(&self) {
+        for assertion in &self.assertions {
+            assertion.assert();
         }
     }
 
@@ -41,7 +61,9 @@ impl Solver {
 
     #[inline]
     pub fn translate(&self, bv: &BV<Arc<Btor>>) -> Option<BV<Arc<Btor>>> {
-        Btor::get_matching_bv(self.btor.clone(), bv)
+        Some(bv.to_owned())
+        //println!("{:?}", bv);
+        //Btor::get_matching_bv(self.btor.clone(), bv)
     }
 
     #[inline]
@@ -60,14 +82,14 @@ impl Solver {
                 self.bvv(*val, length)
             },
             Value::Symbolic(val) => {
-                let new_val = self.translate(val).unwrap();
-                let szdiff = (new_val.get_width() - length) as i32;
+                //let new_val = self.translate(val).unwrap();
+                let szdiff = (val.get_width() - length) as i32;
                 if szdiff == 0 {
-                    new_val
+                    val.to_owned()
                 } else if szdiff > 0 {
-                    new_val.slice(length-1, 0)
+                    val.slice(length-1, 0)
                 } else {
-                    new_val.uext(-szdiff as u32)
+                    val.uext(-szdiff as u32)
                 }
             }
         }
@@ -94,12 +116,16 @@ impl Solver {
 
     #[inline]
     pub fn evaluate(&self, bv: &BV<Arc<Btor>>) -> Option<Value> {
-        let new_bv = self.translate(bv).unwrap();
-        if self.btor.sat() == SolverResult::Sat {
-            Some(Value::Concrete(new_bv.get_a_solution().as_u64().unwrap()))
+        self.btor.push(1);
+        self.apply_assertions();
+        //let new_bv = self.translate(bv).unwrap();
+        let sol = if self.btor.sat() == SolverResult::Sat {
+            Some(Value::Concrete(bv.get_a_solution().as_u64().unwrap()))
         } else {
             None
-        }
+        };
+        self.btor.pop(1);
+        sol
     }
 
 
@@ -125,7 +151,30 @@ impl Solver {
     }
 
     #[inline]
-    pub fn evalcon_to_u64(&self, value: &Value) -> Option<u64> {
+    pub fn eval_to_bv(&mut self, value: &Value) -> Option<BV<Arc<Btor>>> {
+        match value {
+            Value::Concrete(val) => {
+                Some(self.bvv(*val, 64))
+            },
+            Value::Symbolic(bv) => {
+                self.btor.push(1);
+                self.apply_assertions();
+                //let new_bv = self.translate(bv).unwrap();
+                let sol_bv = if self.btor.sat() == SolverResult::Sat {
+                    let sol = bv.get_a_solution().disambiguate();
+                    let bv_str = sol.as_01x_str();
+                    Some(BV::from_binary_str(self.btor.clone(), bv_str))
+                } else {
+                    None
+                };
+                self.btor.pop(1);
+                sol_bv
+            }
+        }
+    }
+
+    #[inline]
+    pub fn evalcon_to_u64(&mut self, value: &Value) -> Option<u64> {
         match value {
             Value::Concrete(val) => {
                 Some(*val)
@@ -137,55 +186,81 @@ impl Solver {
     }
 
     #[inline]
-    pub fn push(&self, n: u32) {
-        self.btor.push(n)
+    pub fn push(&mut self) {
+        self.indexes.push(self.assertions.len());
+        self.btor.push(1)
     }
 
     #[inline]
-    pub fn pop(&self, n: u32) {
-        self.btor.pop(n)
+    pub fn pop(&mut self) {
+        self.btor.pop(1);
+        let index = self.indexes.pop().unwrap();
+        self.assertions = self.assertions[..index].to_owned();
+    }
+
+    #[inline]
+    pub fn reset(&mut self) { // uhhh this might work?
+        self.assertions.clear();
+        self.indexes.clear();
     }
 
     // evaluate and constrain the symbol to the value
     #[inline]
-    pub fn evalcon(&self, bv: &BV<Arc<Btor>>) -> Option<u64> {
-        let new_bv = self.translate(bv).unwrap();
-        if self.btor.sat() == SolverResult::Sat {
-            let conval = new_bv.get_a_solution().as_u64().unwrap();
-            new_bv._eq(&self.bvv(conval, new_bv.get_width())).assert();
+    pub fn evalcon(&mut self, bv: &BV<Arc<Btor>>) -> Option<u64> {
+        self.push();
+        self.apply_assertions();
+        //let new_bv = self.translate(bv).unwrap();
+        let sol = if self.btor.sat() == SolverResult::Sat {
+            let conval = bv.get_a_solution().as_u64().unwrap();
+            let assertion = bv._eq(&self.bvv(conval, bv.get_width()));
+            self.assert(&assertion);
             Some(conval)
         } else {
             None
-        }
+        };
+        self.pop();
+        sol
     }
 
     #[inline]
-    pub fn assert_in(&self, bv: &BV<Arc<Btor>>, values: &[u64]) {
+    pub fn assert_in(&mut self, bv: &BV<Arc<Btor>>, values: &[u64]) {
         let mut cond = self.bvv(1, 1);
         for val in values {
             let nbv = self.bvv(*val, 64);
             cond = cond.or(&bv._eq(&nbv));
         }
-        cond.assert()
+        self.assert(&cond);
+    }
+
+    #[inline]
+    pub fn assert(&mut self, bv: &BV<Arc<Btor>>) {
+        //let new_bv = self.translate(bv).unwrap();
+        //new_bv.assert();
+        self.assertions.push(bv.to_owned());
     }
 
     #[inline]
     pub fn is_sat(&self) -> bool {
-        self.btor.sat() == SolverResult::Sat 
+        self.btor.push(1);
+        self.apply_assertions();
+        let sat = self.btor.sat() == SolverResult::Sat;
+        self.btor.pop(1);
+        sat
     }
 
-    pub fn evaluate_many(&self, bv: &BV<Arc<Btor>>) -> Vec<u64> {
+    pub fn evaluate_many(&mut self, bv: &BV<Arc<Btor>>) -> Vec<u64> {
         let mut solutions: Vec<u64> = vec!();
-        let new_bv = self.translate(bv).unwrap();
+        //let new_bv = self.translate(bv).unwrap();
         self.btor.push(1);
+        self.apply_assertions();
         for _i in 0..EVAL_MAX {
             if self.btor.sat() == SolverResult::Sat {
-                let sol = new_bv.get_a_solution().as_u64().unwrap();
+                let sol = bv.get_a_solution().as_u64().unwrap();
                 solutions.push(sol);
                 let sol_bv = BV::from_u64(
-                    self.btor.clone(), sol, new_bv.get_width());
+                    self.btor.clone(), sol, bv.get_width());
 
-                new_bv._eq(&sol_bv).not().assert();
+                bv._eq(&sol_bv).not().assert();
             } else {
                 break
             }
@@ -202,56 +277,80 @@ impl Solver {
     }
 
     pub fn solution(&self, bv: &BV<Arc<Btor>>) -> Option<String> {
-        let new_bv = self.translate(bv).unwrap();
-        if self.is_sat() {
-            let solution = new_bv.get_a_solution();
+        self.btor.push(1);
+        self.apply_assertions();
+        let sol = if self.btor.sat() == SolverResult::Sat {
+            let solution = bv.get_a_solution().disambiguate();
             let sol_str = solution.as_01x_str(); 
             Some(sol_str.to_string())
         } else {
             None
+        };
+        self.btor.pop(1);
+        sol
+    }
+
+    pub fn and_all(&self, bvs: &Vec<BV<Arc<Btor>>>) -> Option<BV<Arc<Btor>>> {
+        let mut bv = BV::from_bool(self.btor.clone(), true);
+        for next_bv in bvs {
+            bv = bv.and(next_bv);
         }
+        Some(bv)
+    }
+
+    pub fn or_all(&self, bvs: &mut Vec<BV<Arc<Btor>>>) -> Option<BV<Arc<Btor>>> {
+        let mut bv = BV::from_bool(self.btor.clone(), true);
+        for next_bv in bvs {
+            bv = bv.or(next_bv);
+        }
+        Some(bv)
     }
 
     // surprisingly fast binary search to max
     pub fn max(&self, bv: &BV<Arc<Btor>>) -> u64 {
-        let new_bv = self.translate(bv).unwrap();
-        let len = new_bv.get_width();
+        self.btor.push(1);
+        self.apply_assertions();
+
+        let len = bv.get_width();
         let mut low = 0; 
         let mut high = 1 << (len-1);
 
         while high != low {
-            new_bv.ugte(&self.bvv(high, len)).assume();
-            while !self.is_sat() && high != low {
+            bv.ugte(&self.bvv(high, len)).assume();
+            while self.btor.sat() != SolverResult::Sat && high != low {
                 high = low + (high - low) / 2;
-                new_bv.ugte(&self.bvv(high, len)).assume();
+                bv.ugte(&self.bvv(high, len)).assume();
             }
 
             let tmp = high;
             high = high + (high - low) / 2;
             low = tmp;
         }
+        self.btor.pop(1);
 
         low
     }
 
     pub fn min(&self, bv: &BV<Arc<Btor>>) -> u64 {
-        let new_bv = self.translate(bv).unwrap();
-        let len = new_bv.get_width();
+        self.btor.push(1);
+        self.apply_assertions();
+
+        let len = bv.get_width();
         let mut low = 0; 
         let mut high = 1 << (len-1);
         
         while high != low {
-            new_bv.ult(&self.bvv(high, len)).assume();
-            while self.is_sat() && high != low {
+            bv.ult(&self.bvv(high, len)).assume();
+            while self.btor.sat() == SolverResult::Sat && high != low {
                 high = low + (high - low) / 2;
-                new_bv.ult(&self.bvv(high, len)).assume();
+                bv.ult(&self.bvv(high, len)).assume();
             }
 
             let tmp = high;
             high = high + (high - low) / 2;
             low = tmp;
         }
-
+        self.btor.pop(1);
         low
     }
 
