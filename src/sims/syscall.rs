@@ -38,7 +38,7 @@ pub fn indirect(state: &mut State, mut args: Vec<Value>) -> Value {
 
 pub fn open(state: &mut State, args: Vec<Value>) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
-    let len = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let len = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
     let length = state.solver.evalcon_to_u64(&len).unwrap();
     let path = state.memory.read_string(addr, length as usize);
     if let Some(fd) = state.filesystem.open(path.as_str(), FileMode::Read) {
@@ -60,13 +60,13 @@ pub fn read(state: &mut State, args: Vec<Value>) -> Value {
     let length = state.solver.max_value(&args[2]);
     let data = state.filesystem.read(fd as usize, length as usize);
     let len = data.len();
-    state.memory.write_sym_len(&args[1], data, &args[2]);
+    state.memory_write(&args[1], data, &args[2]);
     Value::Concrete(len as u64)
 }
 
 pub fn write(state: &mut State, args: Vec<Value>) -> Value {
     let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
-    let data = state.memory.read_sym_len(&args[1], &args[2]);
+    let data = state.memory_read(&args[1], &args[2]);
     let len = data.len();
     state.filesystem.write(fd as usize, data);
     Value::Concrete(len as u64)
@@ -74,7 +74,7 @@ pub fn write(state: &mut State, args: Vec<Value>) -> Value {
 
 pub fn access(state: &mut State, args: Vec<Value>) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
-    let len = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let len = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
     let length = state.solver.evalcon_to_u64(&len).unwrap();
     let path = state.memory.read_string(addr, length as usize);
     state.filesystem.access(path.as_str())

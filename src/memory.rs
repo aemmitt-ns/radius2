@@ -83,12 +83,12 @@ impl Memory {
     }
 
     pub fn alloc(&mut self, length: &Value) -> u64 {
-        let len = self.solver.max_value(length);
+        let len = length.as_u64().unwrap(); //solver.max_value(length);
         self.heap.alloc(len)
     }
 
     pub fn free(&mut self, addr: &Value) -> Value {
-        let address = self.solver.evalcon_to_u64(addr).unwrap();
+        let address = addr.as_u64().unwrap(); //solver.evalcon_to_u64(addr).unwrap();
         if let Some(ret) = self.heap.free(address) {
             Value::Concrete(ret)
         } else {
@@ -151,20 +151,19 @@ impl Memory {
         -1i64 as u64
     }
 
-    pub fn read_sym(&mut self, address: &Value, len: usize) -> Value {
+    pub fn read_sym(&mut self, address: &Value, len: usize, solver: &mut Solver) -> Value {
         match address {
             Value::Concrete(addr) => {
                 self.read_value(*addr, len)
             },
             Value::Symbolic(addr) => {
-                let addrs = self.solver.evaluate_many(addr);
-                //println!("addrs: {:?}", addrs);
-                let mut value = Value::Symbolic(self.solver.bvv(0, 64));
+                let addrs = solver.evaluate_many(addr);
+                let mut value = Value::Symbolic(solver.bvv(0, 64));
                 for a in addrs {
                     let read_val = self.read_value(a, len);
-                    let bv = self.solver.bvv(a, 64);
+                    let bv = solver.bvv(a, 64);
                     let cond = Value::Symbolic(addr._eq(&bv));
-                    value = self.solver.conditional(&cond, &read_val, &value);
+                    value = solver.conditional(&cond, &read_val, &value);
                 }
                 //println!("value: {:?}", value);
                 value
@@ -172,34 +171,34 @@ impl Memory {
         }
     }
 
-    pub fn write_sym(&mut self, address: &Value, value: Value, len: usize) {
+    pub fn write_sym(&mut self, address: &Value, value: Value, len: usize, solver: &mut Solver) {
         match address {
             Value::Concrete(addr) => {
                 self.write_value(*addr, value, len)
             },
             Value::Symbolic(addr) => {
-                let addrs = self.solver.evaluate_many(addr);
+                let addrs = solver.evaluate_many(addr);
                 //let mut value = Value::Symbolic(self.solver.bvv(0, 64));
                 for a in addrs {
                     let read_val = self.read_value(a, len);
-                    let bv = self.solver.bvv(a, 64);
+                    let bv = solver.bvv(a, 64);
                     let cond = Value::Symbolic(addr._eq(&bv));
-                    let new_val = self.solver.conditional(&cond, &value, &read_val);
+                    let new_val = solver.conditional(&cond, &value, &read_val);
                     self.write_value(a, new_val, len);
                 }
             }
         }
     }
 
-    pub fn read_sym_len(&mut self, address: &Value, length: &Value) -> Vec<Value> {
-        let len = self.solver.max_value(length) as usize;
+    pub fn read_sym_len(&mut self, address: &Value, length: &Value, solver: &mut Solver) -> Vec<Value> {
+        let len = solver.max_value(length) as usize;
 
         match address {
             Value::Concrete(addr) => {
                 self.read(*addr, len)
             },
             Value::Symbolic(addr) => {
-                let addrs = self.solver.evaluate_many(addr);
+                let addrs = solver.evaluate_many(addr);
                 //println!("addrs: {:?}", addrs);
                 let mut values = vec!();
                 for a in addrs {
@@ -209,9 +208,9 @@ impl Memory {
                         new_vals = read_vals;
                     } else {
                         for count in 0..len {
-                            let bv = self.solver.bvv(a, 64);
+                            let bv = solver.bvv(a, 64);
                             let cond = Value::Symbolic(addr._eq(&bv));
-                            let value = self.solver.conditional(&cond, 
+                            let value = solver.conditional(&cond, 
                                 &read_vals[count], &values[count]);
                             
                             new_vals.push(value);
@@ -225,8 +224,8 @@ impl Memory {
         }
     }
 
-    pub fn write_sym_len(&mut self, address: &Value, values: Vec<Value>, length: &Value) {
-        let mut len = self.solver.max_value(length) as usize;
+    pub fn write_sym_len(&mut self, address: &Value, values: Vec<Value>, length: &Value, solver: &mut Solver) {
+        let mut len = solver.max_value(length) as usize;
         // hopefully this doesn't occur
         if len > values.len() {
             len = values.len();
@@ -235,7 +234,7 @@ impl Memory {
         let mut addrs = vec!();
         match address {
             Value::Concrete(addr) => addrs.push(*addr),
-            Value::Symbolic(addr) => addrs.extend(self.solver.evaluate_many(addr))
+            Value::Symbolic(addr) => addrs.extend(solver.evaluate_many(addr))
         };
 
         for addr in addrs {
@@ -244,20 +243,20 @@ impl Memory {
                 let addr_val = Value::Concrete(addr);
                 let count_val = Value::Concrete(count as u64); 
                 let cond = address.clone().eq(addr_val) & count_val.ult(length.clone());
-                let value = self.solver.conditional(&cond, &values[count], &read_vals[count]);
+                let value = solver.conditional(&cond, &values[count], &read_vals[count]);
                 self.write(addr+count as u64, vec!(value));
             }
         }
     }
 
-    pub fn memmove(&mut self, dst: &Value, src: &Value, length: &Value) {
-        let data = self.read_sym_len(src, length);
-        self.write_sym_len(dst, data, length);    
+    pub fn memmove(&mut self, dst: &Value, src: &Value, length: &Value, solver: &mut Solver) {
+        let data = self.read_sym_len(src, length, solver);
+        self.write_sym_len(dst, data, length, solver);    
     }
 
-    pub fn search(&mut self, addr: &Value, needle: &Value, length: &Value, reverse: bool) -> Value {
+    pub fn search(&mut self, addr: &Value, needle: &Value, length: &Value, reverse: bool, solver: &mut Solver) -> Value {
         //let mut search_data = self.read_sym_len(addr, length);
-        let len = self.solver.max_value(length) as usize;
+        let len = solver.max_value(length) as usize;
 
         // concrete needle ends at null
         // symbolic is given by width
@@ -282,7 +281,7 @@ impl Memory {
         for pos in 0..(len - needlen) {
             // get value to test
             let mut pos_val = addr.clone() + Value::Concrete(pos as u64);
-            let value = self.read_sym(&pos_val, needlen);
+            let value = self.read_sym(&pos_val, needlen, solver);
             if reverse {
                 pos_val = addr.clone() + length.clone() - Value::Concrete(pos as u64);
             }
@@ -291,7 +290,7 @@ impl Memory {
                 !pos_val.clone().ult(addr.clone());
             let new_cond = value.clone().eq(needle.clone()) & pos_cond & !cond.clone();
             //println!("{:?}", new_cond);
-            result = self.solver.conditional(&new_cond, &pos_val, &result);
+            result = solver.conditional(&new_cond, &pos_val, &result);
             cond = value.eq(needle.clone()) | cond;
 
             if let Value::Concrete(res) = &result {
@@ -307,19 +306,19 @@ impl Memory {
         result
     }
 
-    pub fn strlen(&mut self, addr: &Value, length: &Value) -> Value {
-        let end = self.search(addr, &Value::Concrete(0), length, false);
-        self.solver.conditional(
+    pub fn strlen(&mut self, addr: &Value, length: &Value, solver: &mut Solver) -> Value {
+        let end = self.search(addr, &Value::Concrete(0), length, false, solver);
+        solver.conditional(
             &(end.clone().eq(Value::Concrete(0))), 
             &length,
             &(end - addr.clone())
         )
     }
 
-    pub fn compare(&mut self, addr1: &Value, addr2: &Value, length: &Value) -> Value {
-        let len = self.solver.max_value(length);
-        let data1 = self.read_sym_len(addr1, &Value::Concrete(len));
-        let data2 = self.read_sym_len(addr2, &Value::Concrete(len));
+    pub fn compare(&mut self, addr1: &Value, addr2: &Value, length: &Value, solver: &mut Solver) -> Value {
+        let len = solver.max_value(length);
+        let data1 = self.read_sym_len(addr1, &Value::Concrete(len), solver);
+        let data2 = self.read_sym_len(addr2, &Value::Concrete(len), solver);
 
         let mut result = Value::Concrete(0);
         let mut same = Value::Concrete(1);
@@ -333,11 +332,11 @@ impl Memory {
             let lt = d1.clone().ult(d2.clone()) & !d1.clone().eq(d2.clone());
             let len_cond = ind_val.clone().ult(length.clone());
 
-            let lt_val = self.solver.conditional(
+            let lt_val = solver.conditional(
                 &(lt & same.clone() & len_cond.clone()), 
                 &Value::Concrete(-1i64 as u64), &result);
 
-            result = self.solver.conditional(
+            result = solver.conditional(
                 &(gt & same.clone() & len_cond), 
                 &Value::Concrete(1), &lt_val);
 

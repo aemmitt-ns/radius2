@@ -5,6 +5,8 @@ use std::sync::Arc;
 
 const EVAL_MAX: u64 = 256;
 
+//type RBV = BV<Arc<Btor>>;
+
 #[derive(Debug, Clone)]
 pub struct Solver {
     pub btor: Arc<Btor>,
@@ -61,9 +63,9 @@ impl Solver {
 
     #[inline]
     pub fn translate(&self, bv: &BV<Arc<Btor>>) -> Option<BV<Arc<Btor>>> {
-        Some(bv.to_owned())
+        //Some(bv.to_owned())
         //println!("{:?}", bv);
-        //Btor::get_matching_bv(self.btor.clone(), bv)
+        Btor::get_matching_bv(self.btor.clone(), bv)
     }
 
     #[inline]

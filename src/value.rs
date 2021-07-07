@@ -676,15 +676,6 @@ impl Value {
         }
     }
 
-    /*
-    not allowed anymore for assertion collecting
-    pub fn assert(&self) {
-        match self {
-            Value::Concrete(_a) => {},
-            Value::Symbolic(a) => a.assert()
-        }
-    }*/
-
     pub fn as_u64(&self) -> Option<u64> {
         match self {
             Value::Concrete(a) => Some(*a),
@@ -695,18 +686,7 @@ impl Value {
     pub fn as_bv(&self) -> Option<BV<Arc<Btor>>> {
         match self {
             Value::Concrete(_a) => None,
-            Value::Symbolic(a) => Some(a.to_owned())
+            Value::Symbolic(a)  => Some(a.to_owned())
         }
     }
-
-    /*pub fn uext(self, bits: u64) -> Value {
-        match self {
-            Value::Concrete(a) => {
-                Value::Concrete(a)
-            },
-            Value::Symbolic(a) => {
-                Value::Symbolic(b.rol(&a.uext(-width_diff as u32)))
-            }
-        }
-    }*/
 }
