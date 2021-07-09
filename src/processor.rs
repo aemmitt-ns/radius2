@@ -65,7 +65,7 @@ pub struct InstructionEntry {
 //const DEBUG: bool = false; // show instructions
 //const LAZY:  bool = true;  // dont check sat on ite PCs
 //const OPT:   bool = true;  // optimize by removing unread flag sets
-const BFS:   bool = true;  // dequeue states instead of popping
+const BFS:   bool = true;    // dequeue states instead of popping
 
 impl Processor {
     pub fn new(optimized: bool, debug: bool, lazy: bool) -> Self {

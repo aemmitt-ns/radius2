@@ -159,7 +159,8 @@ impl Registers {
             },
             Value::Symbolic(val) => {
                 if val.is_const() {
-                    Value::Concrete(val.as_u64().unwrap())
+                    let mask: u64 = (1 << size) - 1;
+                    Value::Concrete((val.as_u64().unwrap() >> offset) & mask)
                 } else {
                     Value::Symbolic(val.slice(
                         (offset+size-1) as u32, offset as u32))

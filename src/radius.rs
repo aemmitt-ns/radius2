@@ -267,6 +267,11 @@ impl Radius {
         self.r2api.get_info()
     }
 
+    // get address of symbol
+    pub fn get_address(&mut self, symbol: &str) -> u64 {
+        self.r2api.get_address(symbol)
+    }
+
     // get all functions
     pub fn get_functions(&mut self) -> Vec<FunctionInfo> {
         self.r2api.get_functions()

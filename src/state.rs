@@ -152,6 +152,15 @@ impl State {
         self.memory.memmove(dst, src, length, &mut self.solver)
     }
 
+    pub fn memory_read_string(&mut self, address: u64, length: usize) -> String {
+        self.memory.read_string(address, length, &mut self.solver)
+    }
+
+    // this doesnt need to be here, just for consistency sake
+    pub fn memory_write_string(&mut self, address: u64, string: &str) {
+        self.memory.write_string(address, string)
+    }
+
     #[inline]
     pub fn bv(&mut self, s: &str, n: u32) -> BV<Arc<Btor>>{
         self.solver.bv(s, n)

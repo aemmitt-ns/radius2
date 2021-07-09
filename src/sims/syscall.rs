@@ -40,7 +40,7 @@ pub fn open(state: &mut State, args: Vec<Value>) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let len = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
     let length = state.solver.evalcon_to_u64(&len).unwrap();
-    let path = state.memory.read_string(addr, length as usize);
+    let path = state.memory_read_string(addr, length as usize);
     if let Some(fd) = state.filesystem.open(path.as_str(), FileMode::Read) {
         Value::Concrete(fd as u64)
     } else {
@@ -76,7 +76,7 @@ pub fn access(state: &mut State, args: Vec<Value>) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let len = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
     let length = state.solver.evalcon_to_u64(&len).unwrap();
-    let path = state.memory.read_string(addr, length as usize);
+    let path = state.memory_read_string(addr, length as usize);
     state.filesystem.access(path.as_str())
 }
 

@@ -104,7 +104,7 @@ fn r100() {
 
 //#[test]
 fn r200() {
-    let options = vec!(RadiusOption::Debug(true));
+    let options = vec!(RadiusOption::Debug(false));
     let mut radius = Radius::new_with_options("tests/r200", options);
     let mut state = radius.call_state(0x00400886);
     let bv = state.bv("flag", 6*8);
@@ -253,5 +253,5 @@ fn ioscrackme() {
 }
 
 fn main() {
-    r200();
+    r100();
 }

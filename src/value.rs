@@ -689,4 +689,11 @@ impl Value {
             Value::Symbolic(a)  => Some(a.to_owned())
         }
     }
+
+    pub fn depends(&self, bv: BV<Arc<Btor>>) -> bool {
+        match self {
+            Value::Concrete(_a) => false,
+            Value::Symbolic(a)  => format!("{:?}", a).contains(bv.get_symbol().unwrap())
+        }
+    }
 }

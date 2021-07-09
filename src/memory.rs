@@ -423,14 +423,14 @@ impl Memory {
     }
 
     //read utf8 string
-    pub fn read_string(&mut self, addr: u64, length: usize) -> String {
+    pub fn read_string(&mut self, addr: u64, length: usize, solver: &mut Solver) -> String {
         let data = self.read(addr, length);
         let mut data_u8 = vec!();
-        self.solver.push();
+        solver.push();
         for d in data {
-            data_u8.push(self.solver.evalcon_to_u64(&d).unwrap() as u8);
+            data_u8.push(solver.evalcon_to_u64(&d).unwrap() as u8);
         }
-        self.solver.pop();
+        solver.pop();
         String::from_utf8(data_u8).unwrap()
     }
 

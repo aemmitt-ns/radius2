@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 const EVAL_MAX: u64 = 256;
 
-//type RBV = BV<Arc<Btor>>;
+type BitVec = BV<Arc<Btor>>;
 
 #[derive(Debug, Clone)]
 pub struct Solver {
     pub btor: Arc<Btor>,
-    pub assertions: Vec<BV<Arc<Btor>>>, // yo dawg i heard you like types
+    pub assertions: Vec<BitVec>, // yo dawg i heard you like types
     pub indexes: Vec<usize>
 }
 
@@ -21,6 +21,7 @@ impl Solver {
         btor.set_opt(BtorOption::ModelGen(ModelGen::All));
         btor.set_opt(BtorOption::Incremental(true));
         btor.set_opt(BtorOption::OutputNumberFormat(NumberFormat::Hexadecimal));
+        btor.set_opt(BtorOption::PrettyPrint(false));
 
         Solver {
             btor,
@@ -52,17 +53,17 @@ impl Solver {
     }
 
     #[inline]
-    pub fn bv(&self, s: &str, n: u32) -> BV<Arc<Btor>>{
+    pub fn bv(&self, s: &str, n: u32) -> BitVec {
         BV::new(self.btor.clone(), n, Some(s))
     }
 
     #[inline]
-    pub fn bvv(&self, v: u64, n: u32) -> BV<Arc<Btor>>{
+    pub fn bvv(&self, v: u64, n: u32) -> BitVec {
         BV::from_u64(self.btor.clone(), v, n)
     }
 
     #[inline]
-    pub fn translate(&self, bv: &BV<Arc<Btor>>) -> Option<BV<Arc<Btor>>> {
+    pub fn translate(&self, bv: &BitVec) -> Option<BitVec> {
         //Some(bv.to_owned())
         //println!("{:?}", bv);
         Btor::get_matching_bv(self.btor.clone(), bv)
@@ -78,7 +79,7 @@ impl Solver {
     }
 
     #[inline]
-    pub fn to_bv(&self, value: &Value, length: u32) -> BV<Arc<Btor>> {
+    pub fn to_bv(&self, value: &Value, length: u32) -> BitVec {
         match value {
             Value::Concrete(val) => {
                 self.bvv(*val, length)
@@ -117,7 +118,7 @@ impl Solver {
 
 
     #[inline]
-    pub fn evaluate(&self, bv: &BV<Arc<Btor>>) -> Option<Value> {
+    pub fn evaluate(&self, bv: &BitVec) -> Option<Value> {
         self.btor.push(1);
         self.apply_assertions();
         //let new_bv = self.translate(bv).unwrap();
@@ -153,7 +154,7 @@ impl Solver {
     }
 
     #[inline]
-    pub fn eval_to_bv(&mut self, value: &Value) -> Option<BV<Arc<Btor>>> {
+    pub fn eval_to_bv(&mut self, value: &Value) -> Option<BitVec> {
         match value {
             Value::Concrete(val) => {
                 Some(self.bvv(*val, 64))
@@ -208,8 +209,8 @@ impl Solver {
 
     // evaluate and constrain the symbol to the value
     #[inline]
-    pub fn evalcon(&mut self, bv: &BV<Arc<Btor>>) -> Option<u64> {
-        self.push();
+    pub fn evalcon(&mut self, bv: &BitVec) -> Option<u64> {
+        self.btor.push(1);
         self.apply_assertions();
         //let new_bv = self.translate(bv).unwrap();
         let sol = if self.btor.sat() == SolverResult::Sat {
@@ -220,12 +221,12 @@ impl Solver {
         } else {
             None
         };
-        self.pop();
+        self.btor.pop(1);
         sol
     }
 
     #[inline]
-    pub fn assert_in(&mut self, bv: &BV<Arc<Btor>>, values: &[u64]) {
+    pub fn assert_in(&mut self, bv: &BitVec, values: &[u64]) {
         let mut cond = self.bvv(1, 1);
         for val in values {
             let nbv = self.bvv(*val, 64);
@@ -250,7 +251,7 @@ impl Solver {
         sat
     }
 
-    pub fn evaluate_many(&mut self, bv: &BV<Arc<Btor>>) -> Vec<u64> {
+    pub fn evaluate_many(&mut self, bv: &BitVec) -> Vec<u64> {
         let mut solutions: Vec<u64> = vec!();
         //let new_bv = self.translate(bv).unwrap();
         self.btor.push(1);
@@ -278,7 +279,7 @@ impl Solver {
         solutions 
     }
 
-    pub fn solution(&self, bv: &BV<Arc<Btor>>) -> Option<String> {
+    pub fn solution(&self, bv: &BitVec) -> Option<String> {
         self.btor.push(1);
         self.apply_assertions();
         let sol = if self.btor.sat() == SolverResult::Sat {
@@ -292,7 +293,7 @@ impl Solver {
         sol
     }
 
-    pub fn and_all(&self, bvs: &Vec<BV<Arc<Btor>>>) -> Option<BV<Arc<Btor>>> {
+    pub fn and_all(&self, bvs: &Vec<BitVec>) -> Option<BitVec> {
         let mut bv = BV::from_bool(self.btor.clone(), true);
         for next_bv in bvs {
             bv = bv.and(next_bv);
@@ -300,7 +301,7 @@ impl Solver {
         Some(bv)
     }
 
-    pub fn or_all(&self, bvs: &mut Vec<BV<Arc<Btor>>>) -> Option<BV<Arc<Btor>>> {
+    pub fn or_all(&self, bvs: &mut Vec<BitVec>) -> Option<BitVec> {
         let mut bv = BV::from_bool(self.btor.clone(), true);
         for next_bv in bvs {
             bv = bv.or(next_bv);
@@ -309,7 +310,7 @@ impl Solver {
     }
 
     // surprisingly fast binary search to max
-    pub fn max(&self, bv: &BV<Arc<Btor>>) -> u64 {
+    pub fn max(&self, bv: &BitVec) -> u64 {
         self.btor.push(1);
         self.apply_assertions();
 
@@ -333,7 +334,7 @@ impl Solver {
         low
     }
 
-    pub fn min(&self, bv: &BV<Arc<Btor>>) -> u64 {
+    pub fn min(&self, bv: &BitVec) -> u64 {
         self.btor.push(1);
         self.apply_assertions();
 
