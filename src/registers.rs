@@ -132,6 +132,10 @@ impl Registers {
     pub fn get_value(&mut self, index: usize) -> Value {
         let register = &self.indexes[index];
 
+        if register.reg_info.offset as i64 == -1 {
+            return Value::Concrete(0); // this is a zero register
+        }
+
         let value = &self.values[register.value_index];
         let size = register.reg_info.size;
 
@@ -141,7 +145,6 @@ impl Registers {
                     return Value::Concrete(*val);
                 },
                 Value::Symbolic(val) => {
-                    //let trans_val = self.solver.translate(val).unwrap();
                     return Value::Symbolic(val.to_owned());
                 }
             }
@@ -155,9 +158,13 @@ impl Registers {
                 Value::Concrete((val >> offset) & mask)
             },
             Value::Symbolic(val) => {
-                //let trans_val = self.solver.translate(val).unwrap();
-                Value::Symbolic(val.slice(
-                    (offset+size-1) as u32, offset as u32))
+                if val.is_const() {
+                    let mask: u64 = (1 << size) - 1;
+                    Value::Concrete((val.as_u64().unwrap() >> offset) & mask)
+                } else {
+                    Value::Symbolic(val.slice(
+                        (offset+size-1) as u32, offset as u32))
+                }
             }
         }
     }
@@ -166,6 +173,11 @@ impl Registers {
     pub fn set_value(&mut self, index: usize, value: Value) {
         //println!("reg {:?} {:?}", index, value);
         let register = &self.indexes[index];
+
+        if register.reg_info.offset as i64 == -1 {
+            return; // this is a zero register
+        }
+
         let size = register.reg_info.size;
 
         if size == register.bounds.size {
@@ -188,15 +200,15 @@ impl Registers {
                 },
                 (Value::Concrete(new), Value::Symbolic(old)) => {
                     new_sym = self.solver.bvv(new, size as u32);
-                    old_sym = old; //self.solver.translate(&old).unwrap();
+                    old_sym = old; 
                 },
                 (Value::Symbolic(new), Value::Concrete(old)) => {
                     old_sym = self.solver.bvv(old, bound_size);
-                    new_sym = new; //self.solver.translate(&new).unwrap();
+                    new_sym = new; 
                 },
                 (Value::Symbolic(new), Value::Symbolic(old)) => {
-                    old_sym = old; //self.solver.translate(&old).unwrap();
-                    new_sym = new; //self.solver.translate(&new).unwrap();
+                    old_sym = old; 
+                    new_sym = new; 
                 }
             }
 

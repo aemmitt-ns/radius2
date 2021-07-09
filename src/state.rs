@@ -119,6 +119,48 @@ impl State {
         }
     }
 
+    // yes i hate all of this shit
+    pub fn memory_read(&mut self, address: &Value, length: &Value) -> Vec<Value> {
+        self.memory.read_sym_len(address, length, &mut self.solver)
+    }
+
+    pub fn memory_write(&mut self, address: &Value, values: Vec<Value>, length: &Value) {
+        self.memory.write_sym_len(address, values, length, &mut self.solver)
+    }
+
+    pub fn memory_read_value(&mut self, address: &Value, length: usize) -> Value {
+        self.memory.read_sym(address, length, &mut self.solver)
+    }
+
+    pub fn memory_write_value(&mut self, address: &Value, value: Value, length: usize) {
+        self.memory.write_sym(address, value, length, &mut self.solver)
+    }
+
+    pub fn memory_search(&mut self, addr: &Value, needle: &Value, length: &Value, reverse: bool) -> Value {
+        self.memory.search(addr, needle, length, reverse, &mut self.solver)
+    }
+
+    pub fn memory_compare(&mut self, dst: &Value, src: &Value, length: &Value) -> Value {
+        self.memory.compare(dst, src, length, &mut self.solver)
+    }
+
+    pub fn memory_strlen(&mut self, addr: &Value, length: &Value) -> Value {
+        self.memory.strlen(addr, length, &mut self.solver)
+    }
+
+    pub fn memory_move(&mut self, dst: &Value, src: &Value, length: &Value) {
+        self.memory.memmove(dst, src, length, &mut self.solver)
+    }
+
+    pub fn memory_read_string(&mut self, address: u64, length: usize) -> String {
+        self.memory.read_string(address, length, &mut self.solver)
+    }
+
+    // this doesnt need to be here, just for consistency sake
+    pub fn memory_write_string(&mut self, address: u64, string: &str) {
+        self.memory.write_string(address, string)
+    }
+
     #[inline]
     pub fn bv(&mut self, s: &str, n: u32) -> BV<Arc<Btor>>{
         self.solver.bv(s, n)
@@ -154,6 +196,11 @@ impl State {
     pub fn evalcon(&mut self, bv: &BV<Arc<Btor>>) -> Option<u64> {
         self.solver.evalcon(bv)
     }
+
+    // TODO
+    /*pub fn constrain_bytes(&mut self, bv: &BV<Arc<Btor>>, pattern: &str) {
+
+    }*/
 
     #[inline]
     pub fn is_sat(&mut self) -> bool {

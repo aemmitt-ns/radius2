@@ -569,7 +569,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             // TODO: fix to allow symbolic (sort of done)
             let addr = pop_value(state, false, false);
 
-            let val = state.memory.read_sym(&addr, n);
+            let val = state.memory_read_value(&addr, n);
             state.esil.current = val.clone();
             state.stack.push(StackItem::StackValue(val));
 
@@ -581,13 +581,13 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let value = pop_value(state, false, false);
 
             if let Some(cond) = &state.condition.clone() {
-                let prev = state.memory.read_sym(&addr, n);
+                let prev = state.memory_read_value(&addr, n);
                 //prev = state.translate_value(&prev);
                 
-                state.memory.write_sym(&addr, 
+                state.memory_write_value(&addr, 
                     Value::Symbolic(cond_value(cond, value, prev)), n);
             } else {
-                state.memory.write_sym(&addr, value, n);
+                state.memory_write_value(&addr, value, n);
             }
 
             //state.memory.write_value(addr, value, n);
@@ -600,13 +600,13 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let value = pop_value(state, false, false);
 
             if let Some(cond) = &state.condition.clone() {
-                let prev = state.memory.read_sym(&addr, n);
+                let prev = state.memory_read_value(&addr, n);
                 //prev = state.translate_value(&prev);
                 
-                state.memory.write_sym(&addr, 
+                state.memory_write_value(&addr, 
                     Value::Symbolic(cond_value(cond, value, prev)), n);
             } else {
-                state.memory.write_sym(&addr, value, n);
+                state.memory_write_value(&addr, value, n);
             }
 
             //state.memory.write_value(addr, value, n);
@@ -640,7 +640,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
                     state.stack.push(StackItem::StackValue(value));
                 }
             }
-        }, // TODO for r2ghidra ESIL
+        }, 
         Operations::Ceiling => {
             let arg1 = pop_double(state);
             let value = Value::Concrete(f64::to_bits(arg1.ceil()));

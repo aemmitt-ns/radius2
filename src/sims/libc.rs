@@ -12,7 +12,7 @@ const MAX_LEN: u64 = 8192;
 pub fn puts(state: &mut State, args: Vec<Value>) -> Value {
     let addr = &args[0];
     let length = strlen(state, vec!(addr.to_owned()));
-    let mut data = state.memory.read_sym_len(addr, &length);
+    let mut data = state.memory_read(addr, &length);
     data.push(Value::Concrete('\n' as u64)); // add newline
     //println!("{}", value);
     state.filesystem.write(1, data);
@@ -25,19 +25,19 @@ pub fn printf(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn memmove(state: &mut State, args: Vec<Value>) -> Value {
-    state.memory.memmove(&args[0], &args[1], &args[2]);
+    state.memory_move(&args[0], &args[1], &args[2]);
     args[0].to_owned()
 }
 
 pub fn memcpy(state: &mut State, args: Vec<Value>) -> Value {
     // TODO make actual memcpy that does overlaps right
     // how often do memcpys actually do that? next to never probably
-    state.memory.memmove(&args[0], &args[1], &args[2]);
+    state.memory_move(&args[0], &args[1], &args[2]);
     args[0].to_owned()
 }
 
 pub fn bcopy(state: &mut State, args: Vec<Value>) -> Value {
-    state.memory.memmove(&args[0], &args[1], &args[2]);
+    state.memory_move(&args[0], &args[1], &args[2]);
     Value::Concrete(0)
 }
 
@@ -63,29 +63,29 @@ pub fn memfrob(state: &mut State, args: Vec<Value>) -> Value {
     let num = &args[1];
 
     let x = Value::Concrete(0x2a);
-    let data = state.memory.read_sym_len(&addr, &num);
+    let data = state.memory_read(&addr, &num);
     let mut new_data = vec!();
     for d in data {
         new_data.push(d.to_owned() ^ x.to_owned());
     }
 
-    state.memory.write_sym_len(addr, new_data, &num);
+    state.memory_write(addr, new_data, &num);
     //state.mem_copy(addr, data, num)
     Value::Concrete(0)
 }
 
 pub fn strlen(state: &mut State, args: Vec<Value>) -> Value {
-    state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN))
+    state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN))
 }
 
 pub fn strnlen(state: &mut State, args: Vec<Value>) -> Value {
-    state.memory.strlen(&args[0], &args[1])
+    state.memory_strlen(&args[0], &args[1])
 }
 
 // TODO implement this with sim fs
 pub fn gets(state: &mut State, args: Vec<Value>) -> Value {
     let bv = state.bv(format!("gets_{:?}", &args[0]).as_str(), 256*8);
-    state.memory.write_sym(&args[0], Value::Symbolic(bv), 256);
+    state.memory_write_value(&args[0], Value::Symbolic(bv), 256);
     args[0].to_owned()
 }
 
@@ -97,41 +97,41 @@ pub fn fgets(_state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn strcpy(state: &mut State, args: Vec<Value>) -> Value {
-    let length = state.memory.strlen(&args[1], &Value::Concrete(MAX_LEN))
+    let length = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN))
         +Value::Concrete(1);
-    state.memory.memmove(&args[0], &args[1], &length);
+    state.memory_move(&args[0], &args[1], &length);
     args[0].to_owned()
 }
 
 pub fn stpcpy(state: &mut State, args: Vec<Value>) -> Value {
-    let length = state.memory.strlen(&args[1], &Value::Concrete(MAX_LEN));
+    let length = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN));
     strcpy(state, args) + length
 }
 
 pub fn strdup(state: &mut State, args: Vec<Value>) -> Value {
-    let length = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN))
+    let length = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN))
         +Value::Concrete(1);
     let new_addr = malloc(state, vec!(length.to_owned()));
-    state.memory.memmove(&new_addr, &args[0], &length);
+    state.memory_move(&new_addr, &args[0], &length);
     new_addr
 }
 
 pub fn strdupa(state: &mut State, args: Vec<Value>) -> Value {
-    let length = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN))
+    let length = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN))
         +Value::Concrete(1);
     strdup(state, args) + length
 }
 
 // TODO for strn stuff I may need to add a null?
 pub fn strndup(state: &mut State, args: Vec<Value>) -> Value {
-    let length = state.memory.strlen(&args[0], &args[1]);
+    let length = state.memory_strlen(&args[0], &args[1]);
     let new_addr = malloc(state, vec!(length.clone()));
-    state.memory.memmove(&new_addr, &args[0], &length);
+    state.memory_move(&new_addr, &args[0], &length);
     new_addr
 }
 
 pub fn strndupa(state: &mut State, args: Vec<Value>) -> Value {
-    let length = state.memory.strlen(&args[0], &args[1]);
+    let length = state.memory_strlen(&args[0], &args[1]);
     strndup(state, args) + length
 }
 
@@ -144,22 +144,22 @@ pub fn strfry(_state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn strncpy(state: &mut State, args: Vec<Value>) -> Value {
-    let length = state.memory.strlen(&args[1], &args[2]);
-    state.memory.memmove(&args[0], &args[1], &length);
+    let length = state.memory_strlen(&args[1], &args[2]);
+    state.memory_move(&args[0], &args[1], &length);
     args[0].to_owned()
 }
 
 pub fn strcat(state: &mut State, args: Vec<Value>) -> Value {
-    let length1 = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
-    let length2 = state.memory.strlen(&args[1], &Value::Concrete(MAX_LEN))+Value::Concrete(1);
-    state.memory.memmove(&(args[0].to_owned() + length1), &args[1], &length2);
+    let length1 = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let length2 = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN))+Value::Concrete(1);
+    state.memory_move(&(args[0].to_owned() + length1), &args[1], &length2);
     args[0].to_owned()
 }
 
 pub fn strncat(state: &mut State, args: Vec<Value>) -> Value {
-    let length1 = state.memory.strlen(&args[0], &args[2]);
-    let length2 = state.memory.strlen(&args[1], &args[2])+Value::Concrete(1);
-    state.memory.memmove(&(args[0].to_owned() + length1), &args[1], &length2);
+    let length1 = state.memory_strlen(&args[0], &args[2]);
+    let length2 = state.memory_strlen(&args[1], &args[2])+Value::Concrete(1);
+    state.memory_move(&(args[0].to_owned() + length1), &args[1], &length2);
     args[0].to_owned()
 }
 
@@ -171,12 +171,12 @@ pub fn memset(state: &mut State, args: Vec<Value>) -> Value {
         data.push(args[1].to_owned());
     }
 
-    state.memory.write_sym_len(&args[0], data, &args[2]);
+    state.memory_write(&args[0], data, &args[2]);
     args[0].to_owned()
 }
 
 pub fn memchr_help(state: &mut State, args: Vec<Value>, reverse: bool) -> Value {
-    state.memory.search(&args[0], &args[1], &args[2], reverse)
+    state.memory_search(&args[0], &args[1], &args[2], reverse)
 }
 
 pub fn memchr(state: &mut State, args: Vec<Value>) -> Value {
@@ -188,7 +188,7 @@ pub fn memrchr(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn strchr_help(state: &mut State, args: Vec<Value>, reverse: bool) -> Value {
-    let length = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let length = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
     memchr_help(state, vec!(args[0].to_owned(), args[1].to_owned(), length), reverse)
 }
 
@@ -201,25 +201,25 @@ pub fn strrchr(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn memcmp(state: &mut State, args: Vec<Value>) -> Value {
-    state.memory.compare(&args[0], &args[1], &args[2])
+    state.memory_compare(&args[0], &args[1], &args[2])
 }
 
 pub fn strcmp(state: &mut State, args: Vec<Value>) -> Value {    
-    let len1 = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
-    let len2 = state.memory.strlen(&args[1], &Value::Concrete(MAX_LEN));
+    let len1 = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let len2 = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN));
     let length  = state.solver.conditional(&(len1.clone().ult(len2.clone())), 
         &len1, &len2)+Value::Concrete(1);
 
-    state.memory.compare(&args[0], &args[1], &length)
+    state.memory_compare(&args[0], &args[1], &length)
 }
 
 pub fn strncmp(state: &mut State, args: Vec<Value>) -> Value {
-    let len1 = state.memory.strlen(&args[0], &args[2]);
-    let len2 = state.memory.strlen(&args[1], &args[2]);
+    let len1 = state.memory_strlen(&args[0], &args[2]);
+    let len2 = state.memory_strlen(&args[1], &args[2]);
     let length  = state.solver.conditional(&(len1.clone().ult(len2.clone())), 
         &len1, &len2)+Value::Concrete(1);
 
-    state.memory.compare(&args[0], &args[1], &length)
+    state.memory_compare(&args[0], &args[1], &length)
 }
 
 // TODO properly handle sym slens
@@ -227,7 +227,7 @@ pub fn strncmp(state: &mut State, args: Vec<Value>) -> Value {
 // and the performance would likely be shit anyway
 pub fn memmem(state: &mut State, args: Vec<Value>) -> Value {
     let len = state.solver.evalcon_to_u64(&args[3]).unwrap() as usize;
-    let mut needle_val = state.memory.read_sym(&args[2], len);
+    let mut needle_val = state.memory_read_value(&args[2], len);
 
     // necessary as concrete values will not search for end nulls
     needle_val = Value::Symbolic(state.solver.to_bv(&needle_val, 8*len as u32));
@@ -235,10 +235,10 @@ pub fn memmem(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn strstr(state: &mut State, args: Vec<Value>) -> Value {
-    let dlen = state.memory.strlen(&args[0], &Value::Concrete(MAX_LEN));
-    let slen = state.memory.strlen(&args[1], &Value::Concrete(MAX_LEN));
+    let dlen = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let slen = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN));
     let len = state.solver.evalcon_to_u64(&slen).unwrap() as usize;
-    let needle_val = state.memory.read_sym(&args[0], len);
+    let needle_val = state.memory_read_value(&args[0], len);
     memchr_help(state, vec!(args[0].to_owned(), needle_val, dlen), false)
 }
 
@@ -257,6 +257,30 @@ pub fn free(state: &mut State, args: Vec<Value>) -> Value {
 
 pub fn c_syscall(state: &mut State, args: Vec<Value>) -> Value {
     syscall::syscall("indirect_syscall", state, args)
+}
+
+// This is not going to be a real version of this func
+// because otherwise all execution would have to take place 
+// within this sim which would be weird and bad
+pub fn __libc_start_main(state: &mut State, args: Vec<Value>) -> Value {
+    let main = args[0].to_owned();
+    let argc = args[1].to_owned();
+    let argv = args[2].to_owned();
+
+    // TODO go to init then main 
+    // but we need a nice arch neutral way to push ret 
+    // so until then 
+
+    // go to main 
+    state.registers.set_with_alias("PC", main);
+    state.registers.set_with_alias("A0", argc);
+    state.registers.set_with_alias("A1", argv);
+
+    // TODO set env
+    state.registers.set_with_alias("A2", Value::Concrete(0));
+
+    // uh in case we are overwriting A0
+    args[1].to_owned()
 }
 
 /*
@@ -443,7 +467,7 @@ pub fn gethostname(state: &mut State, args: Vec<Value>) -> Value {
     let len = state.solver.max_value(&args[1]);
     let bv = state.bv("hostname", 8*len as u32);
     let data = state.memory.unpack(Value::Symbolic(bv), len as usize);
-    state.memory.write_sym_len(&args[0], data, &args[1]);
+    state.memory_write(&args[0], data, &args[1]);
     Value::Concrete(0)
 }
 
@@ -546,204 +570,3 @@ pub fn access(state: &mut State, args: Vec<Value>) -> Value {
 pub fn exit(state: &mut State, args: Vec<Value>) -> Value {
     syscall::exit(state, args)
 }
-
-/*
-pub fn fseek(state: &mut State, f, offset, whence):
-    fd = fileno(state: &mut State, f)
-    return lseek(state: &mut State, BV(fd), offset, whence)
-
-
-pub fn access(state: &mut State, path, flag): // TODO: complete this
-    path = state.symbolic_string(path)[0]
-    path = state.evaluate_string(path)
-    return state.fs.exists(path)
-
-pub fn stat(state: &mut State, path, data): // TODO: complete this
-    path = state.symbolic_string(path)[0]
-    path = state.evaluate_string(path)
-    return state.fs.exists(path)
-
-
-pub fn system(state: &mut State, cmd):
-    string, length = state.symbolic_string(cmd)
-    logger.warning("system(%s)" % state.evaluate_string(string)) // idk
-    return 0
-
-pub fn abort(state):
-    logger.info("process aborted")
-    state.exit = 0
-    return 0
-
-pub fn simexit(state: &mut State, status):
-    logger.info("process exited")
-    state.exit = status
-    return 0
-
-pub fn print_stdout(s: str):
-    try:
-        from colorama import Fore, Style
-        sys.stdout.write(Fore.YELLOW+s+Style.RESET_ALL)
-    except:
-        sys.stdout.write(s)
-
-pub fn nothin(state):
-    return 0
-    
-pub fn ret_one(state):
-    return 1
-
-pub fn ret_negone(state):
-    return BV(-1)
-
-pub fn ret_arg1(state: &mut State, a):
-    return a
-
-pub fn ret_arg2(state: &mut State, a, b):
-    return b
-
-pub fn ret_arg3(state: &mut State, a, b, c):
-    return c
-
-pub fn ret_arg4(state: &mut State, a, b, c, d):
-    return d
-
-UINT = 0
-SINT = 1
-FLOAT = 2
-PTR = 3
-
-pub fn ieee_to_float(endian, v, size=64):
-    e = "<"
-    if endian == "big":
-        e = ">"
-
-    o = e+"d"
-    i = e+"Q"
-    if size == 32:
-        o = e+"f"
-        i = e+"I"
-
-    return unpack(o, pack(i, v))[0]
-
-pub fn convert_arg(state: &mut State, arg, typ, size, base):
-
-    szdiff = size-arg.size()
-
-    if szdiff > 0:
-        if typ == SINT:
-            arg = z3.SignExt(szdiff, arg)
-        else:
-            arg = z3.ZeroExt(szdiff, arg)
-    elif szdiff < 0:
-        arg = z3.Extract(size-1, 0, arg)
-
-    arg = state.evalcon(arg)
-    if typ == UINT:
-        return arg.as_long()
-    elif typ == SINT:
-        return arg.as_signed_long()
-    elif typ == FLOAT:
-        argl = arg.as_long()
-        return ieee_to_float(state.endian, argl, size)
-    else:
-        addr = arg.as_long()
-        string = state.symbolic_string(addr)[0]
-        return state.evaluate_string(string)
-
-// this sucks 
-pub fn format_writer(state: &mut State, fmt, vargs):
-    fmts = {
-        "c":   ["c",  UINT,  8, 10],
-        "d":   ["d",  SINT,  32, 10],
-        "i":   ["i",  SINT,  32, 10],
-        "u":   ["u",  UINT,  32, 10],
-        "e":   ["e",  FLOAT, 64, 10],
-        "E":   ["E",  FLOAT, 64, 10],
-        "f":   ["f",  FLOAT, 32, 10],
-        "lf":  ["lf", FLOAT, 64, 10],
-        "Lf":  ["Lf", FLOAT, 64, 10],
-        "g":   ["g",  FLOAT, 64, 10],
-        "G":   ["G",  FLOAT, 64, 10],
-        "hi":  ["hi", SINT,  16, 10],
-        "hu":  ["hu", UINT,  16, 10],
-        "lu":  ["lu", UINT,  state.bits, 10],
-        "ld":  ["ld", SINT,  state.bits, 10],
-        "li":  ["li", SINT,  state.bits, 10],
-        "p":   ["x",  UINT,  state.bits, 16],
-        "llu": ["lu", UINT,  64, 10],
-        "lld": ["ld", SINT,  64, 10],
-        "lli": ["li", SINT,  64, 10],
-        "x":   ["x",  UINT,  32, 16],
-        "hx":  ["x",  UINT,  16, 16],
-        "lx":  ["x",  UINT,  state.bits, 16],
-        "llx": ["x",  UINT,  64, 16],
-        "o":   ["o",  UINT,  32, 8],
-        "s":   ["s",  PTR,   state.bits, 10],
-        //"n":   ["",  PTR,   state.bits, 10],
-    }
-
-    '''if fmt.count("%") == 1:
-        r_str = ""
-        p_ind = fmt.index("%")
-
-        i = p_ind+1
-        shiftstr = ""
-        while not fmt[i].isalpha():
-            shiftstr += fmt[i]
-            i += 1'''
-
-    new_args = []
-    new_fmt = ""
-
-    ind = 0
-    argc = 0
-    while ind < len(fmt):
-        new_fmt += fmt[ind]
-        if fmt[ind] != "%":  
-            ind += 1
-        else:  
-            ind += 1
-            nextc = fmt[ind:ind+1]
-            if nextc == "%":
-                new_fmt += nextc
-
-            else:
-                arg = vargs[argc]
-                argc += 1
-
-                while not nextc.isalpha():
-                    new_fmt += nextc
-                    ind += 1
-                    nextc = fmt[ind:ind+1]
-                
-                next3fmt = fmt[ind:ind+3]
-                next2fmt = fmt[ind:ind+2]
-                next1fmt = fmt[ind:ind+1]
-
-                if next3fmt in fmts:
-                    rep, typ, sz, base = fmts[next3fmt]
-                    new_args += [convert_arg(state: &mut State, arg, typ, sz, base)]
-                    new_fmt += rep
-                    ind += 3
-
-                elif next2fmt in fmts:
-                    rep, typ, sz, base = fmts[next2fmt]
-                    new_args += [convert_arg(state: &mut State, arg, typ, sz, base)]
-                    new_fmt += rep
-                    ind += 2
-
-                elif next1fmt in fmts:
-                    rep, typ, sz, base = fmts[next1fmt]
-                    new_args += [convert_arg(state: &mut State, arg, typ, sz, base)]
-                    new_fmt += rep
-                    ind += 1
-                
-                elif next1fmt == "n":
-                    lastind = len(new_fmt)-new_fmt[::-1].index("%")-1
-                    n = len(new_fmt[:lastind]%tuple(new_args))
-                    state.mem_write(arg, n)
-
-    return new_fmt % tuple(new_args)
-
-*/
-

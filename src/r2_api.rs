@@ -121,6 +121,7 @@ pub struct CoreInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BinInfo {
     pub arch: String,
+    pub bintype: String,
     pub bits: u64,
     pub canary: bool,
     pub endian: String,
@@ -238,11 +239,12 @@ impl R2Api {
         self.r2p.lock().unwrap().cmd(cmd)
     }
 
-    fn get_info(&mut self) {
+    pub fn get_info(&mut self) -> Information {
         if self.info.is_none() {
             let json = self.cmd("ij").unwrap();
             self.info = serde_json::from_str(json.as_str()).unwrap();
         }
+        self.info.as_ref().unwrap().clone()
     }
 
     pub fn get_registers(&mut self) -> RegisterInformation {
@@ -353,13 +355,19 @@ impl R2Api {
         let env = vars.join(" ");
         self.init_vm();
         // this is very weird but this is how it works
-        let _r = self.cmd(format!("s SP; .aeis {} {} {} ;s-", argc, argv, env).as_str());
+        let _r = self.cmd(format!(".aeis {} {} {} @ SP", argc, argv, env).as_str());
     }
 
     pub fn disassemble(&mut self, addr: u64, num: usize) -> Vec<Instruction> {
         let cmd = format!("pdj {} @ {}", num, addr);
         let json = self.cmd(cmd.as_str()).unwrap();
         serde_json::from_str(json.as_str()).unwrap()
+    }
+
+    pub fn assemble(&mut self, instruction: &str) -> Vec<u8> {
+        let cmd = format!("pa {}", instruction);
+        let hexpairs = self.cmd(cmd.as_str()).unwrap();
+        hex::decode(hexpairs).unwrap()
     }
 
     pub fn read(&mut self, addr: u64, length: usize) -> Vec<u8> {

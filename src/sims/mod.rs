@@ -93,5 +93,7 @@ pub fn get_sims() -> Vec<Sim> {
     simuvec.push(make_sim("gethostname", libc::gethostname, 0));
     simuvec.push(make_sim("getpagesize", libc::getpagesize, 0));
 
+    simuvec.push(make_sim("__libc_start_main", libc::__libc_start_main, 5));
+
     simuvec
 }

@@ -1,4 +1,4 @@
-use crate::r2_api::R2Api;
+use crate::r2_api::{R2Api, FunctionInfo, BasicBlock, Instruction, Information};
 use crate::processor::{Processor, HookMethod};
 use crate::state::{State, StateStatus};
 //use crate::value::Value;
@@ -14,12 +14,13 @@ use std::collections::HashMap;
 //const DO_SIMS:     bool = true;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum RadiusOptions {
+pub enum RadiusOption {
     Syscalls(bool),
     Sims(bool),
     Optimize(bool),
     Debug(bool),
-    Lazy(bool)
+    Lazy(bool),
+    Permissions(bool)
 }
 
 pub struct Radius {
@@ -36,19 +37,19 @@ impl Radius {
         Radius::new_with_options(filename, vec!())
     }
 
-    pub fn new_with_options(filename: &str, options: Vec<RadiusOptions>) -> Self {
+    pub fn new_with_options(filename: &str, options: Vec<RadiusOption>) -> Self {
         let file = String::from(filename);
         let mut r2api = R2Api::new(Some(file));
 
-        let opt = !options.contains(&RadiusOptions::Optimize(false));
-        let debug = options.contains(&RadiusOptions::Debug(true));
-        let lazy = !options.contains(&RadiusOptions::Lazy(false));
+        let opt = !options.contains(&RadiusOption::Optimize(false));
+        let debug = options.contains(&RadiusOption::Debug(true));
+        let lazy = !options.contains(&RadiusOption::Lazy(false));
 
         let mut processor = Processor::new(opt, debug, lazy);
         let processors = Arc::new(Mutex::new(vec!()));
         let states = Arc::new(Mutex::new(vec!()));
 
-        if !options.contains(&RadiusOptions::Syscalls(false)) {
+        if !options.contains(&RadiusOption::Syscalls(false)) {
             let syscalls = r2api.get_syscalls();
             if let Some(sys) = syscalls.get(0) {
                 processor.traps.insert(sys.swi, indirect);
@@ -60,7 +61,7 @@ impl Radius {
         }
 
         // this is weird, idk
-        if !options.contains(&RadiusOptions::Sims(false)) {
+        if !options.contains(&RadiusOption::Sims(false)) {
             Radius::register_sims(&mut r2api, &mut processor);
         }
 
@@ -86,6 +87,12 @@ impl Radius {
         //self.r2api.seek(addr);
         self.r2api.init_entry(args, env);
         let mut state = self.init_state();
+
+        // convoluted as all fuck
+        //let bits = self.r2api.info.as_ref().unwrap().bin.bits as usize;
+        let start_main_reloc = self.r2api.get_address("reloc.__libc_start_main");
+        self.hook(start_main_reloc, __libc_start_main);
+
         state.memory.add_stack();
         state.memory.add_heap();
         state
@@ -251,10 +258,82 @@ impl Radius {
         }
     }
 
+    // run r2 analysis
+    pub fn analyze(&mut self, n: usize) {
+        self.r2api.analyze(n)
+    }
+
+    pub fn get_info(&mut self) -> Information {
+        self.r2api.get_info()
+    }
+
+    // get address of symbol
+    pub fn get_address(&mut self, symbol: &str) -> u64 {
+        self.r2api.get_address(symbol)
+    }
+
+    // get all functions
+    pub fn get_functions(&mut self) -> Vec<FunctionInfo> {
+        self.r2api.get_functions()
+    }
+
+    // get function information at this address
+    pub fn get_function(&mut self, address: u64) -> FunctionInfo {
+        self.r2api.get_function_info(address)
+    }
+
+    // get basic blocks of a function
+    pub fn get_blocks(&mut self, address: u64) -> Vec<BasicBlock> {
+        self.r2api.get_blocks(address)
+    }
+
+    pub fn disassemble(&mut self, address: u64, num: usize) -> Vec<Instruction> {
+        self.r2api.disassemble(address, num)
+    }
+
+    pub fn assemble(&mut self, instruction: &str) -> Vec<u8> {
+        self.r2api.assemble(instruction)
+    }
+
+    // read directly from binary
+    pub fn read(&mut self, address: u64, length: usize) -> Vec<u8> {
+        self.r2api.read(address, length)
+    }
+
+    // patch binary
+    pub fn write(&mut self, address: u64, data: Vec<u8>) {
+        self.r2api.write(address, data)
+    }
+
+    // run an r2 command 
+    pub fn cmd(&mut self, cmd: &str) -> Result<String, String> { 
+        self.r2api.cmd(cmd)
+    }
+
     // clear cached data from r2api and processors 
     pub fn clear(&mut self) {
         self.r2api.clear();
         self.processors.lock().unwrap().clear();
         //self.processor = Processor::new();
     }
+}
+
+pub fn __libc_start_main(state: &mut State) -> bool {
+    let main = state.registers.get_with_alias("A0");
+    let argc = state.registers.get_with_alias("A1");
+    let argv = state.registers.get_with_alias("A2");
+
+    // TODO go to init then main 
+    // but we need a nice arch neutral way to push ret 
+    // so until then 
+
+    // go to main 
+    state.registers.set_with_alias("PC", main);
+    state.registers.set_with_alias("A0", argc);
+    state.registers.set_with_alias("A1", argv);
+
+    // TODO set env
+    state.registers.set_with_alias("A2", Value::Concrete(0));
+
+    false
 }

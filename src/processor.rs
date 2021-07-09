@@ -65,7 +65,7 @@ pub struct InstructionEntry {
 //const DEBUG: bool = false; // show instructions
 //const LAZY:  bool = true;  // dont check sat on ite PCs
 //const OPT:   bool = true;  // optimize by removing unread flag sets
-const BFS:   bool = true;  // dequeue states instead of popping
+const BFS:   bool = true;    // dequeue states instead of popping
 
 impl Processor {
     pub fn new(optimized: bool, debug: bool, lazy: bool) -> Self {
@@ -130,15 +130,16 @@ impl Processor {
         tokens
     }
 
-    pub fn get_literal(&self, word: &str) -> Option<Word> {
-        let parsed = word.parse::<i64>();
-        
-        if let Ok(i) = parsed {
-            let val = Value::Concrete(i as u64);
+    pub fn get_literal(&self, word: &str) -> Option<Word> {        
+        if let Ok(i) = word.parse::<u64>() {
+            let val = Value::Concrete(i);
             Some(Word::Literal(val))
         } else if word.len() > 2 && &word[0..2] == "0x" {
             let val = u64::from_str_radix(&word[2..word.len()], 16).unwrap();
             Some(Word::Literal(Value::Concrete(val)))
+        } else if let Ok(i) = word.parse::<i64>() {
+            let val = Value::Concrete(i as u64);
+            Some(Word::Literal(val))
         } else {
             None
         }
@@ -276,19 +277,16 @@ impl Processor {
                             }
                         },
                         Operations::EndIf => {
-                            let mut perform = false;
                             let mut new_temp = temp_stack1.clone();
 
-                            match &state.esil.mode {
-                                ExecMode::If => {
-                                    perform = true;
-                                },    
+                            let perform = match &state.esil.mode {
+                                ExecMode::If => true,
                                 ExecMode::Else => {
                                     new_temp = temp_stack2.clone();
-                                    perform = true;
+                                    true
                                 },
-                                _ => {}
-                            }
+                                _ => false
+                            };
 
                             if perform {
                                 let mut new_stack: Vec<StackItem> = vec!();
@@ -476,7 +474,6 @@ impl Processor {
         let mut new_status = status;
         if state.status == StateStatus::PostMerge {
             if *status == InstructionStatus::Merge {
-                //println!("leaving merge on {}", pc);
                 state.status = StateStatus::Active;
                 new_status = &InstructionStatus::None;
             }
@@ -490,12 +487,14 @@ impl Processor {
             },
             InstructionStatus::Hook => {
                 let mut skip = false;
+                let pc_val = Value::Concrete(new_pc);
+                state.registers.set_value(pc_index, pc_val);
+
                 let hooks = &self.hooks[&pc];
                 for hook in hooks {
                     skip = !hook(state) || skip;
                 }
-                let pc_val = Value::Concrete(new_pc);
-                state.registers.set_value(pc_index, pc_val);
+
                 if !skip {
                     self.parse(state, words);
                 }
@@ -513,7 +512,15 @@ impl Processor {
                 let ret = sim(state, args);
                 state.registers.set(cc.ret.as_str(), ret);
                 state.backtrace.pop();
-                self.ret(state);
+
+                // don't ret if sim changes the PC value
+                // this is bad hax because thats all i do
+                let newer_pc_val = state.registers.get_value(pc_index);
+                if let Value::Concrete(newer_pc) = newer_pc_val {
+                    if newer_pc == new_pc {
+                        self.ret(state);
+                    }
+                }
             },
             InstructionStatus::Break => state.status = StateStatus::Break,
             InstructionStatus::Merge => state.status = StateStatus::Merge,
@@ -535,7 +542,7 @@ impl Processor {
         if let Some(instr_entry) = instr_opt {
             self.print_instr(&instr_entry.instruction);
             /*if instr_entry.instruction.opcode == "invalid" {
-                panic!("invalid instr");
+                panic!("invalid instruction: {:?}", instr_entry);
             }*/
             //let size = instr_entry.instruction.size;
             let words = &instr_entry.tokens;
@@ -605,12 +612,16 @@ impl Processor {
             println!("got an unexpected sym PC: {:?}", pc_value);
         }
 
+        //println!("\nassertions: {:?}\n", state.solver.assertions);
+
         let new_pc = state.registers.get_value(pc_index);
-        match new_pc {
-            Value::Concrete(_pc_val) => {
+
+        match new_pc.as_u64() {
+            Some(_pc_val) => {
                 states.push(state);
             },
-            Value::Symbolic(pc_val) => {
+            None => {
+                let pc_val = new_pc.as_bv().unwrap();
                 // this is weird and bad
 
                 if self.debug {
@@ -632,7 +643,7 @@ impl Processor {
                 let last = pcs.len()-1;
                 for new_pc_val in &pcs[..last] {
                     let mut new_state = state.clone();
-                    let pc_bv = &pc_val; //new_state.translate(&pc_val).unwrap();
+                    let pc_bv = &pc_val; 
                     let a = pc_bv._eq(&new_state.bvv(*new_pc_val, pc_bv.get_width()));
                     new_state.solver.assert(&a);
                     new_state.registers.set_value(pc_index, Value::Concrete(*new_pc_val));
@@ -640,7 +651,7 @@ impl Processor {
                 }
                 
                 let new_pc_val = pcs[last];
-                let pc_bv = pc_val; //state.translate(&pc_val).unwrap();
+                let pc_bv = pc_val; 
                 let a = pc_bv._eq(&state.bvv(new_pc_val, pc_bv.get_width()));
                 state.solver.assert(&a);
                 state.registers.set_value(pc_index, Value::Concrete(new_pc_val));
@@ -670,10 +681,10 @@ impl Processor {
 
             let pc = &current_state.registers.values[pc_register.value_index];
 
-            if let Value::Concrete(pc_val) = pc {
-                if *pc_val == addr {
+            if let Some(pc_val) = pc.as_u64() {
+                if pc_val == addr {
                     return Some(current_state);
-                } else if avoid.contains(pc_val) {
+                } else if avoid.contains(&pc_val) {
                     continue;
                 }
             } 
@@ -708,11 +719,8 @@ impl Processor {
                 StateStatus::Active | StateStatus::PostMerge => {
                     states.extend(self.step(current_state));
                 },
-                StateStatus::Break => {
-                    return vec!(current_state);
-                },
-                StateStatus::Merge => {
-                    return vec!(current_state); // hmmm
+                StateStatus::Break | StateStatus::Merge => {
+                    return vec!(current_state); 
                 },
                 _ => {}
             }
