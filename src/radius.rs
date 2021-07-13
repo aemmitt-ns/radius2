@@ -15,12 +15,14 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RadiusOption {
-    Syscalls(bool),
-    Sims(bool),
-    Optimize(bool),
-    Debug(bool),
-    Lazy(bool),
-    Permissions(bool)
+    Syscalls(bool),    // use simulated syscalls
+    Sims(bool),        // use simulated imports 
+    Optimize(bool),    // optimize executed ESIL expressions
+    Debug(bool),       // enable debug output
+    Lazy(bool),        // don't check sat on symbolic pcs
+    Permissions(bool), // check memory permissions
+    Force(bool),      // force execution of all branches
+    Prune(bool)       // only exec blocks once per unique bt
 }
 
 pub struct Radius {
@@ -44,8 +46,10 @@ impl Radius {
         let opt = !options.contains(&RadiusOption::Optimize(false));
         let debug = options.contains(&RadiusOption::Debug(true));
         let lazy = !options.contains(&RadiusOption::Lazy(false));
+        let force = options.contains(&RadiusOption::Force(true));
+        let prune = options.contains(&RadiusOption::Prune(true));
 
-        let mut processor = Processor::new(opt, debug, lazy);
+        let mut processor = Processor::new(opt, debug, lazy, force, prune);
         let processors = Arc::new(Mutex::new(vec!()));
         let states = Arc::new(Mutex::new(vec!()));
 
@@ -88,8 +92,6 @@ impl Radius {
         self.r2api.init_entry(args, env);
         let mut state = self.init_state();
 
-        // convoluted as all fuck
-        //let bits = self.r2api.info.as_ref().unwrap().bin.bits as usize;
         let start_main_reloc = self.r2api.get_address("reloc.__libc_start_main");
         self.hook(start_main_reloc, __libc_start_main);
 
@@ -159,6 +161,11 @@ impl Radius {
             self.states.lock().unwrap().push(s);
         }
 
+        // if there are multiple threads we need to duplicate solvers
+        // else there will be race conditions. Unfortunately this 
+        // will prevent mergers from happening. this sucks
+        let duplicate = threads > 1 && self.processor.mergepoints.len() == 0;
+
         loop {
             let mut count = 0;
             while count < threads && !self.states.lock().unwrap().is_empty() {
@@ -183,7 +190,7 @@ impl Radius {
                 }
 
                 let handle = thread::spawn(move || {
-                    let new_states = processor.run(state, true);
+                    let new_states = processor.run(state, true, duplicate);
                     states.lock().unwrap().extend(new_states);
                     procs.lock().unwrap().push(processor);
                 });
@@ -236,8 +243,8 @@ impl Radius {
 
             // merge memory 
             let mut new_mem = HashMap::new();
-            let merge_addrs = merge_state.memory.mem.keys().cloned().collect::<Vec<u64>>();
-            let state_addrs = state.memory.mem.keys().cloned().collect::<Vec<u64>>();
+            let merge_addrs = merge_state.memory.addresses();
+            let state_addrs = state.memory.addresses();
 
             let mut addrs = vec!();
             addrs.extend(merge_addrs);

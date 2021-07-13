@@ -95,19 +95,40 @@ impl State {
     }
 
     pub fn duplicate(&mut self) -> Self {
-        let solver = self.solver.clone();
+        let solver = self.solver.duplicate();
 
         let mut registers = self.registers.clone();
         registers.solver = solver.clone();
 
+        let mut new_regs = vec!();
+        for reg in &registers.values {
+            new_regs.push(solver.translate_value(reg));
+        }
+        registers.values = new_regs;
+
         let mut memory = self.memory.clone();
         memory.solver = solver.clone();
+
+        let addrs = memory.addresses();
+        for addr in addrs {
+            let value = memory.mem.remove(&addr).unwrap();
+            memory.mem.insert(addr, solver.translate_value(&value));
+        }
+
+        let esil_state = EsilState {
+            mode: ExecMode::Uncon,
+            previous: Value::Concrete(0),
+            current: Value::Concrete(0),
+            last_sz: 64,
+            stored_address: None,
+            pcs: vec!()
+        };
 
         State {
             solver,
             r2api: self.r2api.clone(),
-            stack: self.stack.clone(),
-            esil: self.esil.clone(),
+            stack: vec!(), //self.stack.clone(),
+            esil: esil_state,
             condition: None,
             registers,
             memory,
@@ -119,7 +140,7 @@ impl State {
         }
     }
 
-    // yes i hate all of this shit
+    // yes i hate all of this
     pub fn memory_read(&mut self, address: &Value, length: &Value) -> Vec<Value> {
         self.memory.read_sym_len(address, length, &mut self.solver)
     }
@@ -169,6 +190,14 @@ impl State {
     #[inline]
     pub fn bvv(&mut self, v: u64, n: u32) -> BV<Arc<Btor>>{
         self.solver.bvv(v, n)
+    }
+
+    pub fn concrete_value(&mut self, v: u64, n: u32) -> Value {
+        Value::Concrete(v & ((1 << n) - 1))
+    }
+
+    pub fn symbolic_value(&mut self, s: &str, n: u32) -> Value {
+        Value::Symbolic(self.bv(s, n))
     }
 
     #[inline]

@@ -5,7 +5,7 @@ use std::f64;
 pub const OPS: [&str; 16] = ["+", "-", "++", "--", "*", "/", "<<", ">>", "|", "&", "^", "%", "!", ">>>>", ">>>", "<<<"];
 pub const SIZE: u64 = 64;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Operations {
     Trap,
     Syscall,
@@ -61,7 +61,7 @@ pub enum Operations {
     FloatDivide,
     NaN,
     FloatNegate,
-    AddressStore, // fuck
+    AddressStore, 
     AddressRestore,
     Swap,
     Pick,
@@ -82,7 +82,7 @@ pub enum Operations {
     Borrow,
     Parity,
     Overflow,
-    SubOverflow,
+    // SubOverflow,
     // i forget these
     S,
     Ds,
@@ -178,7 +178,7 @@ impl Operations {
             "$b" => Operations::Borrow,
             "$p" => Operations::Parity,
             "$o" => Operations::Overflow,
-            "$so" => Operations::SubOverflow,
+            //"$so" => Operations::SubOverflow,
             "$s" => Operations::S,
             "$ds" => Operations::Ds,
             "$jt" => Operations::JumpTarget,
@@ -286,6 +286,11 @@ pub fn pop_stack_value(state: &mut State, stack: &mut Vec<StackItem>, set_size: 
 }
 
 #[inline]
+pub fn push_value(state: &mut State, value: Value) {
+    state.stack.push(StackItem::StackValue(value));
+}
+
+#[inline]
 pub fn pop_concrete(state: &mut State, set_size: bool, sign_ext: bool) -> u64 {
     let value = pop_value(state, set_size, sign_ext);
 
@@ -317,29 +322,16 @@ pub fn pop_float(state: &mut State) -> f32 {
 
 #[inline]
 pub fn do_equal(state: &mut State, reg: StackItem, value: Value, 
-    set_esil: bool, pc_index: usize) {
+    set_esil: bool, _pc_index: usize) {
 
     if let StackItem::StackRegister(index) = reg {
         let register = state.registers.indexes.get(index).unwrap();
         let size = register.reg_info.size as usize;
         let prev = state.registers.get_value(index);
-        //prev = state.translate_value(&prev);
 
         if let Some(cond) = &state.condition {
-
-            // tortured logic for lazy execution
-            if index == pc_index {
-                if let Value::Concrete(val) = value {
-                    if let Value::Concrete(pc) = prev {
-                        if state.esil.pcs.is_empty() {
-                            state.esil.pcs.push(pc);
-                        }
-                    }
-                    state.esil.pcs.push(val);
-                }
-            }
             state.registers.set_value(index, state.solver.conditional(
-                &Value::Symbolic(cond.clone()), &value, &prev));
+                &Value::Symbolic(cond.to_owned()), &value, &prev));
         } else {
             state.registers.set_value(index, value.clone());
         }
@@ -350,6 +342,22 @@ pub fn do_equal(state: &mut State, reg: StackItem, value: Value,
             state.esil.previous = prev;
         }
     }
+}
+
+macro_rules! binary_operation {
+    ($state:expr, $op:tt) => {
+        let arg1 = pop_value($state, false, false);
+        let arg2 = pop_value($state, false, false);
+        $state.stack.push(StackItem::StackValue(arg1 $op arg2));
+    };
+}
+
+macro_rules! binary_method {
+    ($state:expr, $op:ident) => {
+        let arg1 = pop_value($state, false, false);
+        let arg2 = pop_value($state, false, false);
+        $state.stack.push(StackItem::StackValue(arg1.$op(arg2)));
+    };
 }
 
 #[inline]
@@ -366,9 +374,8 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         Operations::Trap => {},
         Operations::Syscall => {},
         Operations::PcAddress => {
-            let pc_reg = state.registers.aliases["PC"].reg.clone();
-            let pc = state.registers.get(&pc_reg);
-            state.stack.push(StackItem::StackValue(pc));
+            let pc = state.registers.get_with_alias("PC");
+            push_value(state, pc);
         },
         Operations::If => {}, // these are handled in processor
         Operations::Else => {},
@@ -384,56 +391,47 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         Operations::LessThan => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
-
-            state.stack.push(StackItem::StackValue(arg1.slt(arg2)));
+            push_value(state, arg1.slt(&arg2));
         },
         Operations::LessThanEq => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
-
-            state.stack.push(StackItem::StackValue(
-                arg1.clone().slt(arg2.clone()) | arg1.eq(arg2)));
+            push_value(state, arg1.slte(&arg2));
         },
         Operations::GreaterThan => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
-
-            state.stack.push(StackItem::StackValue(
-                !arg1.clone().slt(arg2.clone()) & !arg1.eq(arg2)));
+            push_value(state, arg1.sgt(&arg2));
         },
         Operations::GreaterThanEq => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
 
-            state.stack.push(StackItem::StackValue(!arg1.slt(arg2)));
+            push_value(state, arg1.sgte(&arg2));
         },
         Operations::LeftShift => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 << arg2));
+            binary_operation!(state, <<);
         },
         Operations::LogicalRightShift => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 >> arg2));
+            binary_operation!(state, >>);
         },
         Operations::RightShift => {
             let sz = get_size(state);
             let arg1 = pop_value(state, false, true);
             let arg2 = pop_value(state, false, true);
-            state.stack.push(StackItem::StackValue(arg1.asr(arg2, sz)));
+            push_value(state, arg1.asr(arg2, sz));
         },
         Operations::LeftRotation => {
             let sz = get_size(state);
             let arg1 = pop_value(state, false, false);
             let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1.rol(arg2, sz)));
+            push_value(state, arg1.rol(arg2, sz));
         },
         Operations::RightRotation => {
             let sz = get_size(state);
             let arg1 = pop_value(state, false, false);
             let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1.ror(arg2, sz)));
+            push_value(state, arg1.ror(arg2, sz));
         },
         Operations::SignExtend => {
             let arg1 = pop_value(state, false, false);
@@ -443,45 +441,34 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
                 Value::Concrete(val1) => {
                     let shift = (64-arg2) as i64;
                     let val = Value::Concrete(((val1 << shift) as i64 >> shift) as u64);
-                    state.stack.push(StackItem::StackValue(val));
+                    push_value(state, val);
                 },
                 Value::Symbolic(val1) => {
                     let val = Value::Symbolic(val1.slice((arg2-1) as u32, 0).sext(64-arg2 as u32));
-                    state.stack.push(StackItem::StackValue(val));
+                    push_value(state, val);
                 }
             }
         },
         Operations::And => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 & arg2))
+            binary_operation!(state, &);
         },
         Operations::Or => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 | arg2))
+            binary_operation!(state, |);
         },
         Operations::Xor => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 ^ arg2))
+            binary_operation!(state, ^);
         },
         Operations::Add => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 + arg2))
+            binary_operation!(state, +);
         },
         Operations::Subtract => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 - arg2))
+            binary_operation!(state, -);
         },
         Operations::Multiply => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 * arg2))
+            binary_operation!(state, *);
         },
-        // here, unlike anywhere else, long means 128 bit, it should be long long long long multiply
+        // here, unlike anywhere else, long means 128 bit
+        // it should be long long long long multiply
         Operations::LongMultiply => {
             let arg1 = pop_value(state, false, false);
             let arg2 = pop_value(state, false, false);
@@ -489,71 +476,55 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             match (arg1, arg2) {
                 (Value::Concrete(val1), Value::Concrete(val2)) => {
                     let val = (val1 as u128) * (val2 as u128);
-                    state.stack.push(StackItem::StackValue(
-                        Value::Concrete((val >> 64) as u64)));
-                    state.stack.push(StackItem::StackValue(
-                        Value::Concrete(val as u64)));
+                    push_value(state, Value::Concrete((val >> 64) as u64));
+                    push_value(state, Value::Concrete(val as u64));
                 },
                 (Value::Symbolic(val1), Value::Concrete(val2)) => {
                     let sval1 = val1.uext(64);
                     let sval2 = state.bvv(val2, 128);
                     let prod  = sval1.mul(&sval2);
-                    state.stack.push(StackItem::StackValue(
-                        Value::Symbolic(prod.slice(127, 64))));
-                    state.stack.push(StackItem::StackValue(
-                        Value::Symbolic(prod.slice(63, 0))));
+                    push_value(state, Value::Symbolic(prod.slice(127, 64)));
+                    push_value(state, Value::Symbolic(prod.slice(63, 0)));
                 },
                 (Value::Concrete(val1), Value::Symbolic(val2)) => {
                     let sval2 = val2.uext(64);
                     let sval1 = state.bvv(val1, 128);
                     let prod  = sval1.mul(&sval2);
-                    state.stack.push(StackItem::StackValue(
-                        Value::Symbolic(prod.slice(127, 64))));
-                    state.stack.push(StackItem::StackValue(
-                        Value::Symbolic(prod.slice(63, 0))));
+                    push_value(state, Value::Symbolic(prod.slice(127, 64)));
+                    push_value(state, Value::Symbolic(prod.slice(63, 0)));
                 },
                 (Value::Symbolic(val1), Value::Symbolic(val2)) => {
                     let sval1 = val1.uext(64);
                     let sval2 = val2.uext(64);
                     let prod  = sval1.mul(&sval2);
-                    state.stack.push(StackItem::StackValue(
-                        Value::Symbolic(prod.slice(127, 64))));
-                    state.stack.push(StackItem::StackValue(
-                        Value::Symbolic(prod.slice(63, 0))));
+                    push_value(state, Value::Symbolic(prod.slice(127, 64)));
+                    push_value(state, Value::Symbolic(prod.slice(63, 0)));
                 },
             }
         },
         Operations::Divide => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 / arg2))
+            binary_operation!(state, /);
         },
         Operations::Modulo => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 % arg2))
+            binary_operation!(state, %);
         },
         Operations::SignedDivide => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1.sdiv(arg2)));
+            binary_method!(state, sdiv);
         },
         Operations::SignedModulo => {
-            let arg1 = pop_value(state, false, false);
-            let arg2 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1.srem(arg2)));
+            binary_method!(state, srem);
         },
         Operations::Not => {
             let arg1 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(!arg1));
+            push_value(state, !arg1);
         },
         Operations::Increment => {
             let arg1 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 + Value::Concrete(1)));
+            push_value(state, arg1 + Value::Concrete(1));
         },
         Operations::Decrement => {
             let arg1 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1 - Value::Concrete(1)));
+            push_value(state, arg1 - Value::Concrete(1));
         },
         Operations::Equal => {
             let reg_arg = state.stack.pop().unwrap();
@@ -571,7 +542,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
 
             let val = state.memory_read_value(&addr, n);
             state.esil.current = val.clone();
-            state.stack.push(StackItem::StackValue(val));
+            push_value(state, val);
 
             state.esil.previous = addr;
             state.esil.last_sz = 8*n;
@@ -617,11 +588,11 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         Operations::AddressStore => {
             let addr = pop_value(state, false, false);
             state.esil.stored_address = Some(addr.clone());
-            state.stack.push(StackItem::StackValue(addr));
+            push_value(state, addr);
         },
         Operations::AddressRestore => {
-            let addr = state.esil.stored_address.as_ref().unwrap();
-            state.stack.push(StackItem::StackValue(addr.clone()));
+            let addr = state.esil.stored_address.as_ref().unwrap().clone();
+            push_value(state, addr);
             state.esil.stored_address = None;
         },
         Operations::PopCount => {
@@ -629,7 +600,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             match arg1 {
                 Value::Concrete(val) => {
                     let value = Value::Concrete(val.count_ones() as u64);
-                    state.stack.push(StackItem::StackValue(value));
+                    push_value(state, value);
                 },
                 Value::Symbolic(val) => {
                     let mut sym_val = state.bvv(0, 64);
@@ -637,103 +608,103 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
                         sym_val = sym_val.add(&val.slice(i+1, i).uext(63));
                     }
                     let value = Value::Symbolic(sym_val);
-                    state.stack.push(StackItem::StackValue(value));
+                    push_value(state, value);
                 }
             }
         }, 
         Operations::Ceiling => {
             let arg1 = pop_double(state);
             let value = Value::Concrete(f64::to_bits(arg1.ceil()));
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::Floor => {
             let arg1 = pop_double(state);
             let value = Value::Concrete(f64::to_bits(arg1.floor()));
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::Round => {
             let arg1 = pop_double(state);
             let value = Value::Concrete(f64::to_bits(arg1.round()));
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::SquareRoot => {
             let arg1 = pop_double(state);
             let value = Value::Concrete(f64::to_bits(arg1.sqrt()));
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::DoubleToInt => {
             let arg1 = pop_double(state);
             let value = Value::Concrete(arg1 as u64);
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::SignedToDouble => {
             let arg1 = pop_concrete(state, false, true);
             let value = Value::Concrete(f64::to_bits(arg1 as i64 as f64)); //hmm
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::UnsignedToDouble => {
             let arg1 = pop_concrete(state, false, false);
             let value = Value::Concrete(f64::to_bits(arg1 as f64)); 
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::FloatToDouble => {
             let arg1 = pop_float(state);
             let _size = pop_value(state, false, false);
             let value = Value::Concrete(f64::to_bits(arg1 as f64)); 
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::DoubleToFloat => {
             let arg1 = pop_double(state);
             let _size = pop_value(state, false, false);
             // these casts will need casts when i'm done with em
             let value = Value::Concrete(f32::to_bits(arg1 as f32) as u64); 
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::FloatAdd => {
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
             let value = Value::Concrete(f64::to_bits(arg1 + arg2));
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::FloatSubtract => {
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
             let value = Value::Concrete(f64::to_bits(arg1 - arg2));
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::FloatMultiply => {
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
             let value = Value::Concrete(f64::to_bits(arg1 * arg2));
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::FloatDivide => {
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
             let value = Value::Concrete(f64::to_bits(arg1 / arg2));
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::FloatCompare => {
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
             let value = Value::Concrete((arg1 - arg2 == 0.0) as u64);
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::FloatLessThan => {
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
             let value = Value::Concrete((arg1 < arg2) as u64);
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::NaN => {
             let arg1 = pop_double(state);
             let value = Value::Concrete(arg1.is_nan() as u64);
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::FloatNegate => {
             let arg1 = pop_double(state);
             let value = Value::Concrete(f64::to_bits(-arg1));
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::Swap => {
             let arg1 = state.stack.pop().unwrap();
@@ -760,8 +731,8 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             state.stack.push(item);
         },
         Operations::Number => {
-            let arg1 = pop_value(state, false, false);
-            state.stack.push(StackItem::StackValue(arg1));
+            let value = pop_value(state, false, false);
+            push_value(state, value);
         },
         Operations::Clear => {
             state.stack.clear();
@@ -773,34 +744,34 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         Operations::NoOperation => {},
     
         Operations::Zero => {
-            let cur = state.esil.current.clone();
+            let cur = &state.esil.current;
             let mask = Value::Concrete(genmask((state.esil.last_sz-1) as u64));
-            let zf = !(cur & mask);
-            state.stack.push(StackItem::StackValue(zf));
+            let zf = !(cur.and(&mask));
+            push_value(state, zf);
         },
         Operations::Carry => {
             let bits = pop_concrete(state, false, false);
             let mask = Value::Concrete(genmask(bits & 0x3f));
-            let cur = state.esil.current.clone();
-            let old = state.esil.previous.clone();
+            let cur = &state.esil.current;
+            let old = &state.esil.previous;
 
-            let cf = (cur & mask.clone()).ult(old & mask);
-            state.stack.push(StackItem::StackValue(cf));
+            let cf = cur.and(&mask).ult(&old.and(&mask));
+            push_value(state, cf);
         },
         Operations::Borrow => {
             let bits = pop_concrete(state, false, false);
             let mask = Value::Concrete(genmask(bits & 0x3f));
-            let cur = state.esil.current.clone();
-            let old = state.esil.previous.clone();
+            let cur = &state.esil.current;
+            let old = &state.esil.previous;
 
-            let cf = (old & mask.clone()).ult(cur & mask);
-            state.stack.push(StackItem::StackValue(cf));
+            let cf = old.and(&mask).ult(&cur.and(&mask));
+            push_value(state, cf);
         },
         Operations::Parity => {
             match &state.esil.current {
                 Value::Concrete(val) => {
                     let pf = Value::Concrete(!(val.count_ones()%2) as u64);
-                    state.stack.push(StackItem::StackValue(pf));
+                    push_value(state, pf);
                 },
                 Value::Symbolic(_val) => {
                     let c1 = Value::Concrete(0x0101010101010101);
@@ -810,7 +781,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
                     let cur = state.esil.current.clone();
                     let lsb = cur & Value::Concrete(0xff); 
                     let pf = !((((lsb * c1) & c2) % c3) & Value::Concrete(1));
-                    state.stack.push(StackItem::StackValue(pf));
+                    push_value(state, pf);
                 }
             }
         },
@@ -819,50 +790,30 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let mask1 = Value::Concrete(genmask(bits & 0x3f));
             let mask2 = Value::Concrete(genmask((bits + 0x3f) & 0x3f));
 
-            let cur = state.esil.current.clone();
-            let old = state.esil.previous.clone();
+            let cur = &state.esil.current;
+            let old = &state.esil.previous;
 
-            let c_in = (cur.clone() & mask1.clone()).ult(old.clone() & mask1);
-            let c_out = (cur & mask2.clone()).ult(old & mask2);
+            let c_in = cur.and(&mask1).ult(&old.and(&mask1));
+            let c_out = cur.and(&mask2).ult(&old.and(&mask2));
             let of = c_in ^ c_out;
-            state.stack.push(StackItem::StackValue(of));
-        },
-        // i don't think this is used anymore
-        // i added it to r2 then removed it
-        Operations::SubOverflow => {
-            // c_0 = z3.If(((old-cur) & m[0]) == (1<<bit), ONE, ZERO)
-
-            let bits = pop_concrete(state, false, false);
-            let mask1 = genmask(bits & 0x3f);
-            let mask2 = genmask((bits + 0x3f) & 0x3f);
-
-            if let (Value::Concrete(cur), Value::Concrete(old)) = 
-                (&state.esil.current, &state.esil.previous) {
-                
-                let c0 = (((old-cur) & mask1) == (1 << bits)) as u64;
-                let c_in = ((cur & mask1) < (old & mask1)) as u64;
-                let c_out = ((cur & mask2) < (old & mask2)) as u64;
-                let of = Value::Concrete((((c0 ^ c_in) ^ c_out) == 1) as u64);
-                state.stack.push(StackItem::StackValue(of));
-            }
+            push_value(state, of);
         },
         Operations::S => {
             let size = pop_value(state, false, false);
             let cur = state.esil.current.clone();
             let value = (cur >> size) & Value::Concrete(1);
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, value);
         },
         Operations::Ds => {
             let cur = state.esil.current.clone();
             let sz = Value::Concrete(state.esil.last_sz as u64);
             let ds = (cur >> sz) & Value::Concrete(1);
-            state.stack.push(StackItem::StackValue(ds));
+            push_value(state, ds);
         },
         Operations::JumpTarget => {},
         Operations::Js => {},
         Operations::R => {
-            let value = Value::Concrete(64 >> 3);
-            state.stack.push(StackItem::StackValue(value));
+            push_value(state, Value::Concrete(64 >> 3));
         },
         Operations::Unknown => {}
     }

@@ -19,7 +19,6 @@ const STACK_SIZE:  u64 = 0x78000*2;
 pub const CHECK_PERMS: bool = false;
 
 // i think these are different on darwin
-// for some fuckin reason
 const PROT_NONE:  u64 = 0x0;
 const PROT_READ:  u64 = 0x1;
 const PROT_WRITE: u64 = 0x2;
@@ -242,7 +241,7 @@ impl Memory {
             for count in 0..len {
                 let addr_val = Value::Concrete(addr);
                 let count_val = Value::Concrete(count as u64); 
-                let cond = address.clone().eq(addr_val) & count_val.ult(length.clone());
+                let cond = address.eq(&addr_val) & count_val.ult(&length);
                 let value = solver.conditional(&cond, &values[count], &read_vals[count]);
                 self.write(addr+count as u64, vec!(value));
             }
@@ -286,21 +285,21 @@ impl Memory {
                 pos_val = addr.clone() + length.clone() - Value::Concrete(pos as u64);
             }
 
-            let pos_cond = pos_val.clone().ult(addr.clone() + length.clone()) & 
-                !pos_val.clone().ult(addr.clone());
-            let new_cond = value.clone().eq(needle.clone()) & pos_cond & !cond.clone();
+            let pos_cond = pos_val.ult(&(addr.clone() + length.clone())) & 
+                !pos_val.ult(&addr);
+            let new_cond = value.eq(&needle) & pos_cond & !cond.clone();
             //println!("{:?}", new_cond);
             result = solver.conditional(&new_cond, &pos_val, &result);
-            cond = value.eq(needle.clone()) | cond;
+            cond = value.eq(&needle) | cond;
 
             if let Value::Concrete(res) = &result {
                 if *res != 0 {
                     break;
                 }
-            } else if value.id(needle.clone()) == Value::Concrete(1) {
+            } /*else if value.id(&needle) == Value::Concrete(1) {
                 // this is weird but cuts searches on identical values
                 break;
-            }
+            }*/
         }
         
         result
@@ -309,9 +308,9 @@ impl Memory {
     pub fn strlen(&mut self, addr: &Value, length: &Value, solver: &mut Solver) -> Value {
         let end = self.search(addr, &Value::Concrete(0), length, false, solver);
         solver.conditional(
-            &(end.clone().eq(Value::Concrete(0))), 
-            &length,
-            &(end - addr.clone())
+            &(end.eq(&Value::Concrete(0))), 
+            length,
+            &end.sub(addr)
         )
     }
 
@@ -328,9 +327,9 @@ impl Memory {
             let d2 = &data2[ind];
 
             let ind_val = Value::Concrete(ind as u64);
-            let gt = !d1.clone().ult(d2.clone()) & !d1.clone().eq(d2.clone());
-            let lt = d1.clone().ult(d2.clone()) & !d1.clone().eq(d2.clone());
-            let len_cond = ind_val.clone().ult(length.clone());
+            let gt = !d1.ult(&d2) & !d1.eq(&d2);
+            let lt = d1.ult(&d2) & !d1.eq(&d2);
+            let len_cond = ind_val.ult(&length);
 
             let lt_val = solver.conditional(
                 &(lt & same.clone() & len_cond.clone()), 
@@ -340,7 +339,7 @@ impl Memory {
                 &(gt & same.clone() & len_cond), 
                 &Value::Concrete(1), &lt_val);
 
-            same = same & result.clone().eq(Value::Concrete(0));
+            same = same & result.eq(&Value::Concrete(0));
 
             if let Value::Concrete(res) = &same {
                 if *res != 0 {
@@ -556,6 +555,10 @@ impl Memory {
             data.reverse();
         }
         data
+    }
+
+    pub fn addresses(&self) -> Vec<u64> {
+        self.mem.keys().cloned().collect::<Vec<u64>>()
     }
 }
 

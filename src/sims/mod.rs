@@ -85,9 +85,7 @@ pub fn get_sims() -> Vec<Sim> {
     simuvec.push(make_sim("getpid",  libc::getpid, 0));
     simuvec.push(make_sim("fork",    libc::fork, 0));
 
-    // def gonna do this one. have a full symbolic ptrace 
     simuvec.push(make_sim("ptrace",    libc::zero, 0));
-
     simuvec.push(make_sim("syscall",    libc::c_syscall, 0));
 
     simuvec.push(make_sim("gethostname", libc::gethostname, 0));

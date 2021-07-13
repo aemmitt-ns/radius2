@@ -39,34 +39,40 @@ pub fn cond_value(cond: &BV<Arc<Btor>>, v1: Value, v2: Value) -> BV<Arc<Btor>> {
     )
 }
 
+macro_rules! binary_ops {
+    ($self:expr, $rhs:expr, $method:ident, $op:tt) => {
+        match ($self, $rhs) {
+            (Value::Concrete(a), Value::Concrete(b)) => {
+                Value::Concrete(*a $op *b)
+            },
+            (Value::Symbolic(a), Value::Concrete(b)) => {
+                let bv = make_bv(a, *b, a.get_width());
+                Value::Symbolic(a.$method(&bv))
+            },
+            (Value::Concrete(a), Value::Symbolic(b)) => {
+                let bv = make_bv(b, *a, b.get_width());
+                Value::Symbolic(bv.$method(&b))
+            },
+            (Value::Symbolic(a), Value::Symbolic(b)) => {
+                let width_diff = a.get_width() as i32 - b.get_width() as i32;
+                if width_diff == 0 {
+                    Value::Symbolic(a.$method(&b))
+                } else if width_diff > 0 {
+                    Value::Symbolic(a.$method(&b.uext(width_diff as u32)))
+                } else {
+                    Value::Symbolic(a.uext(-width_diff as u32).$method(&b))
+                }
+            }
+        }
+    };
+}
+
 impl ops::Add<Value> for Value {
     type Output = Value;
 
     #[inline]
     fn add(self, rhs: Value) -> Value {
-        match (self, rhs) {
-            (Value::Concrete(a), Value::Concrete(b)) => {
-                Value::Concrete(a + b)
-            },
-            (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.add(&bv))
-            },
-            (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, b.get_width());
-                Value::Symbolic(b.add(&bv))
-            },
-            (Value::Symbolic(a), Value::Symbolic(b)) => {
-                let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.add(&b))
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.add(&b.uext(width_diff as u32)))
-                } else {
-                    Value::Symbolic(b.add(&a.uext(-width_diff as u32)))
-                }
-            }
-        }
+        binary_ops!(&self, &rhs, add, +)
     }
 }
 
@@ -75,29 +81,7 @@ impl ops::Sub<Value> for Value {
 
     #[inline]
     fn sub(self, rhs: Value) -> Value {
-        match (self, rhs) {
-            (Value::Concrete(a), Value::Concrete(b)) => {
-                Value::Concrete(a - b)
-            },
-            (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.sub(&bv))
-            },
-            (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, b.get_width());
-                Value::Symbolic(bv.sub(&b))
-            },
-            (Value::Symbolic(a), Value::Symbolic(b)) => {
-                let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.sub(&b))
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.sub(&b.uext(width_diff as u32)))
-                } else {
-                    Value::Symbolic(a.uext(-width_diff as u32).sub(&b))
-                }
-            }
-        }
+        binary_ops!(&self, &rhs, sub, -)
     }
 }
 
@@ -106,29 +90,7 @@ impl ops::Mul<Value> for Value {
 
     #[inline]
     fn mul(self, rhs: Value) -> Value {
-        match (self, rhs) {
-            (Value::Concrete(a), Value::Concrete(b)) => {
-                Value::Concrete(a * b)
-            },
-            (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.mul(&bv))
-            },
-            (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, b.get_width());
-                Value::Symbolic(b.mul(&bv))
-            },
-            (Value::Symbolic(a), Value::Symbolic(b)) => {
-                let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.mul(&b))
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.mul(&b.uext(width_diff as u32)))
-                } else {
-                    Value::Symbolic(b.mul(&a.uext(-width_diff as u32)))
-                }
-            }
-        }
+        binary_ops!(&self, &rhs, mul, *)
     }
 }
 
@@ -137,29 +99,7 @@ impl ops::Div<Value> for Value {
 
     #[inline]
     fn div(self, rhs: Value) -> Value {
-        match (self, rhs) {
-            (Value::Concrete(a), Value::Concrete(b)) => {
-                Value::Concrete(a / b)
-            },
-            (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.udiv(&bv))
-            },
-            (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, b.get_width());
-                Value::Symbolic(bv.udiv(&b))
-            },
-            (Value::Symbolic(a), Value::Symbolic(b)) => {
-                let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.udiv(&b))
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.udiv(&b.uext(width_diff as u32)))
-                } else {
-                    Value::Symbolic(a.uext(-width_diff as u32).udiv(&b))
-                }
-            }
-        }
+        binary_ops!(&self, &rhs, udiv, /)
     }
 }
 
@@ -168,29 +108,7 @@ impl ops::Rem<Value> for Value {
 
     #[inline]
     fn rem(self, rhs: Value) -> Value {
-        match (self, rhs) {
-            (Value::Concrete(a), Value::Concrete(b)) => {
-                Value::Concrete(a % b)
-            },
-            (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.urem(&bv))
-            },
-            (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, b.get_width());
-                Value::Symbolic(bv.urem(&b))
-            },
-            (Value::Symbolic(a), Value::Symbolic(b)) => {
-                let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.urem(&b))
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.urem(&b.uext(width_diff as u32)))
-                } else {
-                    Value::Symbolic(a.uext(-width_diff as u32).urem(&b))
-                }
-            }
-        }
+        binary_ops!(&self, &rhs, urem, %)
     }
 }
 
@@ -199,29 +117,7 @@ impl ops::BitAnd<Value> for Value {
 
     #[inline]
     fn bitand(self, rhs: Value) -> Value {
-        match (self, rhs) {
-            (Value::Concrete(a), Value::Concrete(b)) => {
-                Value::Concrete(a & b)
-            },
-            (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.and(&bv))
-            },
-            (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, b.get_width());
-                Value::Symbolic(b.and(&bv))
-            },
-            (Value::Symbolic(a), Value::Symbolic(b)) => {
-                let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.and(&b))
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.and(&b.uext(width_diff as u32)))
-                } else {
-                    Value::Symbolic(b.and(&a.uext(-width_diff as u32)))
-                }
-            }
-        }
+        binary_ops!(&self, &rhs, and, &)
     }
 }
 
@@ -230,29 +126,7 @@ impl ops::BitOr<Value> for Value {
 
     #[inline]
     fn bitor(self, rhs: Value) -> Value {
-        match (self, rhs) {
-            (Value::Concrete(a), Value::Concrete(b)) => {
-                Value::Concrete(a | b)
-            },
-            (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.or(&bv))
-            },
-            (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, b.get_width());
-                Value::Symbolic(b.or(&bv))
-            },
-            (Value::Symbolic(a), Value::Symbolic(b)) => {
-                let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.or(&b))
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.or(&b.uext(width_diff as u32)))
-                } else {
-                    Value::Symbolic(b.or(&a.uext(-width_diff as u32)))
-                }
-            }
-        }
+        binary_ops!(&self, &rhs, or, |)
     }
 }
 
@@ -261,29 +135,7 @@ impl ops::BitXor<Value> for Value {
 
     #[inline]
     fn bitxor(self, rhs: Value) -> Value {
-        match (self, rhs) {
-            (Value::Concrete(a), Value::Concrete(b)) => {
-                Value::Concrete(a ^ b)
-            },
-            (Value::Symbolic(a), Value::Concrete(b)) => {
-                let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.xor(&bv))
-            },
-            (Value::Concrete(a), Value::Symbolic(b)) => {
-                let bv = make_bv(&b, a, b.get_width());
-                Value::Symbolic(b.xor(&bv))
-            },
-            (Value::Symbolic(a), Value::Symbolic(b)) => {
-                let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.xor(&b))
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.xor(&b.uext(width_diff as u32)))
-                } else {
-                    Value::Symbolic(b.xor(&a.uext(-width_diff as u32)))
-                }
-            }
-        }
+        binary_ops!(&self, &rhs, xor, ^)
     }
 }
 
@@ -483,8 +335,8 @@ impl Value {
 
     // get whether values are equivalent
     #[inline]
-    pub fn eq(&self, rhs: Value) -> Value {
-        match (self, &rhs) {
+    pub fn eq(&self, rhs: &Value) -> Value {
+        match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
                 Value::Concrete((*a == *b) as u64)
             },
@@ -511,21 +363,21 @@ impl Value {
 
     // check if values are *identical*
     #[inline]
-    pub fn id(self, rhs: Value) -> Value {
+    pub fn id(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
                 Value::Concrete((a == b) as u64)
             },
             (Value::Symbolic(a), Value::Concrete(b)) => {
                 if a.is_const() {
-                    Value::Concrete((a.as_u64().unwrap() == b) as u64)
+                    Value::Concrete((a.as_u64().unwrap() == *b) as u64)
                 } else {
                     Value::Concrete(0)
                 }
             },
             (Value::Concrete(a), Value::Symbolic(b)) => {
                 if b.is_const() {
-                    Value::Concrete((b.as_u64().unwrap() == a) as u64)
+                    Value::Concrete((b.as_u64().unwrap() == *a) as u64)
                 } else {
                     Value::Concrete(0)
                 }
@@ -537,8 +389,8 @@ impl Value {
     }
 
     #[inline]
-    pub fn slt(&self, rhs: Value) -> Value {
-        match (self, &rhs) {
+    pub fn slt(&self, rhs: &Value) -> Value {
+        match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
                 Value::Concrete(((*a as i64) < (*b as i64)) as u64)
             },
@@ -564,23 +416,23 @@ impl Value {
     }
 
     #[inline]
-    pub fn slte(self, rhs: Value) -> Value {
-        self.ult(rhs.clone()) | self.eq(rhs)
+    pub fn slte(&self, rhs: &Value) -> Value {
+        self.slt(rhs) | self.eq(rhs)
     }
 
     #[inline]
-    pub fn sgt(self, rhs: Value) -> Value {
-        !self.ult(rhs.clone()) & !self.eq(rhs)
+    pub fn sgt(&self, rhs: &Value) -> Value {
+        !self.slt(rhs) & !self.eq(rhs)
     }
 
     #[inline]
-    pub fn sgte(self, rhs: Value) -> Value {
-        !self.ult(rhs)
+    pub fn sgte(self, rhs: &Value) -> Value {
+        !self.slt(rhs)
     }
     
     #[inline]
-    pub fn ult(&self, rhs: Value) -> Value {
-        match (self, &rhs) {
+    pub fn ult(&self, rhs: &Value) -> Value {
+        match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
                 Value::Concrete((*a < *b) as u64)
             },
@@ -606,33 +458,33 @@ impl Value {
     }
 
     #[inline]
-    pub fn ulte(&self, rhs: Value) -> Value {
-        self.ult(rhs.clone()) | self.eq(rhs)
+    pub fn ulte(&self, rhs: &Value) -> Value {
+        self.ult(rhs) | self.eq(rhs)
     }
 
     #[inline]
-    pub fn ugt(&self, rhs: Value) -> Value {
-        !self.ult(rhs.clone()) & !self.eq(rhs)
+    pub fn ugt(&self, rhs: &Value) -> Value {
+        !self.ult(rhs) & !self.eq(rhs)
     }
 
     #[inline]
-    pub fn ugte(&self, rhs: Value) -> Value {
+    pub fn ugte(&self, rhs: &Value) -> Value {
         !self.ult(rhs)
     }
 
     #[inline]
-    pub fn uext(self, rhs: Value) -> Value {
+    pub fn uext(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
                 Value::Concrete(a & ((1 << b) - 1))
             },
             (Value::Symbolic(a), Value::Concrete(b)) => {
                 //let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.slice(b as u32 - 1, 0).uext(64 - b as u32))
+                Value::Symbolic(a.slice(*b as u32 - 1, 0).uext(64 - *b as u32))
             },
             (Value::Concrete(a), Value::Symbolic(_b)) => {
                 // uh hopefully this doesnt happen
-                Value::Concrete(a)
+                Value::Concrete(*a)
             },
             (Value::Symbolic(a), Value::Symbolic(_b)) => {
                 // uh hopefully this doesnt happen
@@ -643,19 +495,19 @@ impl Value {
     }
 
     #[inline]
-    pub fn sext(self, rhs: Value) -> Value {
+    pub fn sext(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a), Value::Concrete(b)) => {
-                let szdiff = 64 - b as i64;
-                Value::Concrete((((a as i64) << szdiff) >> szdiff) as u64)
+                let szdiff = 64 - *b as i64;
+                Value::Concrete((((*a as i64) << szdiff) >> szdiff) as u64)
             },
             (Value::Symbolic(a), Value::Concrete(b)) => {
                 //let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.slice(b as u32 - 1, 0).sext(64 - b as u32))
+                Value::Symbolic(a.slice(*b as u32 - 1, 0).sext(64 - *b as u32))
             },
             (Value::Concrete(a), Value::Symbolic(_b)) => {
                 // uh hopefully this doesnt happen
-                Value::Concrete(a)
+                Value::Concrete(*a)
             },
             (Value::Symbolic(a), Value::Symbolic(_b)) => {
                 // uh hopefully this doesnt happen
@@ -693,7 +545,51 @@ impl Value {
     pub fn depends(&self, bv: BV<Arc<Btor>>) -> bool {
         match self {
             Value::Concrete(_a) => false,
-            Value::Symbolic(a)  => format!("{:?}", a).contains(bv.get_symbol().unwrap())
+            Value::Symbolic(a)  => format!("{:?}", a)
+                .contains(bv.get_symbol().unwrap())
         }
     }
+
+
+    #[inline]
+    pub fn add(&self, rhs: &Value) -> Value {
+        binary_ops!(self, rhs, add, +)
+    }
+
+    #[inline]
+    pub fn sub(&self, rhs: &Value) -> Value {
+        binary_ops!(self, rhs, sub, -)
+    }
+
+    #[inline]
+    pub fn mul(&self, rhs: &Value) -> Value {
+        binary_ops!(self, rhs, mul, *)
+    }
+
+    #[inline]
+    pub fn div(&self, rhs: &Value) -> Value {
+        binary_ops!(self, rhs, udiv, /)
+    }
+
+    #[inline]
+    pub fn rem(&self, rhs: &Value) -> Value {
+        binary_ops!(self, rhs, urem, %)
+    }
+
+
+    #[inline]
+    pub fn and(&self, rhs: &Value) -> Value {
+        binary_ops!(self, rhs, and, &)
+    }
+
+    #[inline]
+    pub fn or(&self, rhs: &Value) -> Value {
+        binary_ops!(self, rhs, or, |)
+    }
+
+    #[inline]
+    pub fn xor(&self, rhs: &Value) -> Value {
+        binary_ops!(self, rhs, xor, ^)
+    }
+    
 }

@@ -49,7 +49,7 @@ pub fn bzero(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn mempcpy(state: &mut State, args: Vec<Value>) -> Value {
-    memcpy(state, args.clone()) + args[2].clone()
+    memcpy(state, args.clone()).add(&args[2])
 }
 
 pub fn memccpy(state: &mut State, args: Vec<Value>) -> Value {
@@ -111,7 +111,7 @@ pub fn stpcpy(state: &mut State, args: Vec<Value>) -> Value {
 pub fn strdup(state: &mut State, args: Vec<Value>) -> Value {
     let length = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN))
         +Value::Concrete(1);
-    let new_addr = malloc(state, vec!(length.to_owned()));
+    let new_addr = Value::Concrete(state.memory.alloc(&length));
     state.memory_move(&new_addr, &args[0], &length);
     new_addr
 }
@@ -125,7 +125,7 @@ pub fn strdupa(state: &mut State, args: Vec<Value>) -> Value {
 // TODO for strn stuff I may need to add a null?
 pub fn strndup(state: &mut State, args: Vec<Value>) -> Value {
     let length = state.memory_strlen(&args[0], &args[1]);
-    let new_addr = malloc(state, vec!(length.clone()));
+    let new_addr = Value::Concrete(state.memory.alloc(&length));
     state.memory_move(&new_addr, &args[0], &length);
     new_addr
 }
@@ -207,7 +207,7 @@ pub fn memcmp(state: &mut State, args: Vec<Value>) -> Value {
 pub fn strcmp(state: &mut State, args: Vec<Value>) -> Value {    
     let len1 = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
     let len2 = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN));
-    let length  = state.solver.conditional(&(len1.clone().ult(len2.clone())), 
+    let length  = state.solver.conditional(&(len1.ult(&len2)), 
         &len1, &len2)+Value::Concrete(1);
 
     state.memory_compare(&args[0], &args[1], &length)
@@ -216,7 +216,7 @@ pub fn strcmp(state: &mut State, args: Vec<Value>) -> Value {
 pub fn strncmp(state: &mut State, args: Vec<Value>) -> Value {
     let len1 = state.memory_strlen(&args[0], &args[2]);
     let len2 = state.memory_strlen(&args[1], &args[2]);
-    let length  = state.solver.conditional(&(len1.clone().ult(len2.clone())), 
+    let length  = state.solver.conditional(&(len1.ult(&len2)), 
         &len1, &len2)+Value::Concrete(1);
 
     state.memory_compare(&args[0], &args[1], &length)
@@ -247,7 +247,7 @@ pub fn malloc(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn calloc(state: &mut State, args: Vec<Value>) -> Value {
-    Value::Concrete(state.memory.alloc(&(args[0].clone()*args[1].clone())))
+    Value::Concrete(state.memory.alloc(&args[0].mul(&args[1])))
 }
 
 pub fn free(state: &mut State, args: Vec<Value>) -> Value {
@@ -366,37 +366,37 @@ pub fn itoa(state: &mut State, value, string, base):
 */
 
 pub fn islower(_state: &mut State, args: Vec<Value>) -> Value {
-    let c = args[0].clone().slice(7, 0);
-    c.ult(Value::Concrete(0x7b)) & !c.ult(Value::Concrete(0x61))
+    let c = args[0].slice(7, 0);
+    c.ult(&Value::Concrete(0x7b)) & !c.ult(&Value::Concrete(0x61))
 }
 
 pub fn isupper(_state: &mut State, args: Vec<Value>) -> Value {
-    let c = args[0].clone().slice(7, 0);
-    c.ult(Value::Concrete(0x5b)) & !c.ult(Value::Concrete(0x41))
+    let c = args[0].slice(7, 0);
+    c.ult(&Value::Concrete(0x5b)) & !c.ult(&Value::Concrete(0x41))
 }
 
 pub fn isalpha(state: &mut State, args: Vec<Value>) -> Value {
-    isupper(state, args.to_owned()) | islower(state, args)
+    isupper(state, args.clone()) | islower(state, args)
 }
 
 pub fn isdigit(_state: &mut State, args: Vec<Value>) -> Value {
-    let c = args[0].to_owned().slice(7, 0);
-    c.ult(Value::Concrete(0x3a)) & !c.ult(Value::Concrete(0x30))
+    let c = args[0].slice(7, 0);
+    c.ult(&Value::Concrete(0x3a)) & !c.ult(&Value::Concrete(0x30))
 }
 
 pub fn isalnum(state: &mut State, args: Vec<Value>) -> Value {
-    isalpha(state, args.to_owned()) | isdigit(state, args)
+    isalpha(state, args.clone()) | isdigit(state, args)
 }
 
 pub fn isblank(_state: &mut State, args: Vec<Value>) -> Value {
-    let c = args[0].to_owned().slice(7, 0);
-    c.clone().eq(Value::Concrete(0x20)) | c.eq(Value::Concrete(0x09))
+    let c = args[0].slice(7, 0);
+    c.eq(&Value::Concrete(0x20)) | c.eq(&Value::Concrete(0x09))
 }
 
 pub fn iscntrl(_state: &mut State, args: Vec<Value>) -> Value {
-    let c = args[0].to_owned().slice(7, 0);
-    (c.ugte(Value::Concrete(0)) & c.ulte(Value::Concrete(0x1f)))
-        | c.eq(Value::Concrete(0x7f))
+    let c = args[0].slice(7, 0);
+    (c.ugte(&Value::Concrete(0)) & c.ulte(&Value::Concrete(0x1f)))
+        | c.eq(&Value::Concrete(0x7f))
 }
 
 pub fn toupper(state: &mut State, args: Vec<Value>) -> Value {

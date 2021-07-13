@@ -20,7 +20,7 @@ use crate::radius::{Radius, RadiusOption};
 use crate::value::Value;
 //use crate::state::State;
 
-//#[test]
+#[test]
 fn looper() {
     let options = vec!(); // RadiusOption::Debug(true));
     let mut radius = Radius::new_with_options("tests/looper", options);
@@ -86,7 +86,7 @@ fn multi() {
 
 //#[test]
 fn r100() {
-    let options = vec!(RadiusOption::Debug(true));
+    let options = vec!(RadiusOption::Debug(false));
     let mut radius = Radius::new_with_options("tests/r100", options);
     let mut state = radius.call_state(0x004006fd);
     let bv = state.bv("flag", 12*8);
@@ -96,13 +96,13 @@ fn r100() {
 
     radius.breakpoint(0x004007a1);
     radius.avoid(vec!(0x00400790));
-    let mut new_state = radius.run(Some(state), 2).unwrap();
+    let mut new_state = radius.run(Some(state), 1).unwrap();
     let flag = new_state.evaluate_string(&bv).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "Code_Talkers");
 }
 
-//#[test]
+#[test]
 fn r200() {
     let options = vec!(RadiusOption::Debug(false));
     let mut radius = Radius::new_with_options("tests/r200", options);
@@ -116,13 +116,13 @@ fn r200() {
     radius.mergepoint(0x004007fd);
     radius.avoid(vec!(0x00400832));
 
-    let mut new_state = radius.run(Some(state), 2).unwrap();
+    let mut new_state = radius.run(Some(state), 1).unwrap();
     let flag = new_state.evaluate_string(&bv).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "rotors");
 }
 
-//#[test]
+#[test]
 fn unbreakable() {
     let mut radius = Radius::new("tests/unbreakable");
     let mut state = radius.call_state(0x004005bd);
@@ -148,7 +148,7 @@ fn unbreakable() {
     true
 }*/
 
-//#[test]
+#[test]
 fn symmem() {
     let mut radius = Radius::new_with_options("tests/symmem", vec!(RadiusOption::Debug(true)));
     let main = radius.r2api.get_address("main");
@@ -180,7 +180,7 @@ fn symmem() {
     //return;
 
     let sentence1 = "elephant";
-    let sentence2 = "alephant";
+    let _sentence2 = "alephant";
 
     state.memory.write_string(0x100000, sentence1);
     state.memory.write_value(0x100010, Value::Symbolic(x.clone()), 8);
@@ -220,7 +220,7 @@ fn symmem() {
     radius.r2api.close();
 }
 
-//#[test]
+#[test]
 fn ioscrackme() {
     let mut radius = Radius::new("ipa://tests/ioscrackme.ipa");
     //radius.r2api.r2p.cmd("e asm.arch=arm.v35");
@@ -231,11 +231,11 @@ fn ioscrackme() {
     let bv = state.bv("flag", 8*len as u32);
 
     // add "[a-zA-Z]" constraint
-    for i in 0..len {
-        let gteca = bv.slice(8*(i+1) as u32 -1, 8*i as u32).ugte(&state.bvv(0x41, 8));
-        let ltecz = bv.slice(8*(i+1) as u32 -1, 8*i as u32).ulte(&state.bvv(0x5A, 8));
-        let gtea  = bv.slice(8*(i+1) as u32 -1, 8*i as u32).ugte(&state.bvv(0x61, 8));
-        let ltez  = bv.slice(8*(i+1) as u32 -1, 8*i as u32).ulte(&state.bvv(0x7A, 8));
+    for i in 0..len as u32 {
+        let gteca = bv.slice(8*(i+1)-1, 8*i).ugte(&state.bvv(0x41, 8));
+        let ltecz = bv.slice(8*(i+1)-1, 8*i).ulte(&state.bvv(0x5A, 8));
+        let gtea  = bv.slice(8*(i+1)-1, 8*i).ugte(&state.bvv(0x61, 8));
+        let ltez  = bv.slice(8*(i+1)-1, 8*i).ulte(&state.bvv(0x7A, 8));
         gteca.and(&ltecz).or(&gtea.and(&ltez)).assert();
     }
 

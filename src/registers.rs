@@ -191,7 +191,7 @@ impl Registers {
             let mut old_sym;
             match (value, old_value.clone()) {
                 (Value::Concrete(new), Value::Concrete(old)) => {
-                    let new_mask: u64 = (1 << size) - 1; //MASKS[size as usize];
+                    let new_mask: u64 = (1 << size) - 1; 
                     let mask: u64 = 0xffffffffffffffff ^ (new_mask << offset);
 
                     let new_value = (old & mask) + ((new & new_mask) << offset);

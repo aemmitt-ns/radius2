@@ -17,7 +17,7 @@ const INSTR_NUM: usize = 64;
 const CALL_TYPE: u64 = 3;
 const RETN_TYPE: u64 = 5;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Word {
     Literal(Value),
     Register(usize),
@@ -40,7 +40,9 @@ pub struct Processor {
     pub avoidpoints: HashMap<u64, bool>,
     pub optimized: bool,
     pub debug: bool,
-    pub lazy: bool
+    pub lazy: bool,
+    pub force: bool,
+    pub prune: bool
     //pub states: Vec<State>
 }
 
@@ -67,8 +69,10 @@ pub struct InstructionEntry {
 //const OPT:   bool = true;  // optimize by removing unread flag sets
 const BFS:   bool = true;    // dequeue states instead of popping
 
+const ALLOW_INVALID: bool = true; // Allow invalid instructions (exec as NOP)
+
 impl Processor {
-    pub fn new(optimized: bool, debug: bool, lazy: bool) -> Self {
+    pub fn new(optimized: bool, debug: bool, lazy: bool, force: bool, prune: bool) -> Self {
         Processor {
             pc: None,
             instructions: HashMap::new(),
@@ -81,7 +85,9 @@ impl Processor {
             avoidpoints:  HashMap::new(),
             optimized,
             debug,
-            lazy
+            lazy,
+            force,
+            prune
             //states: vec!()
         }
     }
@@ -100,7 +106,7 @@ impl Processor {
             } else if let Some(operator) = self.get_operator(s) {
                 tokens.push(operator);
 
-            // all this garbage is for the fuckin combo ones like ++=[8] ...
+            // all this garbage is for the combo ones like ++=[8] ...
             } else if s.len() > 1 && &s[s.len()-1..s.len()] == "="
                     && OPS.contains(&&s[0..s.len()-1]) {
 
@@ -130,6 +136,7 @@ impl Processor {
         tokens
     }
 
+    // attempt to tokenize word as number literal (eg. 0x8)
     pub fn get_literal(&self, word: &str) -> Option<Word> {        
         if let Ok(i) = word.parse::<u64>() {
             let val = Value::Concrete(i);
@@ -145,6 +152,7 @@ impl Processor {
         }
     }
 
+    // attempt to tokenize word as register (eg. rbx)
     pub fn get_register(&self,  state: &mut State, word: &str) -> Option<Word> {
         if let Some(reg) = state.registers.get_register(word) {
             Some(Word::Register(reg.index))
@@ -153,6 +161,7 @@ impl Processor {
         }
     }
 
+    // attempt to tokenize word as operation (eg. +)
     pub fn get_operator(&self, word: &str) -> Option<Word> {
         let op = Operations::from_string(word);
         match op {
@@ -161,6 +170,7 @@ impl Processor {
         }
     }
 
+    // print instruction if debug output is enabled
     #[inline]
     pub fn print_instr(&self, instr: &Instruction) {
         if self.debug {
@@ -168,6 +178,7 @@ impl Processor {
         }
     }
 
+    // perform an emulated syscall using the definitions in syscall.rs
     pub fn do_syscall(&self, state: &mut State) {
         let sys_val = state.registers.get_with_alias("SN");
         let sys_num = state.solver.evalcon_to_u64(&sys_val).unwrap();
@@ -202,9 +213,16 @@ impl Processor {
         self.parse(state, &words);
     }
 
+    /* 
+     * Parse and execute the vector of tokenized ESIL words. 
+     * The difficult parts here are the temporary stacks for IF/ELSE
+     * When a conditional is symbolic the stack needs to be copied
+     * into separate stacks for the if and else portions
+     * after ENDIF (}) these stacks are unwound into a single vec of 
+     * conditional bitvectors IF(cond, IF_VAL, ELSE_VAL)
+     */
     pub fn parse(&self, state: &mut State, words: &[Word]) {
         state.stack.clear();
-        state.esil.pcs.clear();
         
         let mut word_index = 0;
         let words_len = words.len();
@@ -355,8 +373,8 @@ impl Processor {
     // removes words that weak set flag values that are never read
     pub fn optimize(&mut self, state: &mut State, prev_pc: u64, curr_instr: &InstructionEntry) {
         let prev_instr = &self.instructions[&prev_pc];
-        if  !prev_instr.instruction.esil.contains(":=") ||
-            !curr_instr.instruction.esil.contains(":=")
+        if  !prev_instr.tokens.contains(&Word::Operator(Operations::WeakEqual)) ||
+            !curr_instr.tokens.contains(&Word::Operator(Operations::WeakEqual))
         {
             return;
         }
@@ -364,7 +382,6 @@ impl Processor {
         let mut regs_read: Vec<usize> = vec!();
         let mut regs_written: Vec<usize> = vec!();
 
-        // this is some ugly fucking code
         let len = curr_instr.tokens.len();
         for (i, word) in curr_instr.tokens.iter().enumerate() {
             if let Word::Register(index) = word {
@@ -450,8 +467,13 @@ impl Processor {
         }
     }
 
+    /*
+     * Update the status of the state and execute the instruction at PC
+     * If the instruction is hooked or the method is simulated perform the
+     * respective callback. Hooks returning false will skip the instruction
+     */
     #[inline]
-    pub fn update(&self, state: &mut State, pc_index: usize, instr: &Instruction, 
+    pub fn execute(&self, state: &mut State, pc_index: usize, instr: &Instruction, 
         status: &InstructionStatus, words: &[Word]) {
 
         if CHECK_PERMS {
@@ -463,6 +485,14 @@ impl Processor {
 
         let pc = instr.offset;
         let new_pc = instr.offset + instr.size;
+
+        state.esil.pcs.clear();
+        if instr.jump != 0 {
+            state.esil.pcs.push(instr.jump);
+        } 
+        if instr.fail != 0 {
+            state.esil.pcs.push(instr.fail);
+        }
 
         match instr.type_num {
             CALL_TYPE => { state.backtrace.push(new_pc); },
@@ -516,7 +546,7 @@ impl Processor {
                 // don't ret if sim changes the PC value
                 // this is bad hax because thats all i do
                 let newer_pc_val = state.registers.get_value(pc_index);
-                if let Value::Concrete(newer_pc) = newer_pc_val {
+                if let Some(newer_pc) = newer_pc_val.as_u64() {
                     if newer_pc == new_pc {
                         self.ret(state);
                     }
@@ -534,19 +564,21 @@ impl Processor {
         self.parse_expression(state, ret_esil.as_str());
     }
 
-    pub fn execute(&mut self, state: &mut State, 
+    // get the instruction, set its status, tokenize if necessary
+    // and optimize if enabled 
+    pub fn execute_instruction(&mut self, state: &mut State, 
         pc_index: usize, pc_val: u64) {
         
         let instr_opt = self.instructions.get(&pc_val);
         
         if let Some(instr_entry) = instr_opt {
             self.print_instr(&instr_entry.instruction);
-            /*if instr_entry.instruction.opcode == "invalid" {
+            if !ALLOW_INVALID && instr_entry.instruction.opcode == "invalid" {
                 panic!("invalid instruction: {:?}", instr_entry);
-            }*/
+            }
             //let size = instr_entry.instruction.size;
             let words = &instr_entry.tokens;
-            self.update(state, pc_index, &instr_entry.instruction, 
+            self.execute(state, pc_index, &instr_entry.instruction, 
                 &instr_entry.status, words);
 
         } else {
@@ -579,7 +611,7 @@ impl Processor {
 
                 if pc_tmp == pc_val {
                     self.print_instr(&instr);
-                    self.update(state, pc_index, &instr, &status, &words);
+                    self.execute(state, pc_index, &instr, &status, &words);
                 } 
 
                 let instr_entry = InstructionEntry {
@@ -600,63 +632,69 @@ impl Processor {
         }
     }
 
-    pub fn step(&mut self, mut state: State) -> Vec<State> {
+    pub fn step(&mut self, mut state: State, duplicate: bool) -> Vec<State> {
         let mut states: Vec<State> = vec!();
         let pc_index = self.pc.unwrap();
 
         let pc_value = state.registers.get_value(pc_index);
 
         if let Some(pc_val) = pc_value.as_u64() {
-            self.execute(&mut state, pc_index, pc_val);
+            self.execute_instruction(&mut state, pc_index, pc_val);
         } else {
             println!("got an unexpected sym PC: {:?}", pc_value);
         }
 
-        //println!("\nassertions: {:?}\n", state.solver.assertions);
-
         let new_pc = state.registers.get_value(pc_index);
+        let mut pcs = vec!();
 
-        match new_pc.as_u64() {
-            Some(_pc_val) => {
-                states.push(state);
-            },
-            None => {
+        if self.force && state.esil.pcs.len() > 0 {
+            pcs = state.esil.pcs;
+            state.esil.pcs = vec!();
+        } else {
+            if let Some(pc) = new_pc.as_u64() {
+                pcs.push(pc)
+            } else {
                 let pc_val = new_pc.as_bv().unwrap();
-                // this is weird and bad
-
                 if self.debug {
                     println!("\nsymbolic PC: {:?}\n", pc_val);
                 }
-
-                let pcs;
-                if self.lazy && state.esil.pcs.len() == 2 {
+                
+                if self.lazy && state.esil.pcs.len() > 0 {
                     pcs = state.esil.pcs;
                     state.esil.pcs = vec!();
                 } else {
                     pcs = state.evaluate_many(&pc_val);
                 }
+            }
+        }
 
-                if pcs.is_empty() {
-                    return states;
-                }
-
-                let last = pcs.len()-1;
-                for new_pc_val in &pcs[..last] {
-                    let mut new_state = state.clone();
-                    let pc_bv = &pc_val; 
+        if pcs.len() == 1 && new_pc.as_u64().is_some() {
+            states.push(state);
+        } else if pcs.len() > 0 {
+            let last = pcs.len()-1;
+            for new_pc_val in &pcs[..last] {
+                let mut new_state = if duplicate { 
+                    state.duplicate() 
+                } else { 
+                    state.clone()
+                };
+                if let Some(pc_val) = new_pc.as_bv() {
+                    let pc_bv = new_state.translate(&pc_val).unwrap(); 
                     let a = pc_bv._eq(&new_state.bvv(*new_pc_val, pc_bv.get_width()));
                     new_state.solver.assert(&a);
-                    new_state.registers.set_value(pc_index, Value::Concrete(*new_pc_val));
-                    states.push(new_state);
                 }
-                
-                let new_pc_val = pcs[last];
+                new_state.registers.set_value(pc_index, Value::Concrete(*new_pc_val));
+                states.push(new_state);
+            }
+            
+            let new_pc_val = pcs[last];
+            if let Some(pc_val) = new_pc.as_bv() {
                 let pc_bv = pc_val; 
                 let a = pc_bv._eq(&state.bvv(new_pc_val, pc_bv.get_width()));
                 state.solver.assert(&a);
-                state.registers.set_value(pc_index, Value::Concrete(new_pc_val));
-                states.push(state);
             }
+            state.registers.set_value(pc_index, Value::Concrete(new_pc_val));
+            states.push(state);
         }
 
         states
@@ -689,14 +727,14 @@ impl Processor {
                 }
             } 
 
-            let new_states = self.step(current_state);
+            let new_states = self.step(current_state, false);
             states.extend(new_states);
         }
 
         None
     }
 
-    pub fn run(&mut self, state: State, split: bool) -> Vec<State> {
+    pub fn run(&mut self, state: State, split: bool, dup: bool) -> Vec<State> {
 
         let mut states = vec!();
         if self.pc.is_none() {
@@ -717,7 +755,7 @@ impl Processor {
 
             match current_state.status {
                 StateStatus::Active | StateStatus::PostMerge => {
-                    states.extend(self.step(current_state));
+                    states.extend(self.step(current_state, dup));
                 },
                 StateStatus::Break | StateStatus::Merge => {
                     return vec!(current_state); 

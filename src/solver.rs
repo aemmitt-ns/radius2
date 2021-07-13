@@ -35,7 +35,7 @@ impl Solver {
         let mut assertions = vec!();
 
         for assertion in &self.assertions {
-            let new_assert = Btor::get_matching_bv(btor.clone(), assertion);
+            let new_assert = self.translate(assertion);
             assertions.push(new_assert.unwrap());
         }
 
