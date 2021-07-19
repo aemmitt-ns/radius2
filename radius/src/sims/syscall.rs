@@ -38,20 +38,20 @@ pub fn indirect(state: &mut State, mut args: Vec<Value>) -> Value {
 
 pub fn open(state: &mut State, args: Vec<Value>) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
-    let len = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let len = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0));
     let length = state.solver.evalcon_to_u64(&len).unwrap();
     let path = state.memory_read_string(addr, length as usize);
     if let Some(fd) = state.filesystem.open(path.as_str(), FileMode::Read) {
-        Value::Concrete(fd as u64)
+        Value::Concrete(fd as u64, 0)
     } else {
-        Value::Concrete(-1i64 as u64)
+        Value::Concrete(-1i64 as u64, 0)
     }
 }
 
 pub fn close(state: &mut State, args: Vec<Value>) -> Value {
     let fd = state.solver.evalcon_to_u64(&args[0]);
     state.filesystem.close(fd.unwrap() as usize);
-    Value::Concrete(0)
+    Value::Concrete(0, 0)
 }
 
 
@@ -61,7 +61,7 @@ pub fn read(state: &mut State, args: Vec<Value>) -> Value {
     let data = state.filesystem.read(fd as usize, length as usize);
     let len = data.len();
     state.memory_write(&args[1], data, &args[2]);
-    Value::Concrete(len as u64)
+    Value::Concrete(len as u64, args[2].get_taint())
 }
 
 pub fn write(state: &mut State, args: Vec<Value>) -> Value {
@@ -69,12 +69,12 @@ pub fn write(state: &mut State, args: Vec<Value>) -> Value {
     let data = state.memory_read(&args[1], &args[2]);
     let len = data.len();
     state.filesystem.write(fd as usize, data);
-    Value::Concrete(len as u64)
+    Value::Concrete(len as u64, 0)
 }
 
 pub fn access(state: &mut State, args: Vec<Value>) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
-    let len = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let len = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0));
     let length = state.solver.evalcon_to_u64(&len).unwrap();
     let path = state.memory_read_string(addr, length as usize);
     state.filesystem.access(path.as_str())
@@ -84,18 +84,18 @@ pub fn lseek(state: &mut State, args: Vec<Value>) -> Value {
     let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let pos = state.solver.evalcon_to_u64(&args[1]).unwrap();
     state.filesystem.seek(fd as usize, pos as usize);
-    Value::Concrete(pos)
+    Value::Concrete(pos, 0)
 }
 
 // TODO the stat structure stuff ugh
 // error til then
 pub fn error(_state: &mut State, _args: Vec<Value>) -> Value {
-    Value::Concrete(-1i64 as u64)
+    Value::Concrete(-1i64 as u64, 0)
 }
 
 // TODO success dummy
 pub fn success(_state: &mut State, _args: Vec<Value>) -> Value {
-    Value::Concrete(0)
+    Value::Concrete(0, 0)
 }
 
 // TODO fd backed mem
@@ -108,7 +108,7 @@ pub fn mmap(state: &mut State, args: Vec<Value>) -> Value {
 
     let perms = state.memory.prot_to_str(prot);
     state.memory.add_segment("", addr, size, perms.as_str());
-    Value::Concrete(addr)
+    Value::Concrete(addr, 0)
 }
 
 pub fn munmap(state: &mut State, args: Vec<Value>) -> Value {
@@ -123,9 +123,9 @@ pub fn munmap(state: &mut State, args: Vec<Value>) -> Value {
 
     if ind as i32 != -1 {
         state.memory.segs.remove(ind);
-        Value::Concrete(0)
+        Value::Concrete(0, 0)
     } else {
-        Value::Concrete(-1i64 as u64)
+        Value::Concrete(-1i64 as u64, 0)
     }
 }
 
@@ -134,15 +134,15 @@ pub fn brk(state: &mut State, args: Vec<Value>) -> Value {
     let ret = state.memory.brk(addr);
 
     if ret {
-        Value::Concrete(0)
+        Value::Concrete(0, 0)
     } else {
-        Value::Concrete(-1i64 as u64)
+        Value::Concrete(-1i64 as u64, 0)
     }
 }
 
 pub fn sbrk(state: &mut State, args: Vec<Value>) -> Value {
     let inc = state.solver.evalcon_to_u64(&args[0]).unwrap();
-    Value::Concrete(state.memory.sbrk(inc))
+    Value::Concrete(state.memory.sbrk(inc), 0)
 }
 
 // returning a symbolic pid+1 | 0 | -1
@@ -157,10 +157,10 @@ pub fn fork(state: &mut State, _args: Vec<Value>) -> Value {
 
     state.solver.assert(&a);
 
-    Value::Symbolic(pid)
+    Value::Symbolic(pid, 0)
 }
 
 pub fn exit(state: &mut State, _args: Vec<Value>) -> Value {
     state.status = StateStatus::Inactive;
-    Value::Concrete(0)
+    Value::Concrete(0, 0)
 }

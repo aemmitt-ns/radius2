@@ -72,19 +72,19 @@ impl Solver {
     #[inline]
     pub fn translate_value(&self, value: &Value) -> Value {
         match value {
-            Value::Concrete(val) => Value::Concrete(*val),
-            Value::Symbolic(val) => Value::Symbolic(
-                self.translate(val).unwrap())
+            Value::Concrete(val, t) => Value::Concrete(*val, *t),
+            Value::Symbolic(val, t) => Value::Symbolic(
+                self.translate(val).unwrap(), *t)
         }
     }
 
     #[inline]
     pub fn to_bv(&self, value: &Value, length: u32) -> BitVec {
         match value {
-            Value::Concrete(val) => {
+            Value::Concrete(val, _t) => {
                 self.bvv(*val, length)
             },
-            Value::Symbolic(val) => {
+            Value::Symbolic(val, _t) => {
                 //let new_val = self.translate(val).unwrap();
                 let szdiff = (val.get_width() - length) as i32;
                 if szdiff == 0 {
@@ -101,17 +101,18 @@ impl Solver {
     #[inline]
     pub fn conditional(&self, cond: &Value, if_val: &Value, else_val: &Value) -> Value {
         match cond {
-            Value::Concrete(val) => {
+            Value::Concrete(val, t) => {
                 if *val != 0 {
-                    if_val.clone()
+                    if_val.with_taint(*t)
                 } else {
-                    else_val.clone()
+                    else_val.with_taint(*t)
                 }
             },
-            Value::Symbolic(val) => {
+            Value::Symbolic(val, t) => {
+                let taint = if_val.get_taint() | else_val.get_taint();
                 Value::Symbolic(val.cond_bv(
                     &self.to_bv(if_val, 64),
-                    &self.to_bv(else_val, 64)))
+                    &self.to_bv(else_val, 64)), taint | t)
             }
         }
     }
@@ -123,7 +124,7 @@ impl Solver {
         self.apply_assertions();
         //let new_bv = self.translate(bv).unwrap();
         let sol = if self.btor.sat() == SolverResult::Sat {
-            Some(Value::Concrete(bv.get_a_solution().as_u64().unwrap()))
+            Some(Value::Concrete(bv.get_a_solution().as_u64().unwrap(), 0))
         } else {
             None
         };
@@ -135,18 +136,27 @@ impl Solver {
     #[inline]
     pub fn eval(&self, value: &Value) -> Option<Value> {
         match value {
-            Value::Concrete(val) => {
-                Some(Value::Concrete(*val))
+            Value::Concrete(val, t) => {
+                Some(Value::Concrete(*val, *t))
             },
-            Value::Symbolic(bv) => {
-                self.evaluate(&bv)
+            Value::Symbolic(bv, t) => {
+                self.btor.push(1);
+                self.apply_assertions();
+                //let new_bv = self.translate(bv).unwrap();
+                let sol = if self.btor.sat() == SolverResult::Sat {
+                    Some(Value::Concrete(bv.get_a_solution().as_u64().unwrap(), *t))
+                } else {
+                    None
+                };
+                self.btor.pop(1);
+                sol
             }
         }
     }
 
     #[inline]
     pub fn eval_to_u64(&self, value: &Value) -> Option<u64> {
-        if let Some(Value::Concrete(val)) = self.eval(value) {
+        if let Some(Value::Concrete(val, _t)) = self.eval(value) {
             Some(val)
         } else {
             None
@@ -156,10 +166,10 @@ impl Solver {
     #[inline]
     pub fn eval_to_bv(&mut self, value: &Value) -> Option<BitVec> {
         match value {
-            Value::Concrete(val) => {
+            Value::Concrete(val, _t) => {
                 Some(self.bvv(*val, 64))
             },
-            Value::Symbolic(bv) => {
+            Value::Symbolic(bv, _t) => {
                 self.btor.push(1);
                 self.apply_assertions();
                 //let new_bv = self.translate(bv).unwrap();
@@ -179,10 +189,10 @@ impl Solver {
     #[inline]
     pub fn evalcon_to_u64(&mut self, value: &Value) -> Option<u64> {
         match value {
-            Value::Concrete(val) => {
+            Value::Concrete(val, _t) => {
                 Some(*val)
             },
-            Value::Symbolic(bv) => {
+            Value::Symbolic(bv, _t) => {
                 self.evalcon(&bv)
             }
         }
@@ -359,15 +369,15 @@ impl Solver {
 
     pub fn max_value(&self, value: &Value) -> u64 {
         match value {
-            Value::Concrete(val) => *val,
-            Value::Symbolic(val) => self.max(val)
+            Value::Concrete(val, _t) => *val,
+            Value::Symbolic(val, _t) => self.max(val)
         }
     }
 
     pub fn min_value(&self, value: &Value) -> u64 {
         match value {
-            Value::Concrete(val) => *val,
-            Value::Symbolic(val) => self.min(val)
+            Value::Concrete(val, _t) => *val,
+            Value::Symbolic(val, _t) => self.min(val)
         }
     }
 }

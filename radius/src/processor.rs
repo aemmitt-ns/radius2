@@ -139,13 +139,13 @@ impl Processor {
     // attempt to tokenize word as number literal (eg. 0x8)
     pub fn get_literal(&self, word: &str) -> Option<Word> {        
         if let Ok(i) = word.parse::<u64>() {
-            let val = Value::Concrete(i);
+            let val = Value::Concrete(i, 0);
             Some(Word::Literal(val))
         } else if word.len() > 2 && &word[0..2] == "0x" {
             let val = u64::from_str_radix(&word[2..word.len()], 16).unwrap();
-            Some(Word::Literal(Value::Concrete(val)))
+            Some(Word::Literal(Value::Concrete(val, 0)))
         } else if let Ok(i) = word.parse::<i64>() {
-            let val = Value::Concrete(i as u64);
+            let val = Value::Concrete(i as u64, 0);
             Some(Word::Literal(val))
         } else {
             None
@@ -260,14 +260,14 @@ impl Processor {
                             let arg1 = pop_value(state, false, false);
                 
                             match (arg1, &state.esil.mode) {
-                                (Value::Concrete(val1), ExecMode::Uncon) => {
+                                (Value::Concrete(val1, _t), ExecMode::Uncon) => {
                                     if val1 == 0 {
                                         state.esil.mode = ExecMode::NoExec;
                                     } else {
                                         state.esil.mode = ExecMode::Exec;
                                     }
                                 },
-                                (Value::Symbolic(val1), ExecMode::Uncon) => {
+                                (Value::Symbolic(val1, _t), ExecMode::Uncon) => {
                                     //println!("if {:?}", val1);
                                     state.esil.mode = ExecMode::If;
                                     temp_stack1 = state.stack.clone();
@@ -312,12 +312,13 @@ impl Processor {
                                 while !state.stack.is_empty() && !new_temp.is_empty() {
                                     let if_val = pop_stack_value(state, &mut tmp, false, false);
                                     let else_val = pop_stack_value(state, &mut new_temp, false, false);
-                                    let cond_val = state.condition.as_ref().unwrap().cond_bv(
-                                        &state.solver.to_bv(&if_val, 64),
-                                        &state.solver.to_bv(&else_val, 64)
+                                    let cond_val = state.solver.conditional(
+                                        &Value::Symbolic(state.condition.as_ref().unwrap().clone(), 0),
+                                        &if_val,
+                                        &else_val
                                     );
 
-                                    new_stack.push(StackItem::StackValue(Value::Symbolic(cond_val)));
+                                    new_stack.push(StackItem::StackValue(cond_val));
                                 }
 
                                 new_stack.reverse();
@@ -513,13 +514,13 @@ impl Processor {
 
         match new_status {
             InstructionStatus::None => {
-                let pc_val = Value::Concrete(new_pc);
+                let pc_val = Value::Concrete(new_pc, 0);
                 state.registers.set_value(pc_index, pc_val);
                 self.parse(state, words);
             },
             InstructionStatus::Hook => {
                 let mut skip = false;
-                let pc_val = Value::Concrete(new_pc);
+                let pc_val = Value::Concrete(new_pc, 0);
                 state.registers.set_value(pc_index, pc_val);
 
                 let hooks = &self.hooks[&pc];
@@ -533,7 +534,7 @@ impl Processor {
             },
             InstructionStatus::Sim => {
                 let sim = &self.sims[&pc];
-                let pc_val = Value::Concrete(new_pc);
+                let pc_val = Value::Concrete(new_pc, 0);
                 state.registers.set_value(pc_index, pc_val);
 
                 let cc = state.r2api.get_cc(pc);
@@ -685,7 +686,7 @@ impl Processor {
                     let a = pc_bv._eq(&new_state.bvv(*new_pc_val, pc_bv.get_width()));
                     new_state.solver.assert(&a);
                 }
-                new_state.registers.set_value(pc_index, Value::Concrete(*new_pc_val));
+                new_state.registers.set_value(pc_index, Value::Concrete(*new_pc_val, 0));
                 states.push(new_state);
             }
             
@@ -695,7 +696,7 @@ impl Processor {
                 let a = pc_bv._eq(&state.bvv(new_pc_val, pc_bv.get_width()));
                 state.solver.assert(&a);
             }
-            state.registers.set_value(pc_index, Value::Concrete(new_pc_val));
+            state.registers.set_value(pc_index, Value::Concrete(new_pc_val, 0));
             states.push(state);
         }
 

@@ -67,8 +67,8 @@ impl State {
     pub fn new(r2api: &mut R2Api) -> Self {
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
-            previous: Value::Concrete(0),
-            current: Value::Concrete(0),
+            previous: Value::Concrete(0, 0),
+            current: Value::Concrete(0, 0),
             last_sz: 64,
             stored_address: None,
             pcs: vec!()
@@ -117,8 +117,8 @@ impl State {
 
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
-            previous: Value::Concrete(0),
-            current: Value::Concrete(0),
+            previous: Value::Concrete(0, 0),
+            current: Value::Concrete(0, 0),
             last_sz: 64,
             stored_address: None,
             pcs: vec!()
@@ -193,11 +193,19 @@ impl State {
     }
 
     pub fn concrete_value(&mut self, v: u64, n: u32) -> Value {
-        Value::Concrete(v & ((1 << n) - 1))
+        Value::Concrete(v & ((1 << n) - 1), 0)
     }
 
     pub fn symbolic_value(&mut self, s: &str, n: u32) -> Value {
-        Value::Symbolic(self.bv(s, n))
+        Value::Symbolic(self.bv(s, n), 0)
+    }
+
+    pub fn tainted_concrete_value(&mut self, v: u64, t: u64, n: u32) -> Value {
+        Value::Concrete(v & ((1 << n) - 1), t)
+    }
+
+    pub fn tainted_symbolic_value(&mut self, s: &str, t: u64, n: u32) -> Value {
+        Value::Symbolic(self.bv(s, n), t)
     }
 
     #[inline]

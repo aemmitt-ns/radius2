@@ -229,7 +229,7 @@ impl Radius {
             let mut merge_state = self.merges.remove(&pc).unwrap();
             let mut state_asserts = state.solver.assertions.clone();
             let assertion = state.solver.and_all(&mut state_asserts).unwrap();
-            let asserted = Value::Symbolic(assertion.clone());
+            let asserted = Value::Symbolic(assertion.clone(), 0);
 
             // merge registers 
             let mut new_regs = vec!();
@@ -340,7 +340,7 @@ pub fn __libc_start_main(state: &mut State) -> bool {
     state.registers.set_with_alias("A1", argv);
 
     // TODO set env
-    state.registers.set_with_alias("A2", Value::Concrete(0));
+    state.registers.set_with_alias("A2", Value::Concrete(0, 0));
 
     false
 }
