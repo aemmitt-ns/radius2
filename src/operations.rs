@@ -348,7 +348,16 @@ macro_rules! binary_operation {
     ($state:expr, $op:tt) => {
         let arg1 = pop_value($state, false, false);
         let arg2 = pop_value($state, false, false);
-        $state.stack.push(StackItem::StackValue(arg1 $op arg2));
+        push_value($state, arg1 $op arg2);
+    };
+}
+
+macro_rules! binary_float_operation {
+    ($state:expr, $op:tt) => {
+        let arg1 = pop_double($state);
+        let arg2 = pop_double($state);
+        let value = Value::Concrete(f64::to_bits(arg1 $op arg2));
+        push_value($state, value);
     };
 }
 
@@ -356,7 +365,7 @@ macro_rules! binary_method {
     ($state:expr, $op:ident) => {
         let arg1 = pop_value($state, false, false);
         let arg2 = pop_value($state, false, false);
-        $state.stack.push(StackItem::StackValue(arg1.$op(arg2)));
+        push_value($state, arg1.$op(arg2));
     };
 }
 
@@ -406,7 +415,6 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         Operations::GreaterThanEq => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
-
             push_value(state, arg1.sgte(&arg2));
         },
         Operations::LeftShift => {
@@ -648,41 +656,44 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             push_value(state, value);
         },
         Operations::FloatToDouble => {
+            let val = pop_value(state, false, false);
+            push_value(state, val.clone());
+
             let arg1 = pop_float(state);
-            let _size = pop_value(state, false, false);
-            let value = Value::Concrete(f64::to_bits(arg1 as f64)); 
+            let size = pop_concrete(state, false, false);
+
+            // i hate this but this is how I wrote r2
+            // so i have only myself to blame
+            let value = if size != 64 { 
+                Value::Concrete(f64::to_bits(arg1 as f64))
+            } else {
+                val
+            };
             push_value(state, value);
         },
         Operations::DoubleToFloat => {
             let arg1 = pop_double(state);
-            let _size = pop_value(state, false, false);
-            // these casts will need casts when i'm done with em
-            let value = Value::Concrete(f32::to_bits(arg1 as f32) as u64); 
+            let size = pop_concrete(state, false, false);
+
+            // these casts will need casts when i'm done with em            
+            let value = if size != 64 {
+                Value::Concrete(f32::to_bits(arg1 as f32) as u64)
+            } else {
+                Value::Concrete(f64::to_bits(arg1))
+            };
             push_value(state, value);
         },
         Operations::FloatAdd => {
-            let arg1 = pop_double(state);
-            let arg2 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1 + arg2));
-            push_value(state, value);
+            binary_float_operation!(state, +);
         },
         Operations::FloatSubtract => {
-            let arg1 = pop_double(state);
-            let arg2 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1 - arg2));
-            push_value(state, value);
+            binary_float_operation!(state, -);
         },
         Operations::FloatMultiply => {
-            let arg1 = pop_double(state);
-            let arg2 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1 * arg2));
-            push_value(state, value);
+            binary_float_operation!(state, *);
         },
         Operations::FloatDivide => {
-            let arg1 = pop_double(state);
-            let arg2 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1 / arg2));
-            push_value(state, value);
+            binary_float_operation!(state, /);
         },
         Operations::FloatCompare => {
             let arg1 = pop_double(state);

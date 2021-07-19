@@ -21,8 +21,8 @@ pub enum RadiusOption {
     Debug(bool),       // enable debug output
     Lazy(bool),        // don't check sat on symbolic pcs
     Permissions(bool), // check memory permissions
-    Force(bool),      // force execution of all branches
-    Prune(bool)       // only exec blocks once per unique bt
+    Force(bool),       // force execution of all branches
+    Prune(bool)        // only exec blocks once per unique bt
 }
 
 pub struct Radius {

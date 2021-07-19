@@ -405,7 +405,9 @@ impl Processor {
         let mut remove: Vec<usize> = vec!();
         for (i, word) in prev_instr.tokens.iter().enumerate() {
             if let Word::Operator(op) = word {
-                if let Operations::WeakEqual = op {
+                if let Operations::NoOperation = op {
+                    remove.push(i); // remove nops
+                } else if let Operations::WeakEqual = op {
                     let reg = &prev_instr.tokens[i-1];
                     
                     if let Word::Register(index) = reg {
@@ -710,12 +712,11 @@ impl Processor {
         let mut states = vec!(state);
         
         while !states.is_empty() {
-            let current_state;
-            if BFS {
-                current_state = states.remove(0);
+            let current_state = if BFS {
+                states.remove(0)
             } else {
-                current_state = states.pop().unwrap();
-            }
+                states.pop().unwrap()
+            };
 
             let pc = &current_state.registers.values[pc_register.value_index];
 
@@ -746,12 +747,11 @@ impl Processor {
 
         // run until empty for single threaded, until split for multi
         while !states.is_empty() && (!split || states.len() == 1) {
-            let current_state;
-            if BFS {
-                current_state = states.remove(0);
+            let current_state = if BFS {
+                states.remove(0)
             } else {
-                current_state = states.pop().unwrap();
-            }
+                states.pop().unwrap()
+            };
 
             match current_state.status {
                 StateStatus::Active | StateStatus::PostMerge => {
