@@ -1,0 +1,22 @@
+[package]
+name = "radius"
+version = "0.1.0"
+authors = ["aemmitt-ns <aemmitt@nowsecure.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[profile.dev]
+overflow-checks = false
+
+[profile.test]
+opt-level = 3
+overflow-checks = false
+
+[dependencies]
+backtrace = "0.3"
+r2pipe = "0.5.0"
+serde_json = "1.0.59"
+serde = "1.0.117"
+hex = "0.4.3"
+boolector = { version = "0.4.2", features = ["vendor-lgl"] }
