@@ -59,6 +59,7 @@ pub struct State {
     pub filesystem:SimFilesytem,
     pub status:    StateStatus,
     pub context:   HashMap<String, Vec<Value>>,
+    pub taints:    HashMap<String, u64>,
     pub pid:       u64,
     pub backtrace: Vec<u64>
 }
@@ -89,6 +90,7 @@ impl State {
             filesystem: SimFilesytem::new(),
             status: StateStatus::Active,
             context: HashMap::new(),
+            taints: HashMap::new(),
             backtrace: vec!(),
             pid: 1337 // sup3rh4x0r
         }
@@ -135,6 +137,7 @@ impl State {
             filesystem: self.filesystem.clone(),
             status: self.status.clone(),
             context: self.context.clone(),
+            taints: self.taints.clone(),
             backtrace: self.backtrace.clone(),
             pid: self.pid
         }
@@ -183,7 +186,7 @@ impl State {
     }
 
     #[inline]
-    pub fn bv(&mut self, s: &str, n: u32) -> BV<Arc<Btor>>{
+    pub fn bv(&self, s: &str, n: u32) -> BV<Arc<Btor>>{
         self.solver.bv(s, n)
     }
 
@@ -192,20 +195,47 @@ impl State {
         self.solver.bvv(v, n)
     }
 
-    pub fn concrete_value(&mut self, v: u64, n: u32) -> Value {
-        Value::Concrete(v & ((1 << n) - 1), 0)
+    pub fn concrete_value(&self, v: u64, n: u32) -> Value {
+        let mask = if n < 64 { 
+            (1 << n) - 1
+        } else {
+            -1i64 as u64
+        };
+        Value::Concrete(v & mask, 0)
     }
 
-    pub fn symbolic_value(&mut self, s: &str, n: u32) -> Value {
+    pub fn symbolic_value(&self, s: &str, n: u32) -> Value {
         Value::Symbolic(self.bv(s, n), 0)
     }
 
-    pub fn tainted_concrete_value(&mut self, v: u64, t: u64, n: u32) -> Value {
-        Value::Concrete(v & ((1 << n) - 1), t)
+    pub fn tainted_concrete_value(&mut self, t: &str, v: u64, n: u32) -> Value {
+        let mask = if n < 64 { 
+            (1 << n) - 1
+        } else {
+            -1i64 as u64
+        };
+        let taint = self.get_tainted_identifier(t);
+        Value::Concrete(v & mask, taint)
     }
 
-    pub fn tainted_symbolic_value(&mut self, s: &str, t: u64, n: u32) -> Value {
-        Value::Symbolic(self.bv(s, n), t)
+    pub fn tainted_symbolic_value(&mut self, t: &str, s: &str, n: u32) -> Value {
+        let taint = self.get_tainted_identifier(t);
+        Value::Symbolic(self.bv(s, n), taint)
+    }
+
+    pub fn get_tainted_identifier(&mut self, t: &str) -> u64 {
+        if let Some(taint) = self.taints.get(t) {
+            *taint
+        } else {
+            let index = self.taints.len();
+            if index < 64 {
+                let new_taint = 1 << index as u64;
+                self.taints.insert(t.to_owned(), new_taint);
+                new_taint
+            } else {
+                panic!("Max of 64 taints allowed!");
+            }
+        }
     }
 
     #[inline]
@@ -275,5 +305,9 @@ impl State {
         } else {
             None
         }
+    }
+
+    pub fn evaluate_string_value(&mut self, value: &Value) -> Option<String> {
+        self.evaluate_string(value.as_bv().as_ref().unwrap())
     }
 }
