@@ -76,7 +76,7 @@ impl SimFilesytem {
 
             let mut content = vec!();
             for d in data.unwrap() {
-                content.push(Value::Concrete(d as u64));
+                content.push(Value::Concrete(d as u64, 0));
             } 
 
             let file = SimFile {
@@ -134,14 +134,14 @@ impl SimFilesytem {
     pub fn access(&mut self, path: &str) -> Value {
         for file in &self.files {
             if file.path == path {
-                return Value::Concrete(0);
+                return Value::Concrete(0, 0);
             }
         }
         let metadata = fs::metadata(path);
         if metadata.is_ok() {
-            Value::Concrete(0)
+            Value::Concrete(0, 0)
         } else {
-            Value::Concrete(-1i64 as u64)
+            Value::Concrete(-1i64 as u64, 0)
         }
     }
 

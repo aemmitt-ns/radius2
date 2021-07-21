@@ -64,9 +64,7 @@ impl Registers {
             }
     
             if !in_bounds {
-                let val = Value::Concrete(
-                    r2api.get_register_value(&reg.name)
-                );
+                let val = Value::Concrete(r2api.get_register_value(&reg.name), 0);
                 bounds_map.insert(bounds.clone(), registers.values.len());
                 registers.values.push(val);
             }
@@ -133,37 +131,30 @@ impl Registers {
         let register = &self.indexes[index];
 
         if register.reg_info.offset as i64 == -1 {
-            return Value::Concrete(0); // this is a zero register
+            return Value::Concrete(0, 0); // this is a zero register
         }
 
         let value = &self.values[register.value_index];
         let size = register.reg_info.size;
 
         if size == register.bounds.size {
-            match value {
-                Value::Concrete(val) => {
-                    return Value::Concrete(*val);
-                },
-                Value::Symbolic(val) => {
-                    return Value::Symbolic(val.to_owned());
-                }
-            }
+            return value.to_owned();
         }
 
         let offset: u64 = register.reg_info.offset - register.bounds.start;
 
         match value {
-            Value::Concrete(val) => {
+            Value::Concrete(val, t) => {
                 let mask: u64 = (1 << size) - 1;
-                Value::Concrete((val >> offset) & mask)
+                Value::Concrete((val >> offset) & mask, *t)
             },
-            Value::Symbolic(val) => {
+            Value::Symbolic(val, t) => {
                 if val.is_const() {
                     let mask: u64 = (1 << size) - 1;
-                    Value::Concrete((val.as_u64().unwrap() >> offset) & mask)
+                    Value::Concrete((val.as_u64().unwrap() >> offset) & mask, *t)
                 } else {
                     Value::Symbolic(val.slice(
-                        (offset+size-1) as u32, offset as u32))
+                        (offset+size-1) as u32, offset as u32), *t)
                 }
             }
         }
@@ -189,26 +180,33 @@ impl Registers {
 
             let mut new_sym;
             let mut old_sym;
+            let taint;
+
+            // TODO this may cause huge amounts of overtainting, maybe just use new
             match (value, old_value.clone()) {
-                (Value::Concrete(new), Value::Concrete(old)) => {
+                (Value::Concrete(new, t1), Value::Concrete(old, t2)) => {
                     let new_mask: u64 = (1 << size) - 1; 
                     let mask: u64 = 0xffffffffffffffff ^ (new_mask << offset);
 
+                    taint = t1 | t2;
                     let new_value = (old & mask) + ((new & new_mask) << offset);
-                    self.values[register.value_index] = Value::Concrete(new_value);
+                    self.values[register.value_index] = Value::Concrete(new_value, taint);
                     return;
                 },
-                (Value::Concrete(new), Value::Symbolic(old)) => {
+                (Value::Concrete(new, t1), Value::Symbolic(old, t2)) => {
                     new_sym = self.solver.bvv(new, size as u32);
                     old_sym = old; 
+                    taint = t1 | t2;
                 },
-                (Value::Symbolic(new), Value::Concrete(old)) => {
+                (Value::Symbolic(new, t1), Value::Concrete(old, t2)) => {
                     old_sym = self.solver.bvv(old, bound_size);
                     new_sym = new; 
+                    taint = t1 | t2;
                 },
-                (Value::Symbolic(new), Value::Symbolic(old)) => {
+                (Value::Symbolic(new, t1), Value::Symbolic(old, t2)) => {
                     old_sym = old; 
                     new_sym = new; 
+                    taint = t1 | t2;
                 }
             }
 
@@ -227,7 +225,7 @@ impl Registers {
                 new_value = old_sym.slice(bound_size-1, size as u32).concat(&new_sym);
             }
 
-            self.values[register.value_index] = Value::Symbolic(new_value);
+            self.values[register.value_index] = Value::Symbolic(new_value, taint);
         }
     }
 }

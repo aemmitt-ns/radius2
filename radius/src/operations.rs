@@ -1,4 +1,4 @@
-use crate::value::{Value, cond_value};
+use crate::value::Value;
 use crate::state::{State, StackItem};
 use std::f64;
 
@@ -225,18 +225,18 @@ pub fn pop_value(state: &mut State, set_size: bool, sign_ext: bool) -> Value {
     };
 
     match &value {
-        Value::Concrete(_v) => value,
-        Value::Symbolic(ov) => {
+        Value::Concrete(_v, _t) => value,
+        Value::Symbolic(ov, t) => {
             if ov.is_const() {
-                Value::Concrete(ov.as_u64().unwrap())
+                Value::Concrete(ov.as_u64().unwrap(), *t)
             } else {
                 let v = ov; //state.translate(&ov).unwrap();
-                let szdiff = SIZE - v.get_width() as u64;
+                let szdiff = SIZE as u32 - v.get_width();
                 if szdiff > 0 {
                     if sign_ext {
-                        Value::Symbolic(v.sext(szdiff as u32))
+                        Value::Symbolic(v.sext(szdiff), *t)
                     } else {
-                        Value::Symbolic(v.uext(szdiff as u32))
+                        Value::Symbolic(v.uext(szdiff), *t)
                     }
                 } else {
                     value
@@ -264,18 +264,18 @@ pub fn pop_stack_value(state: &mut State, stack: &mut Vec<StackItem>, set_size: 
     };
 
     match &value {
-        Value::Concrete(_v) => value,
-        Value::Symbolic(ov) => {
+        Value::Concrete(_v, _t) => value,
+        Value::Symbolic(ov, t) => {
             if ov.is_const() {
-                Value::Concrete(ov.as_u64().unwrap())
+                Value::Concrete(ov.as_u64().unwrap(), *t)
             } else {
                 let v = ov; //state.translate(&ov).unwrap();
-                let szdiff = SIZE - v.get_width() as u64;
+                let szdiff = SIZE as u32 - v.get_width();
                 if szdiff > 0 {
                     if sign_ext {
-                        Value::Symbolic(v.sext(szdiff as u32))
+                        Value::Symbolic(v.sext(szdiff), *t)
                     } else {
-                        Value::Symbolic(v.uext(szdiff as u32))
+                        Value::Symbolic(v.uext(szdiff), *t)
                     }
                 } else {
                     value
@@ -295,10 +295,10 @@ pub fn pop_concrete(state: &mut State, set_size: bool, sign_ext: bool) -> u64 {
     let value = pop_value(state, set_size, sign_ext);
 
     match value {
-        Value::Concrete(val) => {
+        Value::Concrete(val, _t) => {
             val
         },
-        Value::Symbolic(val) => {
+        Value::Symbolic(val, _t) => {
             let solution = val.get_a_solution().as_u64().unwrap();
             let sol_bv = state.bvv(solution, 64);
             let a = val._eq(&sol_bv);
@@ -306,6 +306,16 @@ pub fn pop_concrete(state: &mut State, set_size: bool, sign_ext: bool) -> u64 {
             solution
         }
     }
+}
+
+pub fn get_stack_taint(state: &mut State, n: usize) -> u64 {
+    let mut taint = 0;
+    for _ in 0..n {
+        let arg = pop_value(state, false, false);
+        taint |= arg.get_taint();
+        push_value(state, arg);
+    }
+    taint
 }
 
 #[inline]
@@ -331,7 +341,7 @@ pub fn do_equal(state: &mut State, reg: StackItem, value: Value,
 
         if let Some(cond) = &state.condition {
             state.registers.set_value(index, state.solver.conditional(
-                &Value::Symbolic(cond.to_owned()), &value, &prev));
+                &Value::Symbolic(cond.to_owned(), 0), &value, &prev));
         } else {
             state.registers.set_value(index, value.clone());
         }
@@ -354,9 +364,10 @@ macro_rules! binary_operation {
 
 macro_rules! binary_float_operation {
     ($state:expr, $op:tt) => {
+        let t = get_stack_taint($state, 1);
         let arg1 = pop_double($state);
         let arg2 = pop_double($state);
-        let value = Value::Concrete(f64::to_bits(arg1 $op arg2));
+        let value = Value::Concrete(f64::to_bits(arg1 $op arg2), t); // TODO fix fp tainted
         push_value($state, value);
     };
 }
@@ -446,13 +457,13 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let arg2 = pop_concrete(state, false, false);
 
             match arg1 {
-                Value::Concrete(val1) => {
+                Value::Concrete(val1, t) => {
                     let shift = (64-arg2) as i64;
-                    let val = Value::Concrete(((val1 << shift) as i64 >> shift) as u64);
+                    let val = Value::Concrete(((val1 << shift) as i64 >> shift) as u64, t);
                     push_value(state, val);
                 },
-                Value::Symbolic(val1) => {
-                    let val = Value::Symbolic(val1.slice((arg2-1) as u32, 0).sext(64-arg2 as u32));
+                Value::Symbolic(val1, t) => {
+                    let val = Value::Symbolic(val1.slice((arg2-1) as u32, 0).sext(64-arg2 as u32), t);
                     push_value(state, val);
                 }
             }
@@ -482,31 +493,31 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let arg2 = pop_value(state, false, false);
 
             match (arg1, arg2) {
-                (Value::Concrete(val1), Value::Concrete(val2)) => {
+                (Value::Concrete(val1, t1), Value::Concrete(val2, t2)) => {
                     let val = (val1 as u128) * (val2 as u128);
-                    push_value(state, Value::Concrete((val >> 64) as u64));
-                    push_value(state, Value::Concrete(val as u64));
+                    push_value(state, Value::Concrete((val >> 64) as u64, t1 | t2));
+                    push_value(state, Value::Concrete(val as u64, t1 | t2));
                 },
-                (Value::Symbolic(val1), Value::Concrete(val2)) => {
+                (Value::Symbolic(val1, t1), Value::Concrete(val2, t2)) => {
                     let sval1 = val1.uext(64);
                     let sval2 = state.bvv(val2, 128);
                     let prod  = sval1.mul(&sval2);
-                    push_value(state, Value::Symbolic(prod.slice(127, 64)));
-                    push_value(state, Value::Symbolic(prod.slice(63, 0)));
+                    push_value(state, Value::Symbolic(prod.slice(127, 64), t1 | t2));
+                    push_value(state, Value::Symbolic(prod.slice(63, 0), t1 | t2));
                 },
-                (Value::Concrete(val1), Value::Symbolic(val2)) => {
+                (Value::Concrete(val1, t1), Value::Symbolic(val2, t2)) => {
                     let sval2 = val2.uext(64);
                     let sval1 = state.bvv(val1, 128);
                     let prod  = sval1.mul(&sval2);
-                    push_value(state, Value::Symbolic(prod.slice(127, 64)));
-                    push_value(state, Value::Symbolic(prod.slice(63, 0)));
+                    push_value(state, Value::Symbolic(prod.slice(127, 64), t1 | t2));
+                    push_value(state, Value::Symbolic(prod.slice(63, 0), t1 | t2));
                 },
-                (Value::Symbolic(val1), Value::Symbolic(val2)) => {
+                (Value::Symbolic(val1, t1), Value::Symbolic(val2, t2)) => {
                     let sval1 = val1.uext(64);
                     let sval2 = val2.uext(64);
                     let prod  = sval1.mul(&sval2);
-                    push_value(state, Value::Symbolic(prod.slice(127, 64)));
-                    push_value(state, Value::Symbolic(prod.slice(63, 0)));
+                    push_value(state, Value::Symbolic(prod.slice(127, 64), t1 | t2));
+                    push_value(state, Value::Symbolic(prod.slice(63, 0), t1 | t2));
                 },
             }
         },
@@ -528,11 +539,11 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         },
         Operations::Increment => {
             let arg1 = pop_value(state, false, false);
-            push_value(state, arg1 + Value::Concrete(1));
+            push_value(state, arg1 + Value::Concrete(1, 0));
         },
         Operations::Decrement => {
             let arg1 = pop_value(state, false, false);
-            push_value(state, arg1 - Value::Concrete(1));
+            push_value(state, arg1 - Value::Concrete(1, 0));
         },
         Operations::Equal => {
             let reg_arg = state.stack.pop().unwrap();
@@ -563,8 +574,8 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
                 let prev = state.memory_read_value(&addr, n);
                 //prev = state.translate_value(&prev);
                 
-                state.memory_write_value(&addr, 
-                    Value::Symbolic(cond_value(cond, value, prev)), n);
+                state.memory_write_value(&addr, state.solver.conditional(
+                    &Value::Symbolic(cond.to_owned(), 0), &value, &prev), n);
             } else {
                 state.memory_write_value(&addr, value, n);
             }
@@ -582,8 +593,8 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
                 let prev = state.memory_read_value(&addr, n);
                 //prev = state.translate_value(&prev);
                 
-                state.memory_write_value(&addr, 
-                    Value::Symbolic(cond_value(cond, value, prev)), n);
+                state.memory_write_value(&addr, state.solver.conditional(
+                    &Value::Symbolic(cond.to_owned(), 0), &value, &prev), n);
             } else {
                 state.memory_write_value(&addr, value, n);
             }
@@ -606,53 +617,60 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         Operations::PopCount => {
             let arg1 = pop_value(state, false, false);
             match arg1 {
-                Value::Concrete(val) => {
-                    let value = Value::Concrete(val.count_ones() as u64);
+                Value::Concrete(val, t) => {
+                    let value = Value::Concrete(val.count_ones() as u64, t);
                     push_value(state, value);
                 },
-                Value::Symbolic(val) => {
+                Value::Symbolic(val, t) => {
                     let mut sym_val = state.bvv(0, 64);
                     for i in 0..val.get_width() {
                         sym_val = sym_val.add(&val.slice(i+1, i).uext(63));
                     }
-                    let value = Value::Symbolic(sym_val);
+                    let value = Value::Symbolic(sym_val, t);
                     push_value(state, value);
                 }
             }
         }, 
         Operations::Ceiling => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1.ceil()));
+            let value = Value::Concrete(f64::to_bits(arg1.ceil()), t); 
             push_value(state, value);
         },
         Operations::Floor => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1.floor()));
+            let value = Value::Concrete(f64::to_bits(arg1.floor()), t);
             push_value(state, value);
         },
         Operations::Round => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1.round()));
+            let value = Value::Concrete(f64::to_bits(arg1.round()), t);
             push_value(state, value);
         },
         Operations::SquareRoot => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1.sqrt()));
+            let value = Value::Concrete(f64::to_bits(arg1.sqrt()), t);
             push_value(state, value);
         },
         Operations::DoubleToInt => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(arg1 as u64);
+            let value = Value::Concrete(arg1 as u64, t);
             push_value(state, value);
         },
         Operations::SignedToDouble => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_concrete(state, false, true);
-            let value = Value::Concrete(f64::to_bits(arg1 as i64 as f64)); //hmm
+            let value = Value::Concrete(f64::to_bits(arg1 as i64 as f64), t); //hmm
             push_value(state, value);
         },
         Operations::UnsignedToDouble => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_concrete(state, false, false);
-            let value = Value::Concrete(f64::to_bits(arg1 as f64)); 
+            let value = Value::Concrete(f64::to_bits(arg1 as f64), t); 
             push_value(state, value);
         },
         Operations::FloatToDouble => {
@@ -665,21 +683,23 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             // i hate this but this is how I wrote r2
             // so i have only myself to blame
             let value = if size != 64 { 
-                Value::Concrete(f64::to_bits(arg1 as f64))
+                Value::Concrete(f64::to_bits(arg1 as f64), val.get_taint())
             } else {
                 val
             };
             push_value(state, value);
         },
         Operations::DoubleToFloat => {
+            let t = get_stack_taint(state, 1);
+            
             let arg1 = pop_double(state);
             let size = pop_concrete(state, false, false);
 
             // these casts will need casts when i'm done with em            
             let value = if size != 64 {
-                Value::Concrete(f32::to_bits(arg1 as f32) as u64)
+                Value::Concrete(f32::to_bits(arg1 as f32) as u64, t)
             } else {
-                Value::Concrete(f64::to_bits(arg1))
+                Value::Concrete(f64::to_bits(arg1), t)
             };
             push_value(state, value);
         },
@@ -696,25 +716,29 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             binary_float_operation!(state, /);
         },
         Operations::FloatCompare => {
+            let t = get_stack_taint(state, 2);
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
-            let value = Value::Concrete((arg1 - arg2 == 0.0) as u64);
+            let value = Value::Concrete((arg1 - arg2 == 0.0) as u64, t);
             push_value(state, value);
         },
         Operations::FloatLessThan => {
+            let t = get_stack_taint(state, 2);
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
-            let value = Value::Concrete((arg1 < arg2) as u64);
+            let value = Value::Concrete((arg1 < arg2) as u64, t);
             push_value(state, value);
         },
         Operations::NaN => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(arg1.is_nan() as u64);
+            let value = Value::Concrete(arg1.is_nan() as u64, t);
             push_value(state, value);
         },
         Operations::FloatNegate => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(-arg1));
+            let value = Value::Concrete(f64::to_bits(-arg1), t);
             push_value(state, value);
         },
         Operations::Swap => {
@@ -756,13 +780,13 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
     
         Operations::Zero => {
             let cur = &state.esil.current;
-            let mask = Value::Concrete(genmask((state.esil.last_sz-1) as u64));
+            let mask = Value::Concrete(genmask((state.esil.last_sz-1) as u64), 0);
             let zf = !(cur.and(&mask));
             push_value(state, zf);
         },
         Operations::Carry => {
             let bits = pop_concrete(state, false, false);
-            let mask = Value::Concrete(genmask(bits & 0x3f));
+            let mask = Value::Concrete(genmask(bits & 0x3f), 0);
             let cur = &state.esil.current;
             let old = &state.esil.previous;
 
@@ -771,7 +795,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         },
         Operations::Borrow => {
             let bits = pop_concrete(state, false, false);
-            let mask = Value::Concrete(genmask(bits & 0x3f));
+            let mask = Value::Concrete(genmask(bits & 0x3f), 0);
             let cur = &state.esil.current;
             let old = &state.esil.previous;
 
@@ -780,26 +804,26 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         },
         Operations::Parity => {
             match &state.esil.current {
-                Value::Concrete(val) => {
-                    let pf = Value::Concrete(!(val.count_ones()%2) as u64);
+                Value::Concrete(val, t) => {
+                    let pf = Value::Concrete(!(val.count_ones()%2) as u64, *t);
                     push_value(state, pf);
                 },
-                Value::Symbolic(_val) => {
-                    let c1 = Value::Concrete(0x0101010101010101);
-                    let c2 = Value::Concrete(0x8040201008040201);
-                    let c3 = Value::Concrete(0x1ff);
+                Value::Symbolic(_val, _t) => {
+                    let c1 = Value::Concrete(0x0101010101010101, 0);
+                    let c2 = Value::Concrete(0x8040201008040201, 0);
+                    let c3 = Value::Concrete(0x1ff, 0);
 
                     let cur = state.esil.current.clone();
-                    let lsb = cur & Value::Concrete(0xff); 
-                    let pf = !((((lsb * c1) & c2) % c3) & Value::Concrete(1));
+                    let lsb = cur & Value::Concrete(0xff, 0); 
+                    let pf = !((((lsb * c1) & c2) % c3) & Value::Concrete(1, 0));
                     push_value(state, pf);
                 }
             }
         },
         Operations::Overflow => {
             let bits = pop_concrete(state, false, false);
-            let mask1 = Value::Concrete(genmask(bits & 0x3f));
-            let mask2 = Value::Concrete(genmask((bits + 0x3f) & 0x3f));
+            let mask1 = Value::Concrete(genmask(bits & 0x3f), 0);
+            let mask2 = Value::Concrete(genmask((bits + 0x3f) & 0x3f), 0);
 
             let cur = &state.esil.current;
             let old = &state.esil.previous;
@@ -812,19 +836,19 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         Operations::S => {
             let size = pop_value(state, false, false);
             let cur = state.esil.current.clone();
-            let value = (cur >> size) & Value::Concrete(1);
+            let value = (cur >> size) & Value::Concrete(1, 0);
             push_value(state, value);
         },
         Operations::Ds => {
             let cur = state.esil.current.clone();
-            let sz = Value::Concrete(state.esil.last_sz as u64);
-            let ds = (cur >> sz) & Value::Concrete(1);
+            let sz = Value::Concrete(state.esil.last_sz as u64, 0);
+            let ds = (cur >> sz) & Value::Concrete(1, 0);
             push_value(state, ds);
         },
         Operations::JumpTarget => {},
         Operations::Js => {},
         Operations::R => {
-            push_value(state, Value::Concrete(64 >> 3));
+            push_value(state, Value::Concrete(64 >> 3, 0));
         },
         Operations::Unknown => {}
     }

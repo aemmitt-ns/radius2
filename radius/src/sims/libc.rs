@@ -13,7 +13,7 @@ pub fn puts(state: &mut State, args: Vec<Value>) -> Value {
     let addr = &args[0];
     let length = strlen(state, vec!(addr.to_owned()));
     let mut data = state.memory_read(addr, &length);
-    data.push(Value::Concrete('\n' as u64)); // add newline
+    data.push(Value::Concrete('\n' as u64, 0)); // add newline
     //println!("{}", value);
     state.filesystem.write(1, data);
     length
@@ -38,14 +38,14 @@ pub fn memcpy(state: &mut State, args: Vec<Value>) -> Value {
 
 pub fn bcopy(state: &mut State, args: Vec<Value>) -> Value {
     state.memory_move(&args[0], &args[1], &args[2]);
-    Value::Concrete(0)
+    Value::Concrete(0, 0)
 }
 
 pub fn bzero(state: &mut State, args: Vec<Value>) -> Value {
     memset(state, vec!(args[0].to_owned(), 
-        Value::Concrete(0), args[1].to_owned()));
+        Value::Concrete(0, 0), args[1].to_owned()));
 
-    Value::Concrete(0)
+    Value::Concrete(0, 0)
 }
 
 pub fn mempcpy(state: &mut State, args: Vec<Value>) -> Value {
@@ -62,7 +62,7 @@ pub fn memfrob(state: &mut State, args: Vec<Value>) -> Value {
     let addr = &args[0];
     let num = &args[1];
 
-    let x = Value::Concrete(0x2a);
+    let x = Value::Concrete(0x2a, 0);
     let data = state.memory_read(&addr, &num);
     let mut new_data = vec!();
     for d in data {
@@ -71,11 +71,11 @@ pub fn memfrob(state: &mut State, args: Vec<Value>) -> Value {
 
     state.memory_write(addr, new_data, &num);
     //state.mem_copy(addr, data, num)
-    Value::Concrete(0)
+    Value::Concrete(0, 0)
 }
 
 pub fn strlen(state: &mut State, args: Vec<Value>) -> Value {
-    state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN))
+    state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0))
 }
 
 pub fn strnlen(state: &mut State, args: Vec<Value>) -> Value {
@@ -85,7 +85,7 @@ pub fn strnlen(state: &mut State, args: Vec<Value>) -> Value {
 // TODO implement this with sim fs
 pub fn gets(state: &mut State, args: Vec<Value>) -> Value {
     let bv = state.bv(format!("gets_{:?}", &args[0]).as_str(), 256*8);
-    state.memory_write_value(&args[0], Value::Symbolic(bv), 256);
+    state.memory_write_value(&args[0], Value::Symbolic(bv, 0), 256);
     args[0].to_owned()
 }
 
@@ -97,35 +97,35 @@ pub fn fgets(_state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn strcpy(state: &mut State, args: Vec<Value>) -> Value {
-    let length = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN))
-        +Value::Concrete(1);
+    let length = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN, 0))
+        +Value::Concrete(1, 0);
     state.memory_move(&args[0], &args[1], &length);
     args[0].to_owned()
 }
 
 pub fn stpcpy(state: &mut State, args: Vec<Value>) -> Value {
-    let length = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN));
+    let length = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN, 0));
     strcpy(state, args) + length
 }
 
 pub fn strdup(state: &mut State, args: Vec<Value>) -> Value {
-    let length = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN))
-        +Value::Concrete(1);
-    let new_addr = Value::Concrete(state.memory.alloc(&length));
+    let length = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0))
+        +Value::Concrete(1, 0);
+    let new_addr = Value::Concrete(state.memory.alloc(&length), 0);
     state.memory_move(&new_addr, &args[0], &length);
     new_addr
 }
 
 pub fn strdupa(state: &mut State, args: Vec<Value>) -> Value {
-    let length = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN))
-        +Value::Concrete(1);
+    let length = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0))
+        +Value::Concrete(1, 0);
     strdup(state, args) + length
 }
 
 // TODO for strn stuff I may need to add a null?
 pub fn strndup(state: &mut State, args: Vec<Value>) -> Value {
     let length = state.memory_strlen(&args[0], &args[1]);
-    let new_addr = Value::Concrete(state.memory.alloc(&length));
+    let new_addr = Value::Concrete(state.memory.alloc(&length), 0);
     state.memory_move(&new_addr, &args[0], &length);
     new_addr
 }
@@ -150,15 +150,15 @@ pub fn strncpy(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn strcat(state: &mut State, args: Vec<Value>) -> Value {
-    let length1 = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
-    let length2 = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN))+Value::Concrete(1);
+    let length1 = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0));
+    let length2 = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN, 0))+Value::Concrete(1, 0);
     state.memory_move(&(args[0].to_owned() + length1), &args[1], &length2);
     args[0].to_owned()
 }
 
 pub fn strncat(state: &mut State, args: Vec<Value>) -> Value {
     let length1 = state.memory_strlen(&args[0], &args[2]);
-    let length2 = state.memory_strlen(&args[1], &args[2])+Value::Concrete(1);
+    let length2 = state.memory_strlen(&args[1], &args[2])+Value::Concrete(1, 0);
     state.memory_move(&(args[0].to_owned() + length1), &args[1], &length2);
     args[0].to_owned()
 }
@@ -188,7 +188,7 @@ pub fn memrchr(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn strchr_help(state: &mut State, args: Vec<Value>, reverse: bool) -> Value {
-    let length = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
+    let length = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0));
     memchr_help(state, vec!(args[0].to_owned(), args[1].to_owned(), length), reverse)
 }
 
@@ -205,10 +205,10 @@ pub fn memcmp(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn strcmp(state: &mut State, args: Vec<Value>) -> Value {    
-    let len1 = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
-    let len2 = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN));
+    let len1 = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0));
+    let len2 = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN, 0));
     let length  = state.solver.conditional(&(len1.ult(&len2)), 
-        &len1, &len2)+Value::Concrete(1);
+        &len1, &len2)+Value::Concrete(1, 0);
 
     state.memory_compare(&args[0], &args[1], &length)
 }
@@ -217,7 +217,7 @@ pub fn strncmp(state: &mut State, args: Vec<Value>) -> Value {
     let len1 = state.memory_strlen(&args[0], &args[2]);
     let len2 = state.memory_strlen(&args[1], &args[2]);
     let length  = state.solver.conditional(&(len1.ult(&len2)), 
-        &len1, &len2)+Value::Concrete(1);
+        &len1, &len2)+Value::Concrete(1, 0);
 
     state.memory_compare(&args[0], &args[1], &length)
 }
@@ -230,29 +230,29 @@ pub fn memmem(state: &mut State, args: Vec<Value>) -> Value {
     let mut needle_val = state.memory_read_value(&args[2], len);
 
     // necessary as concrete values will not search for end nulls
-    needle_val = Value::Symbolic(state.solver.to_bv(&needle_val, 8*len as u32));
+    needle_val = Value::Symbolic(state.solver.to_bv(&needle_val, 8*len as u32), needle_val.get_taint());
     memchr_help(state, vec!(args[0].to_owned(), needle_val, args[1].to_owned()), false)
 }
 
 pub fn strstr(state: &mut State, args: Vec<Value>) -> Value {
-    let dlen = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN));
-    let slen = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN));
+    let dlen = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0));
+    let slen = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN, 0));
     let len = state.solver.evalcon_to_u64(&slen).unwrap() as usize;
     let needle_val = state.memory_read_value(&args[0], len);
     memchr_help(state, vec!(args[0].to_owned(), needle_val, dlen), false)
 }
 
 pub fn malloc(state: &mut State, args: Vec<Value>) -> Value {
-    Value::Concrete(state.memory.alloc(&args[0]))
+    Value::Concrete(state.memory.alloc(&args[0]), 0)
 }
 
 pub fn calloc(state: &mut State, args: Vec<Value>) -> Value {
-    Value::Concrete(state.memory.alloc(&args[0].mul(&args[1])))
+    Value::Concrete(state.memory.alloc(&args[0].mul(&args[1])), 0)
 }
 
 pub fn free(state: &mut State, args: Vec<Value>) -> Value {
     state.memory.free(&args[0]);
-    Value::Concrete(0)
+    Value::Concrete(0, 0)
 }
 
 pub fn c_syscall(state: &mut State, args: Vec<Value>) -> Value {
@@ -277,7 +277,7 @@ pub fn __libc_start_main(state: &mut State, args: Vec<Value>) -> Value {
     state.registers.set_with_alias("A1", argv);
 
     // TODO set env
-    state.registers.set_with_alias("A2", Value::Concrete(0));
+    state.registers.set_with_alias("A2", Value::Concrete(0, 0));
 
     // uh in case we are overwriting A0
     args[1].to_owned()
@@ -367,12 +367,12 @@ pub fn itoa(state: &mut State, value, string, base):
 
 pub fn islower(_state: &mut State, args: Vec<Value>) -> Value {
     let c = args[0].slice(7, 0);
-    c.ult(&Value::Concrete(0x7b)) & !c.ult(&Value::Concrete(0x61))
+    c.ult(&Value::Concrete(0x7b, 0)) & !c.ult(&Value::Concrete(0x61, 0))
 }
 
 pub fn isupper(_state: &mut State, args: Vec<Value>) -> Value {
     let c = args[0].slice(7, 0);
-    c.ult(&Value::Concrete(0x5b)) & !c.ult(&Value::Concrete(0x41))
+    c.ult(&Value::Concrete(0x5b, 0)) & !c.ult(&Value::Concrete(0x41, 0))
 }
 
 pub fn isalpha(state: &mut State, args: Vec<Value>) -> Value {
@@ -381,7 +381,7 @@ pub fn isalpha(state: &mut State, args: Vec<Value>) -> Value {
 
 pub fn isdigit(_state: &mut State, args: Vec<Value>) -> Value {
     let c = args[0].slice(7, 0);
-    c.ult(&Value::Concrete(0x3a)) & !c.ult(&Value::Concrete(0x30))
+    c.ult(&Value::Concrete(0x3a, 0)) & !c.ult(&Value::Concrete(0x30, 0))
 }
 
 pub fn isalnum(state: &mut State, args: Vec<Value>) -> Value {
@@ -390,29 +390,29 @@ pub fn isalnum(state: &mut State, args: Vec<Value>) -> Value {
 
 pub fn isblank(_state: &mut State, args: Vec<Value>) -> Value {
     let c = args[0].slice(7, 0);
-    c.eq(&Value::Concrete(0x20)) | c.eq(&Value::Concrete(0x09))
+    c.eq(&Value::Concrete(0x20, 0)) | c.eq(&Value::Concrete(0x09, 0))
 }
 
 pub fn iscntrl(_state: &mut State, args: Vec<Value>) -> Value {
     let c = args[0].slice(7, 0);
-    (c.ugte(&Value::Concrete(0)) & c.ulte(&Value::Concrete(0x1f)))
-        | c.eq(&Value::Concrete(0x7f))
+    (c.ugte(&Value::Concrete(0, 0)) & c.ulte(&Value::Concrete(0x1f, 0)))
+        | c.eq(&Value::Concrete(0x7f, 0))
 }
 
 pub fn toupper(state: &mut State, args: Vec<Value>) -> Value {
     let islo = islower(state, args.clone());
     state.solver.conditional(&islo, 
-        &(args[0].to_owned()-Value::Concrete(0x20)), &args[0])
+        &(args[0].to_owned()-Value::Concrete(0x20, 0)), &args[0])
 }
 
 pub fn tolower(state: &mut State, args: Vec<Value>) -> Value {
     let isup = isupper(state, args.clone());
     state.solver.conditional(&isup, 
-    &(args[0].to_owned()+Value::Concrete(0x20)), &args[0])
+    &(args[0].to_owned()+Value::Concrete(0x20, 0)), &args[0])
 }
 
 pub fn zero(_state: &mut State, _args: Vec<Value>) -> Value {
-    Value::Concrete(0)
+    Value::Concrete(0, 0)
 }
 
 /*pub fn rand(state: &mut State, _args: Vec<Value>) -> Value {
@@ -424,16 +424,16 @@ pub fn zero(_state: &mut State, _args: Vec<Value>) -> Value {
 pub fn srand(state: &mut State, _args: Vec<Value>) -> Value {
     //s = state.evaluate(s).as_long()
     //random.seed(s)
-    Value::Concrete(1)
+    Value::Concrete(1, 0)
 }
 
 pub fn abs(state: &mut State, args: Vec<Value>) -> Value {
     state.solver.conditional(i.sext(
-        Value::Concrete(32)).slt(Value::Concrete(0)), -i, i)
+        Value::Concrete(32)).slt(Value::Concrete(0, 0)), -i, i)
 }
 
 pub fn labs(state: &mut State, args: Vec<Value>) -> Value {
-    state.solver.conditional(args[0].clone().slt(Value::Concrete(0)), -args[0], i)
+    state.solver.conditional(args[0].clone().slt(Value::Concrete(0, 0)), -args[0], i)
 }
 
 pub fn div(state: &mut State, args: Vec<Value>) -> Value {
@@ -448,11 +448,11 @@ pub fn ldiv(state: &mut State, n: Value, d: Value) -> Value {
 */
 
 pub fn fflush(_state: &mut State, _args: Vec<Value>) -> Value {
-    Value::Concrete(0)
+    Value::Concrete(0, 0)
 }
 
 pub fn getpid(state: &mut State, _args: Vec<Value>) -> Value {
-    Value::Concrete(state.pid)
+    Value::Concrete(state.pid, 0)
 }
 
 pub fn fork(state: &mut State, args: Vec<Value>) -> Value {
@@ -460,15 +460,15 @@ pub fn fork(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn getpagesize(_state: &mut State, _args: Vec<Value>) -> Value {
-    Value::Concrete(0x1000)
+    Value::Concrete(0x1000, 0)
 }
 
 pub fn gethostname(state: &mut State, args: Vec<Value>) -> Value {
     let len = state.solver.max_value(&args[1]);
     let bv = state.bv("hostname", 8*len as u32);
-    let data = state.memory.unpack(Value::Symbolic(bv), len as usize);
+    let data = state.memory.unpack(Value::Symbolic(bv, 0), len as usize);
     state.memory_write(&args[0], data, &args[1]);
-    Value::Concrete(0)
+    Value::Concrete(0, 0)
 }
 
 /*
@@ -486,7 +486,7 @@ pub fn getenv(state: &mut State, addr):
 */
 
 pub fn sleep(_state: &mut State, _args: Vec<Value>) -> Value {
-    Value::Concrete(0)
+    Value::Concrete(0, 0)
 }
 
 /*

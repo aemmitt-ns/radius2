@@ -2,4 +2,7 @@
 
 members = [
     "radius",
+    "examples/r100",
+    "examples/r200",
+    "examples/unbreakable"
 ]
