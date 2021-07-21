@@ -262,7 +262,7 @@ impl Solver {
     }
 
     pub fn evaluate_many(&mut self, bv: &BitVec) -> Vec<u64> {
-        let mut solutions: Vec<u64> = vec!();
+        let mut solutions: Vec<u64> = Vec::with_capacity(EVAL_MAX as usize);
         //let new_bv = self.translate(bv).unwrap();
         self.btor.push(1);
         self.apply_assertions();

@@ -93,7 +93,7 @@ impl Processor {
     }
 
     pub fn tokenize(&self, state: &mut State, esil: &str) -> Vec<Word> {
-        let mut tokens: Vec<Word> = vec!();
+        let mut tokens: Vec<Word> = Vec::with_capacity(128);
         let split_esil = esil.split(',');
 
         for s in split_esil {
@@ -227,8 +227,8 @@ impl Processor {
         let mut word_index = 0;
         let words_len = words.len();
 
-        let mut temp_stack1: Vec<StackItem> = vec!();
-        let mut temp_stack2: Vec<StackItem> = vec!();
+        let mut temp_stack1: Vec<StackItem> = Vec::with_capacity(128);
+        let mut temp_stack2: Vec<StackItem> = Vec::with_capacity(128);
 
         while word_index < words_len {
             let word = &words[word_index];
@@ -307,7 +307,7 @@ impl Processor {
                             };
 
                             if perform {
-                                let mut new_stack: Vec<StackItem> = vec!();
+                                let mut new_stack: Vec<StackItem> = Vec::with_capacity(128);
                                 let mut tmp = state.stack.clone();
                                 while !state.stack.is_empty() && !new_temp.is_empty() {
                                     let if_val = pop_stack_value(state, &mut tmp, false, false);
@@ -380,8 +380,8 @@ impl Processor {
             return;
         }
 
-        let mut regs_read: Vec<usize> = vec!();
-        let mut regs_written: Vec<usize> = vec!();
+        let mut regs_read: Vec<usize> = Vec::with_capacity(16);
+        let mut regs_written: Vec<usize> = Vec::with_capacity(16);
 
         let len = curr_instr.tokens.len();
         for (i, word) in curr_instr.tokens.iter().enumerate() {
@@ -403,7 +403,7 @@ impl Processor {
             }
         }
 
-        let mut remove: Vec<usize> = vec!();
+        let mut remove: Vec<usize> = Vec::with_capacity(16);
         for (i, word) in prev_instr.tokens.iter().enumerate() {
             if let Word::Operator(op) = word {
                 if let Operations::NoOperation = op {
@@ -455,7 +455,7 @@ impl Processor {
 
         if remove.len() > 0 {
             let mut mut_prev_instr = prev_instr.clone();
-            let mut new_tokens: Vec<Word> = vec!();
+            let mut new_tokens: Vec<Word> = Vec::with_capacity(128);
 
             for (i, word) in prev_instr.tokens.iter().enumerate() {
                 if !remove.contains(&i) {
@@ -636,7 +636,8 @@ impl Processor {
     }
 
     pub fn step(&mut self, mut state: State, duplicate: bool) -> Vec<State> {
-        let mut states: Vec<State> = vec!();
+        let pc_allocs = 32;
+        let mut states: Vec<State> = Vec::with_capacity(pc_allocs);
         let pc_index = self.pc.unwrap();
 
         let pc_value = state.registers.get_value(pc_index);
@@ -648,11 +649,11 @@ impl Processor {
         }
 
         let new_pc = state.registers.get_value(pc_index);
-        let mut pcs = vec!();
+        let mut pcs = Vec::with_capacity(pc_allocs);
 
         if self.force && state.esil.pcs.len() > 0 {
             pcs = state.esil.pcs;
-            state.esil.pcs = vec!();
+            state.esil.pcs = Vec::with_capacity(pc_allocs);
         } else {
             if let Some(pc) = new_pc.as_u64() {
                 pcs.push(pc)
@@ -664,7 +665,7 @@ impl Processor {
                 
                 if self.lazy && state.esil.pcs.len() > 0 {
                     pcs = state.esil.pcs;
-                    state.esil.pcs = vec!();
+                    state.esil.pcs = Vec::with_capacity(pc_allocs);
                 } else {
                     pcs = state.evaluate_many(&pc_val);
                 }

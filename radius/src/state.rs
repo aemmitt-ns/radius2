@@ -238,6 +238,10 @@ impl State {
         }
     }
 
+    pub fn is_tainted_with(&mut self, value: &Value, taint: &str) -> bool {
+        value.get_taint() & self.get_tainted_identifier(taint) != 0
+    }
+
     #[inline]
     pub fn translate(&mut self, bv: &BV<Arc<Btor>>) -> Option<BV<Arc<Btor>>> {
         self.solver.translate(bv)

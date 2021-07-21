@@ -230,7 +230,7 @@ impl Memory {
             len = values.len();
         }
 
-        let mut addrs = vec!();
+        let mut addrs = Vec::with_capacity(128);
         let t = address.get_taint();
         match address {
             Value::Concrete(addr, _t) => addrs.push(*addr),
@@ -372,7 +372,7 @@ impl Memory {
             }
         }
 
-        let mut data: Vec<Value> = vec!();
+        let mut data: Vec<Value> = Vec::with_capacity(length);
         for count in 0..length as u64 {
             let caddr = addr + count;
             let mem = self.mem.get(&caddr);
@@ -542,7 +542,7 @@ impl Memory {
     }
 
     pub fn unpack(&self, value: Value, length: usize) -> Vec<Value> {
-        let mut data: Vec<Value> = vec!();
+        let mut data: Vec<Value> = Vec::with_capacity(length);
 
         match value {
             Value::Concrete(val, t) => {
