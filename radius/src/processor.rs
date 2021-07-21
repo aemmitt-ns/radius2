@@ -371,7 +371,7 @@ impl Processor {
         }
     }
 
-    // removes words that weak set flag values that are never read
+    // removes words that weak set flag values that are never read, and words that are NOPs
     pub fn optimize(&mut self, state: &mut State, prev_pc: u64, curr_instr: &InstructionEntry) {
         let prev_instr = &self.instructions[&prev_pc];
         if  !prev_instr.tokens.contains(&Word::Operator(Operations::WeakEqual)) ||

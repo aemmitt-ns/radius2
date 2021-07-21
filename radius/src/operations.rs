@@ -308,6 +308,16 @@ pub fn pop_concrete(state: &mut State, set_size: bool, sign_ext: bool) -> u64 {
     }
 }
 
+pub fn get_stack_taint(state: &mut State, n: usize) -> u64 {
+    let mut taint = 0;
+    for _ in 0..n {
+        let arg = pop_value(state, false, false);
+        taint |= arg.get_taint();
+        push_value(state, arg);
+    }
+    taint
+}
+
 #[inline]
 pub fn pop_double(state: &mut State) -> f64 {
     let value = pop_concrete(state, false, false);
@@ -621,38 +631,45 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             }
         }, 
         Operations::Ceiling => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1.ceil()), 0); // fix all these 
+            let value = Value::Concrete(f64::to_bits(arg1.ceil()), t); 
             push_value(state, value);
         },
         Operations::Floor => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1.floor()), 0);
+            let value = Value::Concrete(f64::to_bits(arg1.floor()), t);
             push_value(state, value);
         },
         Operations::Round => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1.round()), 0);
+            let value = Value::Concrete(f64::to_bits(arg1.round()), t);
             push_value(state, value);
         },
         Operations::SquareRoot => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(arg1.sqrt()), 0);
+            let value = Value::Concrete(f64::to_bits(arg1.sqrt()), t);
             push_value(state, value);
         },
         Operations::DoubleToInt => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(arg1 as u64, 0);
+            let value = Value::Concrete(arg1 as u64, t);
             push_value(state, value);
         },
         Operations::SignedToDouble => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_concrete(state, false, true);
-            let value = Value::Concrete(f64::to_bits(arg1 as i64 as f64), 0); //hmm
+            let value = Value::Concrete(f64::to_bits(arg1 as i64 as f64), t); //hmm
             push_value(state, value);
         },
         Operations::UnsignedToDouble => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_concrete(state, false, false);
-            let value = Value::Concrete(f64::to_bits(arg1 as f64), 0); 
+            let value = Value::Concrete(f64::to_bits(arg1 as f64), t); 
             push_value(state, value);
         },
         Operations::FloatToDouble => {
@@ -672,14 +689,16 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             push_value(state, value);
         },
         Operations::DoubleToFloat => {
+            let t = get_stack_taint(state, 1);
+            
             let arg1 = pop_double(state);
             let size = pop_concrete(state, false, false);
 
             // these casts will need casts when i'm done with em            
             let value = if size != 64 {
-                Value::Concrete(f32::to_bits(arg1 as f32) as u64, 0)
+                Value::Concrete(f32::to_bits(arg1 as f32) as u64, t)
             } else {
-                Value::Concrete(f64::to_bits(arg1), 0)
+                Value::Concrete(f64::to_bits(arg1), t)
             };
             push_value(state, value);
         },
@@ -696,25 +715,29 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             binary_float_operation!(state, /);
         },
         Operations::FloatCompare => {
+            let t = get_stack_taint(state, 2);
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
-            let value = Value::Concrete((arg1 - arg2 == 0.0) as u64, 0);
+            let value = Value::Concrete((arg1 - arg2 == 0.0) as u64, t);
             push_value(state, value);
         },
         Operations::FloatLessThan => {
+            let t = get_stack_taint(state, 2);
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
-            let value = Value::Concrete((arg1 < arg2) as u64, 0);
+            let value = Value::Concrete((arg1 < arg2) as u64, t);
             push_value(state, value);
         },
         Operations::NaN => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(arg1.is_nan() as u64, 0);
+            let value = Value::Concrete(arg1.is_nan() as u64, t);
             push_value(state, value);
         },
         Operations::FloatNegate => {
+            let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            let value = Value::Concrete(f64::to_bits(-arg1), 0);
+            let value = Value::Concrete(f64::to_bits(-arg1), t);
             push_value(state, value);
         },
         Operations::Swap => {

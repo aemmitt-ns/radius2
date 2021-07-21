@@ -191,7 +191,7 @@ impl State {
     }
 
     #[inline]
-    pub fn bvv(&mut self, v: u64, n: u32) -> BV<Arc<Btor>>{
+    pub fn bvv(&self, v: u64, n: u32) -> BV<Arc<Btor>>{
         self.solver.bvv(v, n)
     }
 
