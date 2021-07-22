@@ -53,7 +53,7 @@ pub struct MemorySegment {
 
 impl Memory {
     pub fn new(r2api: &mut R2Api, btor: Solver) -> Memory {
-        let segments = r2api.get_segments();
+        let segments = r2api.get_segments().unwrap();
         let mut segs = vec!();
 
         for seg in segments {
@@ -381,7 +381,7 @@ impl Memory {
                     data.push(byte.clone());
                 },
                 None => {
-                    let bytes = self.r2api.read(caddr, READ_CACHE);
+                    let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
                     data.push(Value::Concrete(bytes[0] as u64, 0));
                     let mut c = 0;
                     for byte in bytes {

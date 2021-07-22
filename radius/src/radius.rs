@@ -1,4 +1,4 @@
-use crate::r2_api::{R2Api, FunctionInfo, BasicBlock, Instruction, Information};
+use crate::r2_api::{R2Api, R2Result, FunctionInfo, BasicBlock, Instruction, Information};
 use crate::processor::{Processor, HookMethod};
 use crate::state::{State, StateStatus};
 //use crate::value::Value;
@@ -54,7 +54,7 @@ impl Radius {
         let states = Arc::new(Mutex::new(vec!()));
 
         if !options.contains(&RadiusOption::Syscalls(false)) {
-            let syscalls = r2api.get_syscalls();
+            let syscalls = r2api.get_syscalls().unwrap();
             if let Some(sys) = syscalls.get(0) {
                 processor.traps.insert(sys.swi, indirect);
             }
@@ -92,7 +92,9 @@ impl Radius {
         self.r2api.init_entry(args, env);
         let mut state = self.init_state();
 
-        let start_main_reloc = self.r2api.get_address("reloc.__libc_start_main");
+        let start_main_reloc = self.r2api.get_address(
+            "reloc.__libc_start_main").unwrap();
+
         self.hook(start_main_reloc, __libc_start_main);
 
         state.memory.add_stack();
@@ -121,7 +123,7 @@ impl Radius {
         let prefix = "sym.imp.";
         for sim in sims {
             let sym = String::from(prefix) + sim.symbol.as_str();
-            let addr = r2api.get_address(sym.as_str());
+            let addr = r2api.get_address(sym.as_str()).unwrap();
 
             if addr != 0 {
                 processor.sims.insert(addr, sim.function);
@@ -267,43 +269,43 @@ impl Radius {
 
     // run r2 analysis
     pub fn analyze(&mut self, n: usize) {
-        self.r2api.analyze(n)
+        let _r = self.r2api.analyze(n);
     }
 
-    pub fn get_info(&mut self) -> Information {
+    pub fn get_info(&mut self) -> R2Result<Information> {
         self.r2api.get_info()
     }
 
     // get address of symbol
-    pub fn get_address(&mut self, symbol: &str) -> u64 {
+    pub fn get_address(&mut self, symbol: &str) -> R2Result<u64> {
         self.r2api.get_address(symbol)
     }
 
     // get all functions
-    pub fn get_functions(&mut self) -> Vec<FunctionInfo> {
+    pub fn get_functions(&mut self) -> R2Result<Vec<FunctionInfo>> {
         self.r2api.get_functions()
     }
 
     // get function information at this address
-    pub fn get_function(&mut self, address: u64) -> FunctionInfo {
+    pub fn get_function(&mut self, address: u64) -> R2Result<FunctionInfo> {
         self.r2api.get_function_info(address)
     }
 
     // get basic blocks of a function
-    pub fn get_blocks(&mut self, address: u64) -> Vec<BasicBlock> {
+    pub fn get_blocks(&mut self, address: u64) -> R2Result<Vec<BasicBlock>> {
         self.r2api.get_blocks(address)
     }
 
-    pub fn disassemble(&mut self, address: u64, num: usize) -> Vec<Instruction> {
+    pub fn disassemble(&mut self, address: u64, num: usize) -> R2Result<Vec<Instruction>> {
         self.r2api.disassemble(address, num)
     }
 
-    pub fn assemble(&mut self, instruction: &str) -> Vec<u8> {
+    pub fn assemble(&mut self, instruction: &str) -> R2Result<Vec<u8>> {
         self.r2api.assemble(instruction)
     }
 
     // read directly from binary
-    pub fn read(&mut self, address: u64, length: usize) -> Vec<u8> {
+    pub fn read(&mut self, address: u64, length: usize) -> R2Result<Vec<u8>> {
         self.r2api.read(address, length)
     }
 
@@ -313,7 +315,7 @@ impl Radius {
     }
 
     // run an r2 command 
-    pub fn cmd(&mut self, cmd: &str) -> Result<String, String> { 
+    pub fn cmd(&mut self, cmd: &str) -> R2Result<String> { 
         self.r2api.cmd(cmd)
     }
 

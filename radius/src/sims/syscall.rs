@@ -32,7 +32,7 @@ pub fn syscall(syscall_name: &str, state: &mut State, args: Vec<Value>) -> Value
 // get actual syscall and recall .. 
 pub fn indirect(state: &mut State, mut args: Vec<Value>) -> Value {
     let sn = state.solver.evalcon_to_u64(&args.remove(0)).unwrap();
-    let sys_str = state.r2api.get_syscall_str(sn);
+    let sys_str = state.r2api.get_syscall_str(sn).unwrap();
     syscall(sys_str.as_str(), state, args)
 }
 

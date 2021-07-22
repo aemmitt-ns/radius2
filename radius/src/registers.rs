@@ -30,7 +30,7 @@ pub struct Registers {
 
 impl Registers {
     pub fn new(r2api: &mut r2_api::R2Api, btor: Solver) -> Self {
-        let mut reg_info = r2api.get_registers();
+        let mut reg_info = r2api.get_registers().unwrap();
         reg_info.reg_info.sort_by(|a, b| b.size.partial_cmp(&a.size).unwrap());
 
         let mut registers = Registers {
@@ -64,7 +64,7 @@ impl Registers {
             }
     
             if !in_bounds {
-                let val = Value::Concrete(r2api.get_register_value(&reg.name), 0);
+                let val = Value::Concrete(r2api.get_register_value(&reg.name).unwrap(), 0);
                 bounds_map.insert(bounds.clone(), registers.values.len());
                 registers.values.push(val);
             }

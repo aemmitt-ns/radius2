@@ -41,7 +41,7 @@ fn hello() {
 #[test]
 fn strstuff() {
     let mut radius = Radius::new("../tests/strstuff");
-    let main = radius.r2api.get_address("main");
+    let main = radius.r2api.get_address("main").unwrap();
     let mut state = radius.call_state(main);
 
     let bv = state.bv("flag", 10*8);
@@ -74,7 +74,7 @@ fn simple() {
 #[test]
 fn multi() {
     let mut radius = Radius::new("../tests/multi");
-    let check = radius.r2api.get_address("sym.check");
+    let check = radius.r2api.get_address("sym.check").unwrap();
     let mut state = radius.call_state(check);
 
     let bv = state.bv("num", 64);
@@ -151,7 +151,7 @@ fn unbreakable() {
 #[test]
 fn symmem() {
     let mut radius = Radius::new_with_options("../tests/symmem", vec!(RadiusOption::Debug(true)));
-    let main = radius.r2api.get_address("main");
+    let main = radius.r2api.get_address("main").unwrap();
     let mut state = radius.call_state(main);
 
     let x = state.bv("x", 64);
@@ -226,7 +226,7 @@ fn ioscrackme() {
     //radius.r2api.r2p.cmd("e asm.arch=arm.v35");
     let len: usize = 16;
 
-    let validate = radius.r2api.get_address("sym._validate");
+    let validate = radius.r2api.get_address("sym._validate").unwrap();
     let mut state = radius.call_state(validate);
     let bv = state.bv("flag", 8*len as u32);
 

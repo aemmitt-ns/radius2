@@ -185,7 +185,7 @@ impl Processor {
         let pc = state.registers.get_value(self.pc.unwrap()).as_u64().unwrap();
 
         if let Some(sys) = self.syscalls.get(&sys_num) {
-            let cc = state.r2api.get_syscall_cc(pc);
+            let cc = state.r2api.get_syscall_cc(pc).unwrap();
             let mut args = vec!();
             for arg in cc.args {
                 args.push(state.registers.get(arg.as_str()));
@@ -351,7 +351,7 @@ impl Processor {
                             let sys_val = state.registers.get_with_alias("SN");                            
                             if let Some(trap_sim) = self.traps.get(&trap) {
                                 // provide syscall args
-                                let cc = state.r2api.get_syscall_cc(pc);
+                                let cc = state.r2api.get_syscall_cc(pc).unwrap();
                                 let mut args = vec!(sys_val);
                                 for arg in cc.args {
                                     args.push(state.registers.get(arg.as_str()));
@@ -537,7 +537,7 @@ impl Processor {
                 let pc_val = Value::Concrete(new_pc, 0);
                 state.registers.set_value(pc_index, pc_val);
 
-                let cc = state.r2api.get_cc(pc);
+                let cc = state.r2api.get_cc(pc).unwrap();
                 let mut args = vec!();
                 for arg in cc.args {
                     args.push(state.registers.get(arg.as_str()));
@@ -563,7 +563,7 @@ impl Processor {
 
     // weird method that just performs a return 
     pub fn ret(&self, state: &mut State) {
-        let ret_esil = state.r2api.get_ret();
+        let ret_esil = state.r2api.get_ret().unwrap();
         self.parse_expression(state, ret_esil.as_str());
     }
 
@@ -586,7 +586,7 @@ impl Processor {
 
         } else {
             let mut pc_tmp = pc_val;
-            let instrs = state.r2api.disassemble(pc_val, INSTR_NUM);
+            let instrs = state.r2api.disassemble(pc_val, INSTR_NUM).unwrap();
 
             let mut prev: Option<u64> = None;
             for instr in instrs {

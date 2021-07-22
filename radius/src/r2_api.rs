@@ -213,6 +213,15 @@ pub struct BasicBlock {
     pub fail: u64  
 }
 
+pub type R2Result<T> = Result<T, String>;
+pub fn r2_result<T, E>(result: Result<T, E>) -> R2Result<T> {
+    if let Ok(res) = result {
+        Ok(res)
+    } else {
+        Err("Deserialization error".to_owned())
+    }
+}
+
 // #[derive(DerefMut)]
 #[derive(Clone)]
 pub struct R2Api {
@@ -231,37 +240,37 @@ impl R2Api {
             info: None
         };
     
-        r2api.get_info();
+        let _r = r2api.get_info();
         r2api
     }
 
-    pub fn cmd(&mut self, cmd: &str) -> Result<String, String> {
+    pub fn cmd(&mut self, cmd: &str) -> R2Result<String> {
         self.r2p.lock().unwrap().cmd(cmd)
     }
 
-    pub fn get_info(&mut self) -> Information {
+    pub fn get_info(&mut self) -> R2Result<Information> {
         if self.info.is_none() {
-            let json = self.cmd("ij").unwrap();
-            self.info = serde_json::from_str(json.as_str()).unwrap();
+            let json = self.cmd("ij")?;
+            self.info = serde_json::from_str(json.as_str()).unwrap()
         }
-        self.info.as_ref().unwrap().clone()
+        Ok(self.info.as_ref().unwrap().clone())
     }
 
-    pub fn get_registers(&mut self) -> RegisterInformation {
-        let json = self.cmd("aerpj").unwrap();
-        serde_json::from_str(json.as_str()).unwrap()
+    pub fn get_registers(&mut self) -> R2Result<RegisterInformation> {
+        let json = self.cmd("aerpj")?;
+        r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn get_cc(&mut self, pc: u64) -> CallingConvention {
-        let json = self.cmd(format!("af @ {}; afcrj @ {}", pc, pc).as_str()).unwrap();
-        serde_json::from_str(json.as_str()).unwrap()
+    pub fn get_cc(&mut self, pc: u64) -> R2Result<CallingConvention> {
+        let json = self.cmd(format!("af @ {}; afcrj @ {}", pc, pc).as_str())?;
+        r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn get_syscall_cc(&mut self, pc: u64) -> CallingConvention {
+    pub fn get_syscall_cc(&mut self, pc: u64) -> R2Result<CallingConvention> {
         let bin = self.info.as_ref().unwrap().bin.clone();
         // this sucks, need a central place for arch shit
         if bin.arch == "x86" && bin.bits == 32 {
-            CallingConvention {
+            Ok(CallingConvention {
                 args: vec!(
                     "ebx".to_string(), 
                     "ecx".to_string(), 
@@ -271,66 +280,66 @@ impl R2Api {
                     "ebp".to_string()
                 ),
                 ret: "eax".to_string()
-            }
+            })
         } else {
             self.get_cc(pc)
         }
     }
 
-    pub fn get_segments(&mut self) -> Vec<Segment> {
-        let json = self.cmd("iSj").unwrap();
-        serde_json::from_str(json.as_str()).unwrap()
+    pub fn get_segments(&mut self) -> R2Result<Vec<Segment>> {
+        let json = self.cmd("iSj")?;
+        r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn analyze(&mut self, n: usize) { // n = 14 automatically wins flareon
-        self.cmd("a".repeat(n).as_str()).unwrap();
+    pub fn analyze(&mut self, n: usize) -> R2Result<String> { 
+        // n = 14 automatically wins flareon
+        self.cmd("a".repeat(n).as_str())
     }
 
-    pub fn get_function_info(&mut self, addr: u64) -> FunctionInfo {
-        let json = self.cmd(format!("afij @ {}", addr).as_str()).unwrap();
-        serde_json::from_str(json.as_str()).unwrap()
+    pub fn get_function_info(&mut self, addr: u64) -> R2Result<FunctionInfo> {
+        let json = self.cmd(format!("afij @ {}", addr).as_str())?;
+        r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn get_functions(&mut self) -> Vec<FunctionInfo> {
-        let json = self.cmd("aflj").unwrap();
-        serde_json::from_str(json.as_str()).unwrap()
+    pub fn get_functions(&mut self) -> R2Result<Vec<FunctionInfo>> {
+        let json = self.cmd("aflj")?;
+        r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn get_blocks(&mut self, addr: u64) -> Vec<BasicBlock> {
-        let json = self.cmd(format!(
-            "af @ {}; afbj @ {}", addr, addr).as_str()).unwrap();
-
-        serde_json::from_str(json.as_str()).unwrap()
+    pub fn get_blocks(&mut self, addr: u64) -> R2Result<Vec<BasicBlock>> {
+        let cmd = format!("af @ {}; afbj @ {}", addr, addr);
+        let json = self.cmd(cmd.as_str())?;
+        r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn get_ret(&mut self) -> String {
+    pub fn get_ret(&mut self) -> R2Result<String> {
         // simple as that?
-        let ret = self.cmd("pae ret").unwrap();
-        ret[0..ret.len()-1].to_owned()
+        let ret = self.cmd("pae ret")?;
+        Ok(ret[0..ret.len()-1].to_owned())
     }
 
-    pub fn get_register_value(&mut self, reg: &str) -> u64 {
+    pub fn get_register_value(&mut self, reg: &str) -> R2Result<u64> {
         let cmd = format!("aer {}", reg);
-        let val = self.cmd(cmd.as_str()).unwrap();
+        let val = self.cmd(cmd.as_str())?;
         // println!("val: {}", val);
-        u64::from_str_radix(&val[2..val.len()-1], 16).unwrap()
+        Ok(u64::from_str_radix(&val[2..val.len()-1], 16).unwrap())
     }
 
-    pub fn get_syscall_str(&mut self, sys_num: u64) -> String {
+    pub fn get_syscall_str(&mut self, sys_num: u64) -> R2Result<String> {
         let cmd = format!("asl {}", sys_num);
-        let ret = self.cmd(cmd.as_str()).unwrap();
-        ret[0..ret.len()-1].to_owned()
+        let ret = self.cmd(cmd.as_str())?;
+        Ok(ret[0..ret.len()-1].to_owned())
     }
 
-    pub fn get_syscall_num(&mut self, sys_str: &str) -> u64 {
+    pub fn get_syscall_num(&mut self, sys_str: &str) -> R2Result<u64> {
         let cmd = format!("asl {}", sys_str);
-        let ret = self.cmd(cmd.as_str()).unwrap();
-        u64::from_str_radix(&ret[0..ret.len()-1], 10).unwrap()
+        let ret = self.cmd(cmd.as_str())?;
+        Ok(u64::from_str_radix(&ret[0..ret.len()-1], 10).unwrap())
     }
     
-    pub fn get_syscalls(&mut self) -> Vec<Syscall> {
-        let json = self.cmd("asj").unwrap();
-        serde_json::from_str(json.as_str()).unwrap()
+    pub fn get_syscalls(&mut self) -> R2Result<Vec<Syscall>> {
+        let json = self.cmd("asj")?;
+        r2_result(serde_json::from_str(json.as_str()))
     }
 
     pub fn seek(&mut self, addr: u64) {
@@ -358,22 +367,22 @@ impl R2Api {
         let _r = self.cmd(format!(".aeis {} {} {} @ SP", argc, argv, env).as_str());
     }
 
-    pub fn disassemble(&mut self, addr: u64, num: usize) -> Vec<Instruction> {
+    pub fn disassemble(&mut self, addr: u64, num: usize) -> R2Result<Vec<Instruction>> {
         let cmd = format!("pdj {} @ {}", num, addr);
-        let json = self.cmd(cmd.as_str()).unwrap();
-        serde_json::from_str(json.as_str()).unwrap()
+        let json = self.cmd(cmd.as_str())?;
+        r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn assemble(&mut self, instruction: &str) -> Vec<u8> {
+    pub fn assemble(&mut self, instruction: &str) -> R2Result<Vec<u8>> {
         let cmd = format!("pa {}", instruction);
-        let hexpairs = self.cmd(cmd.as_str()).unwrap();
-        hex::decode(hexpairs).unwrap()
+        let hexpairs = self.cmd(cmd.as_str())?;
+        r2_result(hex::decode(hexpairs))
     }
 
-    pub fn read(&mut self, addr: u64, length: usize) -> Vec<u8> {
+    pub fn read(&mut self, addr: u64, length: usize) -> R2Result<Vec<u8>> {
         let cmd = format!("xj {} @ {}", length, addr);
-        let json = self.cmd(cmd.as_str()).unwrap();
-        serde_json::from_str(json.as_str()).unwrap()
+        let json = self.cmd(cmd.as_str())?;
+        r2_result(serde_json::from_str(json.as_str()))
     }
 
     pub fn write(&mut self, addr: u64, data: Vec<u8>) {
@@ -381,10 +390,10 @@ impl R2Api {
         let _r = self.cmd(cmd.as_str());
     }
 
-    pub fn get_address(&mut self, symbol: &str) -> u64 {
+    pub fn get_address(&mut self, symbol: &str) -> R2Result<u64> {
         let cmd = format!("?v {}", symbol);
-        let val = self.cmd(cmd.as_str()).unwrap();
-        u64::from_str_radix(&val[2..val.len()-1], 16).unwrap()
+        let val = self.cmd(cmd.as_str())?;
+        Ok(u64::from_str_radix(&val[2..val.len()-1], 16).unwrap())
     }
 
     pub fn clear(&mut self) {
