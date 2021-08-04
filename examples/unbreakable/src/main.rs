@@ -12,7 +12,7 @@ fn main() {
     state.assert(&assertion);
 
     let addr: u64 = 0x6042c0;
-    state.memory.write_value(addr, Value::Symbolic(bv.clone(), 0), len);
+    state.memory.write_value(addr, &Value::Symbolic(bv.clone(), 0), len);
     let mut new_state = radius.run_until(
         state, 0x00400830, vec!(0x00400850)).unwrap();
 

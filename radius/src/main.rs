@@ -22,12 +22,12 @@ use crate::value::Value;
 
 #[test]
 fn looper() {
-    let options = vec!(); // RadiusOption::Debug(true));
-    let mut radius = Radius::new_with_options("../tests/looper", options);
-    let state = radius.call_state(0x112d);
+    let options = vec!(RadiusOption::Sims(false)); // RadiusOption::Debug(true));
+    let mut radius = Radius::new_with_options("tests/looper", options);
+    let state = radius.call_state(0x100003f4c);
     //let state = radius.entry_state(&vec!("looper".to_owned()), &vec!());
-    let mut new_state = radius.run_until(state, 0x00001168, vec!()).unwrap();
-    println!("{:?}", new_state.registers.get("eax"));
+    let mut new_state = radius.run_until(state, 0x100003fb4, vec!()).unwrap();
+    println!("{:?}", new_state.registers.get("x0"));
 }
 
 #[test]
@@ -47,9 +47,9 @@ fn strstuff() {
     let bv = state.bv("flag", 10*8);
     let addr: u64 = 0x100000;
     let len = 10;
-    state.memory.write_value(addr+8, Value::Concrete(addr+24, 0), 8);
-    state.memory.write_value(addr+24, Value::Symbolic(bv.clone(), 0), len);
-    state.memory.write_value(addr+34, Value::Concrete(0, 0), 8);
+    state.memory.write_value(addr+8, &Value::Concrete(addr+24, 0), 8);
+    state.memory.write_value(addr+24, &Value::Symbolic(bv.clone(), 0), len);
+    state.memory.write_value(addr+34, &Value::Concrete(0, 0), 8);
     state.registers.set("rsi", Value::Concrete(addr, 0));
 
     let mut new_state = radius.run_until(state, 0x00001208, 
@@ -91,7 +91,7 @@ fn r100() {
     let mut state = radius.call_state(0x004006fd);
     let bv = state.bv("flag", 12*8);
     let addr: u64 = 0x100000;
-    state.memory.write_value(addr, Value::Symbolic(bv.clone(), 0), 12);
+    state.memory.write_value(addr, &Value::Symbolic(bv.clone(), 0), 12);
     state.registers.set("rdi", Value::Concrete(addr, 0));
 
     radius.breakpoint(0x004007a1);
@@ -110,7 +110,7 @@ fn r200() {
     let bv = state.bv("flag", 6*8);
 
     let addr = state.registers.get("rsp").as_u64().unwrap();
-    state.memory.write_value(addr-0x18, Value::Symbolic(bv.clone(), 0), 6);
+    state.memory.write_value(addr-0x18, &Value::Symbolic(bv.clone(), 0), 6);
 
     radius.breakpoint(0x00400843);
     radius.mergepoint(0x004007fd);
@@ -134,7 +134,7 @@ fn unbreakable() {
     state.assert(&assertion);
 
     let addr: u64 = 0x6042c0;
-    state.memory.write_value(addr, Value::Symbolic(bv.clone(), 0), len);
+    state.memory.write_value(addr, &Value::Symbolic(bv.clone(), 0), len);
     let mut new_state = radius.run_until(
         state, 0x00400830, vec!(0x00400850)).unwrap();
 
@@ -161,7 +161,7 @@ fn symmem() {
 
     let sentence = String::from("this is my string it is a good string I think");
     state.memory.write_string(0x100000, sentence.as_str());
-    state.memory.write_value(0x100008, Value::Symbolic(x.clone(), 0), 8);
+    state.memory.write_value(0x100008, &Value::Symbolic(x.clone(), 0), 8);
 
     let index = state.memory_search(
         &Value::Concrete(0x100000, 0), 
@@ -183,7 +183,7 @@ fn symmem() {
     let _sentence2 = "alephant";
 
     state.memory.write_string(0x100000, sentence1);
-    state.memory.write_value(0x100010, Value::Symbolic(x.clone(), 0), 8);
+    state.memory.write_value(0x100010, &Value::Symbolic(x.clone(), 0), 8);
 
     let cmp = state.memory_compare(
         &Value::Concrete(0x100000, 0),
@@ -241,7 +241,7 @@ fn ioscrackme() {
 
     let buf_addr: u64 = 0x100000;
     state.registers.set("x0", Value::Concrete(buf_addr, 0));
-    state.memory.write_value(buf_addr, Value::Symbolic(bv.clone(), 0), len);
+    state.memory.write_value(buf_addr, &Value::Symbolic(bv.clone(), 0), len);
 
 
     let mut new_state = radius.run_until(

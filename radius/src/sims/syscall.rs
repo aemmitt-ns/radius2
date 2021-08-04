@@ -60,7 +60,7 @@ pub fn read(state: &mut State, args: Vec<Value>) -> Value {
     let length = state.solver.max_value(&args[2]);
     let data = state.filesystem.read(fd as usize, length as usize);
     let len = data.len();
-    state.memory_write(&args[1], data, &args[2]);
+    state.memory_write(&args[1], &data, &args[2]);
     Value::Concrete(len as u64, args[2].get_taint())
 }
 
@@ -118,6 +118,7 @@ pub fn munmap(state: &mut State, args: Vec<Value>) -> Value {
     for (i, seg) in state.memory.segs.iter().enumerate() {
         if seg.addr == addr {
             ind = i;
+            break;
         }
     }
 

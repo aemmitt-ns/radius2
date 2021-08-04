@@ -166,7 +166,7 @@ impl Radius {
         // if there are multiple threads we need to duplicate solvers
         // else there will be race conditions. Unfortunately this 
         // will prevent mergers from happening. this sucks
-        let duplicate = threads > 1 && self.processor.mergepoints.len() == 0;
+        let duplicate = threads > 1 && self.processor.mergepoints.is_empty();
 
         loop {
             let mut count = 0;
@@ -229,8 +229,8 @@ impl Radius {
             self.merges.insert(pc, state);
         } else {
             let mut merge_state = self.merges.remove(&pc).unwrap();
-            let mut state_asserts = state.solver.assertions.clone();
-            let assertion = state.solver.and_all(&mut state_asserts).unwrap();
+            let state_asserts = state.solver.assertions.clone();
+            let assertion = state.solver.and_all(&state_asserts).unwrap();
             let asserted = Value::Symbolic(assertion.clone(), 0);
 
             // merge registers 
@@ -259,8 +259,8 @@ impl Radius {
             merge_state.memory.mem = new_mem;
 
             // merge solvers
-            let mut assertions = merge_state.solver.assertions.clone();
-            let current = state.solver.and_all(&mut assertions).unwrap();
+            let assertions = merge_state.solver.assertions.clone();
+            let current = state.solver.and_all(&assertions).unwrap();
             merge_state.solver.reset();
             merge_state.assert(&current.or(&assertion));
             self.merges.insert(pc, merge_state);

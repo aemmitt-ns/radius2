@@ -11,6 +11,7 @@ use crate::memory::CHECK_PERMS;
 
 //use std::time::SystemTime;
 //use boolector::BV;
+use std::mem;
 
 const INSTR_NUM: usize = 64;
 
@@ -111,7 +112,7 @@ impl Processor {
                     && OPS.contains(&&s[0..s.len()-1]) {
 
                 let reg_word = tokens.pop().unwrap();
-                tokens.push(reg_word.clone());
+                tokens.push(reg_word.to_owned());
                 let operator = self.get_operator(&s[0..s.len()-1]).unwrap();
                 tokens.push(operator);
                 tokens.push(reg_word);
@@ -154,11 +155,7 @@ impl Processor {
 
     // attempt to tokenize word as register (eg. rbx)
     pub fn get_register(&self,  state: &mut State, word: &str) -> Option<Word> {
-        if let Some(reg) = state.registers.get_register(word) {
-            Some(Word::Register(reg.index))
-        } else {
-            None
-        }
+        state.registers.get_register(word).map(|reg| Word::Register(reg.index))
     }
 
     // attempt to tokenize word as operation (eg. +)
@@ -227,9 +224,6 @@ impl Processor {
         let mut word_index = 0;
         let words_len = words.len();
 
-        let mut temp_stack1: Vec<StackItem> = Vec::with_capacity(128);
-        let mut temp_stack2: Vec<StackItem> = Vec::with_capacity(128);
-
         while word_index < words_len {
             let word = &words[word_index];
             word_index += 1;
@@ -249,7 +243,7 @@ impl Processor {
             //println!("word: {:?} {:?}", &word, &state.stack);
             match word {                
                 Word::Literal(val) => {
-                    state.stack.push(StackItem::StackValue(val.clone()));
+                    state.stack.push(StackItem::StackValue(val.to_owned()));
                 },
                 Word::Register(index) => {
                     state.stack.push(StackItem::StackRegister(*index));
@@ -270,7 +264,7 @@ impl Processor {
                                 (Value::Symbolic(val1, _t), ExecMode::Uncon) => {
                                     //println!("if {:?}", val1);
                                     state.esil.mode = ExecMode::If;
-                                    temp_stack1 = state.stack.clone();
+                                    state.esil.temp1 = state.stack.to_owned();
                                     let cond_bv = val1._eq(
                                         &state.bvv(0, val1.get_width())).not();
 
@@ -288,44 +282,50 @@ impl Processor {
                                 ExecMode::If => {
                                     state.esil.mode = ExecMode::Else;
                                     state.condition = Some(state.condition.as_ref().unwrap().not());
-                                    temp_stack2 = state.stack.clone(); // all this cloning will be slow af
-                                    state.stack = temp_stack1.clone();
+                                    state.esil.temp2 = mem::take(&mut state.stack); 
+                                    state.stack = mem::take(&mut state.esil.temp1); 
                                 }
                                 _ => {}
                             }
                         },
                         Operations::EndIf => {
-                            let mut new_temp = temp_stack1.clone();
 
-                            let perform = match &state.esil.mode {
-                                ExecMode::If => true,
-                                ExecMode::Else => {
-                                    new_temp = temp_stack2.clone();
-                                    true
+                            match &state.esil.mode {
+                                ExecMode::If | ExecMode::Else => {},
+                                _ => {
+                                    state.esil.mode = ExecMode::Uncon;
+                                    continue;
+                                }
+                            };
+                            
+                            let mut new_temp = match &state.esil.mode {
+                                ExecMode::If => {
+                                    mem::take(&mut state.esil.temp1)
                                 },
-                                _ => false
+                                ExecMode::Else => {
+                                    mem::take(&mut state.esil.temp2)
+                                },
+                                _ => vec!() // won't happen
                             };
 
-                            if perform {
-                                let mut new_stack: Vec<StackItem> = Vec::with_capacity(128);
-                                let mut tmp = state.stack.clone();
-                                while !state.stack.is_empty() && !new_temp.is_empty() {
-                                    let if_val = pop_stack_value(state, &mut tmp, false, false);
-                                    let else_val = pop_stack_value(state, &mut new_temp, false, false);
-                                    let cond_val = state.solver.conditional(
-                                        &Value::Symbolic(state.condition.as_ref().unwrap().clone(), 0),
-                                        &if_val,
-                                        &else_val
-                                    );
+                            let mut new_stack = mem::take(&mut state.esil.temp1);
+                            let mut old_stack = mem::take(&mut state.stack);
+                            while !old_stack.is_empty() && !new_temp.is_empty() {
+                                let if_val = pop_stack_value(state, &mut old_stack, false, false);
+                                let else_val = pop_stack_value(state, &mut new_temp, false, false);
+                                let cond_val = state.solver.conditional(
+                                    &Value::Symbolic(state.condition.as_ref().unwrap().to_owned(), 0),
+                                    &if_val,
+                                    &else_val
+                                );
 
-                                    new_stack.push(StackItem::StackValue(cond_val));
-                                }
-
-                                new_stack.reverse();
-                                state.stack = new_stack;
-                                state.condition = None;
+                                new_stack.push(StackItem::StackValue(cond_val));
                             }
 
+                            new_stack.reverse();
+                            state.stack = new_stack;
+                            state.condition = None;
+                        
                             state.esil.mode = ExecMode::Uncon;
                         },
                         Operations::GoTo => {
@@ -453,13 +453,13 @@ impl Processor {
             }
         }
 
-        if remove.len() > 0 {
-            let mut mut_prev_instr = prev_instr.clone();
+        if !remove.is_empty() {
+            let mut mut_prev_instr = prev_instr.to_owned();
             let mut new_tokens: Vec<Word> = Vec::with_capacity(128);
 
             for (i, word) in prev_instr.tokens.iter().enumerate() {
                 if !remove.contains(&i) {
-                    new_tokens.push(word.clone());
+                    new_tokens.push(word.to_owned());
                 }
             }
 
@@ -479,11 +479,8 @@ impl Processor {
     pub fn execute(&self, state: &mut State, pc_index: usize, instr: &Instruction, 
         status: &InstructionStatus, words: &[Word]) {
 
-        if CHECK_PERMS {
-            // this is redundant but i dont want the check itself to panic
-            if !state.memory.check_permission(instr.offset, instr.size, 'x') {
-                state.memory.handle_segfault(instr.offset, instr.size, 'x');
-            }
+        if CHECK_PERMS && !state.memory.check_permission(instr.offset, instr.size, 'x') {
+            state.memory.handle_segfault(instr.offset, instr.size, 'x');
         }
 
         let pc = instr.offset;
@@ -492,10 +489,11 @@ impl Processor {
         state.esil.pcs.clear();
         if instr.jump != 0 {
             state.esil.pcs.push(instr.jump);
+
+            if instr.fail != 0 {
+                state.esil.pcs.push(instr.fail);
+            }
         } 
-        if instr.fail != 0 {
-            state.esil.pcs.push(instr.fail);
-        }
 
         match instr.type_num {
             CALL_TYPE => { state.backtrace.push(new_pc); },
@@ -505,11 +503,11 @@ impl Processor {
 
         // shit is gettin messy
         let mut new_status = status;
-        if state.status == StateStatus::PostMerge {
-            if *status == InstructionStatus::Merge {
-                state.status = StateStatus::Active;
-                new_status = &InstructionStatus::None;
-            }
+        if state.status == StateStatus::PostMerge && 
+            *status == InstructionStatus::Merge {
+
+            state.status = StateStatus::Active;
+            new_status = &InstructionStatus::None;
         }
 
         match new_status {
@@ -651,30 +649,29 @@ impl Processor {
         let new_pc = state.registers.get_value(pc_index);
         let mut pcs = Vec::with_capacity(pc_allocs);
 
-        if self.force && state.esil.pcs.len() > 0 {
+        if self.force && !state.esil.pcs.is_empty() {
             pcs = state.esil.pcs;
             state.esil.pcs = Vec::with_capacity(pc_allocs);
+        } else if let Some(pc) = new_pc.as_u64() {
+                pcs.push(pc);
         } else {
-            if let Some(pc) = new_pc.as_u64() {
-                pcs.push(pc)
+            let pc_val = new_pc.as_bv().unwrap();
+            if self.debug {
+                println!("\nsymbolic PC: {:?}\n", pc_val);
+            }
+            
+            if self.lazy && !state.esil.pcs.is_empty() {
+                pcs = state.esil.pcs;
+                state.esil.pcs = Vec::with_capacity(pc_allocs);
             } else {
-                let pc_val = new_pc.as_bv().unwrap();
-                if self.debug {
-                    println!("\nsymbolic PC: {:?}\n", pc_val);
-                }
-                
-                if self.lazy && state.esil.pcs.len() > 0 {
-                    pcs = state.esil.pcs;
-                    state.esil.pcs = Vec::with_capacity(pc_allocs);
-                } else {
-                    pcs = state.evaluate_many(&pc_val);
-                }
+                pcs = state.evaluate_many(&pc_val);
             }
         }
+        
 
         if pcs.len() == 1 && new_pc.as_u64().is_some() {
             states.push(state);
-        } else if pcs.len() > 0 {
+        } else if !pcs.is_empty() {
             let last = pcs.len()-1;
             for new_pc_val in &pcs[..last] {
                 let mut new_state = if duplicate { 
@@ -710,9 +707,12 @@ impl Processor {
             self.pc = Some(state.registers.regs.get(
                 &pc_reg.reg).unwrap().index);
         }
-        let pc_register = &state.registers.indexes[self.pc.unwrap()].clone();
+        let pc_register = &state.registers.indexes[self.pc.unwrap()].to_owned();
         let mut states = vec!(state);
         
+        //let now = SystemTime::now();
+        //let mut count = 0;
+
         while !states.is_empty() {
             let current_state = if BFS {
                 states.remove(0)
@@ -724,6 +724,9 @@ impl Processor {
 
             if let Some(pc_val) = pc.as_u64() {
                 if pc_val == addr {
+                    //let micros = now.elapsed().unwrap().as_micros();
+                    //println!("count: {} ({}) ips: {}", count, micros, 
+                    //    (count as f64 / micros as f64)*1000000.0);
                     return Some(current_state);
                 } else if avoid.contains(&pc_val) {
                     continue;
@@ -732,6 +735,7 @@ impl Processor {
 
             let new_states = self.step(current_state, false);
             states.extend(new_states);
+            //count += 1;
         }
 
         None

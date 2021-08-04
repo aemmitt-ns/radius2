@@ -334,7 +334,7 @@ impl R2Api {
     pub fn get_syscall_num(&mut self, sys_str: &str) -> R2Result<u64> {
         let cmd = format!("asl {}", sys_str);
         let ret = self.cmd(cmd.as_str())?;
-        Ok(u64::from_str_radix(&ret[0..ret.len()-1], 10).unwrap())
+        Ok((&ret[0..ret.len()-1]).parse::<u64>().unwrap())
     }
     
     pub fn get_syscalls(&mut self) -> R2Result<Vec<Syscall>> {
@@ -351,7 +351,7 @@ impl R2Api {
     }
 
     pub fn cont(&mut self) {
-        let _r = self.cmd(format!("dc").as_str());
+        let _r = self.cmd("dc");
     }
 
     pub fn init_vm(&mut self) {

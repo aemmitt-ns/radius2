@@ -69,7 +69,7 @@ pub fn memfrob(state: &mut State, args: Vec<Value>) -> Value {
         new_data.push(d.to_owned() ^ x.to_owned());
     }
 
-    state.memory_write(addr, new_data, &num);
+    state.memory_write(addr, &new_data, &num);
     //state.mem_copy(addr, data, num)
     Value::Concrete(0, 0)
 }
@@ -85,7 +85,7 @@ pub fn strnlen(state: &mut State, args: Vec<Value>) -> Value {
 // TODO implement this with sim fs
 pub fn gets(state: &mut State, args: Vec<Value>) -> Value {
     let bv = state.bv(format!("gets_{:?}", &args[0]).as_str(), 256*8);
-    state.memory_write_value(&args[0], Value::Symbolic(bv, 0), 256);
+    state.memory_write_value(&args[0], &Value::Symbolic(bv, 0), 256);
     args[0].to_owned()
 }
 
@@ -171,7 +171,7 @@ pub fn memset(state: &mut State, args: Vec<Value>) -> Value {
         data.push(args[1].to_owned());
     }
 
-    state.memory_write(&args[0], data, &args[2]);
+    state.memory_write(&args[0], &data, &args[2]);
     args[0].to_owned()
 }
 
@@ -466,8 +466,8 @@ pub fn getpagesize(_state: &mut State, _args: Vec<Value>) -> Value {
 pub fn gethostname(state: &mut State, args: Vec<Value>) -> Value {
     let len = state.solver.max_value(&args[1]);
     let bv = state.bv("hostname", 8*len as u32);
-    let data = state.memory.unpack(Value::Symbolic(bv, 0), len as usize);
-    state.memory_write(&args[0], data, &args[1]);
+    let data = state.memory.unpack(&Value::Symbolic(bv, 0), len as usize);
+    state.memory_write(&args[0], &data, &args[1]);
     Value::Concrete(0, 0)
 }
 

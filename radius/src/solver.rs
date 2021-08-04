@@ -2,6 +2,7 @@ use crate::value::Value;
 use boolector::{Btor, BV, SolverResult};
 use boolector::option::{BtorOption, ModelGen, NumberFormat};
 use std::sync::Arc;
+use std::cmp::Ordering;
 
 const EVAL_MAX: u64 = 256;
 
@@ -12,6 +13,12 @@ pub struct Solver {
     pub btor: Arc<Btor>,
     pub assertions: Vec<BitVec>, // yo dawg i heard you like types
     pub indexes: Vec<usize>
+}
+
+impl Default for Solver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Solver {
@@ -87,12 +94,10 @@ impl Solver {
             Value::Symbolic(val, _t) => {
                 //let new_val = self.translate(val).unwrap();
                 let szdiff = (val.get_width() - length) as i32;
-                if szdiff == 0 {
-                    val.to_owned()
-                } else if szdiff > 0 {
-                    val.slice(length-1, 0)
-                } else {
-                    val.uext(-szdiff as u32)
+                match szdiff.cmp(&0) {
+                    Ordering::Equal => val.to_owned(),
+                    Ordering::Greater => val.slice(length-1, 0),
+                    Ordering::Less => val.uext(-szdiff as u32)
                 }
             }
         }
@@ -303,7 +308,7 @@ impl Solver {
         sol
     }
 
-    pub fn and_all(&self, bvs: &Vec<BitVec>) -> Option<BitVec> {
+    pub fn and_all(&self, bvs: &[BitVec]) -> Option<BitVec> {
         let mut bv = BV::from_bool(self.btor.clone(), true);
         for next_bv in bvs {
             bv = bv.and(next_bv);
@@ -311,7 +316,7 @@ impl Solver {
         Some(bv)
     }
 
-    pub fn or_all(&self, bvs: &mut Vec<BitVec>) -> Option<BitVec> {
+    pub fn or_all(&self, bvs: &[BitVec]) -> Option<BitVec> {
         let mut bv = BV::from_bool(self.btor.clone(), true);
         for next_bv in bvs {
             bv = bv.or(next_bv);

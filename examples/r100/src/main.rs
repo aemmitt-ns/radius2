@@ -6,7 +6,7 @@ fn main() {
     let mut state = radius.call_state(0x004006fd);
     let addr: u64 = 0x100000;
     let flag_val = state.symbolic_value("flag", 12*8);
-    state.memory.write_value(addr, flag_val.clone(), 12);
+    state.memory.write_value(addr, &flag_val, 12);
     state.registers.set("rdi", state.concrete_value(addr, 64));
 
     radius.breakpoint(0x004007a1);

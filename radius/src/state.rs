@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 // use backtrace::Backtrace;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExecMode {
     If,
     Else,
@@ -28,6 +28,8 @@ pub struct EsilState {
     pub current:  Value,
     pub last_sz:  usize,
     pub stored_address: Option<Value>,
+    pub temp1: Vec<StackItem>,
+    pub temp2: Vec<StackItem>,
     pub pcs: Vec<u64>
 }
 
@@ -72,7 +74,9 @@ impl State {
             current: Value::Concrete(0, 0),
             last_sz: 64,
             stored_address: None,
-            pcs: vec!()
+            temp1: vec!(), // these instances are actually not used
+            temp2: vec!(),
+            pcs: Vec::with_capacity(64)
         };
 
         let solver = Solver::new();
@@ -80,9 +84,9 @@ impl State {
         let memory = Memory::new(r2api, solver.clone());
 
         State {
-            solver: solver,
+            solver,
             r2api: r2api.clone(),
-            stack: vec!(),
+            stack: Vec::with_capacity(128),
             esil: esil_state,
             condition: None,
             registers,
@@ -91,7 +95,7 @@ impl State {
             status: StateStatus::Active,
             context: HashMap::new(),
             taints: HashMap::new(),
-            backtrace: vec!(),
+            backtrace: Vec::with_capacity(128),
             pid: 1337 // sup3rh4x0r
         }
     }
@@ -123,13 +127,15 @@ impl State {
             current: Value::Concrete(0, 0),
             last_sz: 64,
             stored_address: None,
-            pcs: vec!()
+            temp1: Vec::with_capacity(128),
+            temp2: Vec::with_capacity(128),
+            pcs: Vec::with_capacity(64)
         };
 
         State {
             solver,
             r2api: self.r2api.clone(),
-            stack: vec!(), //self.stack.clone(),
+            stack: Vec::with_capacity(128),
             esil: esil_state,
             condition: None,
             registers,
@@ -148,7 +154,7 @@ impl State {
         self.memory.read_sym_len(address, length, &mut self.solver)
     }
 
-    pub fn memory_write(&mut self, address: &Value, values: Vec<Value>, length: &Value) {
+    pub fn memory_write(&mut self, address: &Value, values: &[Value], length: &Value) {
         self.memory.write_sym_len(address, values, length, &mut self.solver)
     }
 
@@ -156,7 +162,7 @@ impl State {
         self.memory.read_sym(address, length, &mut self.solver)
     }
 
-    pub fn memory_write_value(&mut self, address: &Value, value: Value, length: usize) {
+    pub fn memory_write_value(&mut self, address: &Value, value: &Value, length: usize) {
         self.memory.write_sym(address, value, length, &mut self.solver)
     }
 

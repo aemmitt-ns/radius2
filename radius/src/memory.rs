@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use crate::r2_api::{R2Api, Endian};
 use crate::value::Value;
 use crate::solver::Solver;
+use std::mem;
 
 // const CHUNK: u64 = 8;
 const READ_CACHE: usize = 256;
@@ -77,7 +78,7 @@ impl Memory {
             heap: Heap::new(HEAP_START, HEAP_SIZE),
             bits: info.bin.bits,
             endian: Endian::from_string(endian),
-            segs: segs
+            segs
         }
     }
 
@@ -170,7 +171,7 @@ impl Memory {
         }
     }
 
-    pub fn write_sym(&mut self, address: &Value, value: Value, len: usize, solver: &mut Solver) {
+    pub fn write_sym(&mut self, address: &Value, value: &Value, len: usize, solver: &mut Solver) {
         match address {
             Value::Concrete(addr, _t) => {
                 self.write_value(*addr, value, len)
@@ -183,7 +184,7 @@ impl Memory {
                     let bv = solver.bvv(a, 64);
                     let cond = Value::Symbolic(addr._eq(&bv), *t);
                     let new_val = solver.conditional(&cond, &value, &read_val);
-                    self.write_value(a, new_val, len);
+                    self.write_value(a, &new_val, len);
                 }
             }
         }
@@ -223,7 +224,7 @@ impl Memory {
         }
     }
 
-    pub fn write_sym_len(&mut self, address: &Value, values: Vec<Value>, length: &Value, solver: &mut Solver) {
+    pub fn write_sym_len(&mut self, address: &Value, values: &[Value], length: &Value, solver: &mut Solver) {
         let mut len = solver.max_value(length) as usize;
         // hopefully this doesn't occur
         if len > values.len() {
@@ -244,14 +245,14 @@ impl Memory {
                 let count_val = Value::Concrete(count as u64, 0); 
                 let cond = address.eq(&addr_val) & count_val.ult(&length);
                 let value = solver.conditional(&cond, &values[count], &read_vals[count]);
-                self.write(addr+count as u64, vec!(value));
+                self.write(addr+count as u64, &mut [value]);
             }
         }
     }
 
     pub fn memmove(&mut self, dst: &Value, src: &Value, length: &Value, solver: &mut Solver) {
         let data = self.read_sym_len(src, length, solver);
-        self.write_sym_len(dst, data, length, solver);    
+        self.write_sym_len(dst, &data, length, solver);    
     }
 
     pub fn search(&mut self, addr: &Value, needle: &Value, length: &Value, reverse: bool, solver: &mut Solver) -> Value {
@@ -357,20 +358,19 @@ impl Memory {
         self.pack(&data)
     }
 
-    pub fn write_value(&mut self, addr: u64, value: Value, length: usize) {
-        let data = self.unpack(value, length);
-        self.write(addr, data)
+    pub fn write_value(&mut self, addr: u64, value: &Value, length: usize) {
+        let mut data = self.unpack(value, length);
+        self.write(addr, &mut data)
     }
 
     pub fn read(&mut self, addr: u64, length: usize) -> Vec<Value> {
 
-        if CHECK_PERMS {
-            if !self.check_permission(addr, length as u64, 'r') {
-                // everything needs to be reworked to have Result<...> 
-                // so that we can properly handle things like this
-                self.handle_segfault(addr, length as u64, 'r');
-            }
+        if CHECK_PERMS && !self.check_permission(addr, length as u64, 'r') {
+            // everything needs to be reworked to have Result<...> 
+            // so that we can properly handle things like this
+            self.handle_segfault(addr, length as u64, 'r');
         }
+        
 
         let mut data: Vec<Value> = Vec::with_capacity(length);
         for count in 0..length as u64 {
@@ -378,16 +378,14 @@ impl Memory {
             let mem = self.mem.get(&caddr);
             match mem {
                 Some(byte) => {
-                    data.push(byte.clone());
+                    data.push(byte.to_owned());
                 },
                 None => {
                     let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
                     data.push(Value::Concrete(bytes[0] as u64, 0));
-                    let mut c = 0;
-                    for byte in bytes {
+                    for (c, byte) in bytes.into_iter().enumerate() {
                         let new_data = Value::Concrete(byte as u64, 0);
-                        self.mem.entry(caddr + c).or_insert(new_data);
-                        c += 1;
+                        self.mem.entry(caddr + c as u64).or_insert(new_data);
                     }
                 }
             }
@@ -403,20 +401,20 @@ impl Memory {
             return String::from("---");
         }
 
-        if prot | PROT_READ != 0 {
-            prot_str = prot_str + "r";
+        if prot & PROT_READ != 0 {
+            prot_str += "r";
         } else {
-            prot_str = prot_str + "-";
+            prot_str += "-";
         }
-        if prot | PROT_WRITE != 0 {
-            prot_str = prot_str + "w";
+        if prot & PROT_WRITE != 0 {
+            prot_str +=  "w";
         } else {
-            prot_str = prot_str + "-";
+            prot_str += "-";
         }
-        if prot | PROT_EXEC != 0 {
-            prot_str = prot_str + "x";
+        if prot & PROT_EXEC != 0 {
+            prot_str += "x";
         } else {
-            prot_str = prot_str + "-";
+            prot_str += "-";
         }
     
         prot_str
@@ -440,22 +438,20 @@ impl Memory {
         for d in data {
             data_value.push(Value::Concrete(*d as u64, 0));
         }
-        self.write(addr, data_value);
+        self.write(addr, &mut data_value);
     }
 
-    pub fn write(&mut self, addr: u64, mut data: Vec<Value>) {
+    pub fn write(&mut self, addr: u64, data: &mut [Value]) {
         //println!("write {:?}", data);
         let length = data.len();
 
-        if CHECK_PERMS {
-            if !self.check_permission(addr, length as u64, 'w') {
-                self.handle_segfault(addr, length as u64, 'w');
-            }
+        if CHECK_PERMS && !self.check_permission(addr, length as u64, 'w') {
+            self.handle_segfault(addr, length as u64, 'w');
         }
 
-        for count in 0..length {
+        for (count, mut item) in data.iter_mut().enumerate().take(length) {
             let caddr = addr + count as u64;
-            self.mem.insert(caddr, data.remove(0));
+            self.mem.insert(caddr, mem::take(&mut item));
         }
     }
 
@@ -463,15 +459,6 @@ impl Memory {
     // TODO make everything not suck
     pub fn handle_segfault(&self, addr: u64, length: u64, perm: char) {
         panic!("addr {} length {} does not have perm \"{}\"", addr, length, perm);
-    }
-
-    pub fn write_ptr(&mut self, addr: u64, data: &[Value]) {
-        //println!("write {:?}", data);
-        let length = data.len();
-        for count in 0..length {
-            let caddr = addr + count as u64;
-            self.mem.insert(caddr, data.get(count).unwrap().clone());
-        }
     }
 
     // jesus this got huge
@@ -541,20 +528,20 @@ impl Memory {
         }
     }
 
-    pub fn unpack(&self, value: Value, length: usize) -> Vec<Value> {
+    pub fn unpack(&self, value: &Value, length: usize) -> Vec<Value> {
         let mut data: Vec<Value> = Vec::with_capacity(length);
 
         match value {
             Value::Concrete(val, t) => {
                 for count in 0..length {
-                    data.push(Value::Concrete((val >> (8*count)) & 0xff, t));
+                    data.push(Value::Concrete((*val >> (8*count)) & 0xff, *t));
                 }
             },
             Value::Symbolic(val, t) => {
                 for count in 0..length {
                     //let trans_val = self.solver.translate(&val).unwrap();
                     let bv = val.slice(((count as u32)+1)*8-1, (count as u32)*8);
-                    data.push(Value::Symbolic(bv, t));
+                    data.push(Value::Symbolic(bv, *t));
                 }
             }
         }

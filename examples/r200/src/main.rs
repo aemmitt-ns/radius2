@@ -7,7 +7,7 @@ fn main() {
     let bv = state.bv("flag", 6*8);
 
     let addr = state.registers.get("rsp").as_u64().unwrap();
-    state.memory.write_value(addr-0x18, Value::Symbolic(bv.clone(), 0), 6);
+    state.memory.write_value(addr-0x18, &Value::Symbolic(bv.clone(), 0), 6);
 
     radius.breakpoint(0x00400843);
     radius.mergepoint(0x004007fd);

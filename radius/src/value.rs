@@ -2,6 +2,7 @@
 use boolector::{Btor, BV};
 use std::sync::Arc;
 use std::ops;
+use std::cmp::Ordering;
 
 // hyper efficient log_2 
 pub const LOG: [u32; 65] = 
@@ -14,6 +15,10 @@ pub const LOG: [u32; 65] =
 pub enum Value {
     Concrete(u64, u64),
     Symbolic(BV<Arc<Btor>>, u64)
+}
+
+impl Default for Value {
+    fn default() -> Self { Value::Concrete(0, 0) }
 }
 
 #[inline]
@@ -55,12 +60,10 @@ macro_rules! binary_ops {
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
                 let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.$method(&b), *t1 | *t2)
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.$method(&b.uext(width_diff as u32)), *t1 | *t2)
-                } else {
-                    Value::Symbolic(a.uext(-width_diff as u32).$method(&b), *t1 | *t2)
+                match width_diff.cmp(&0) {
+                    Ordering::Equal => Value::Symbolic(a.$method(&b), *t1 | *t2),
+                    Ordering::Greater => Value::Symbolic(a.$method(&b.uext(width_diff as u32)), *t1 | *t2),
+                    Ordering::Less => Value::Symbolic(a.uext(-width_diff as u32).$method(&b), *t1 | *t2)
                 }
             }
         }
@@ -152,12 +155,10 @@ impl ops::BitXor<Value> for Value {
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
                 let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.xor(&b), t1 | t2)
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.xor(&b.uext(width_diff as u32)), t1 | t2)
-                } else {
-                    Value::Symbolic(a.uext(-width_diff as u32).xor(&b), t1 | t2)
+                match width_diff.cmp(&0) {
+                    Ordering::Equal => Value::Symbolic(a.xor(&b), t1 | t2),
+                    Ordering::Greater => Value::Symbolic(a.xor(&b.uext(width_diff as u32)), t1 | t2),
+                    Ordering::Less => Value::Symbolic(a.uext(-width_diff as u32).xor(&b), t1 | t2)
                 }
             }
         }
@@ -248,12 +249,10 @@ impl Value {
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
                 let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.sdiv(&b), t1 | t2)
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.sdiv(&b.sext(width_diff as u32)), t1 | t2)
-                } else {
-                    Value::Symbolic(a.sext(-width_diff as u32).sdiv(&b), t1 | t2)
+                match width_diff.cmp(&0) {
+                    Ordering::Equal => Value::Symbolic(a.sdiv(&b), t1 | t2),
+                    Ordering::Greater => Value::Symbolic(a.sdiv(&b.sext(width_diff as u32)), t1 | t2),
+                    Ordering::Less => Value::Symbolic(a.sext(-width_diff as u32).sdiv(&b), t1 | t2)
                 }
             }
         }
@@ -275,12 +274,10 @@ impl Value {
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
                 let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.srem(&b), t1 | t2)
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.srem(&b.sext(width_diff as u32)), t1 | t2)
-                } else {
-                    Value::Symbolic(a.sext(-width_diff as u32).srem(&b), t1 | t2)
+                match width_diff.cmp(&0) {
+                    Ordering::Equal => Value::Symbolic(a.srem(&b), t1 | t2),
+                    Ordering::Greater => Value::Symbolic(a.srem(&b.sext(width_diff as u32)), t1 | t2),
+                    Ordering::Less => Value::Symbolic(a.sext(-width_diff as u32).srem(&b), t1 | t2)
                 }
             }
         }
@@ -375,12 +372,10 @@ impl Value {
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
                 let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a._eq(&b), *t1 | *t2)
-                } else if width_diff > 0 {
-                    Value::Symbolic(a._eq(&b.uext(width_diff as u32)), *t1 | *t2)
-                } else {
-                    Value::Symbolic(b._eq(&a.uext(-width_diff as u32)), *t1 | *t2)
+                match width_diff.cmp(&0) {
+                    Ordering::Equal => Value::Symbolic(a._eq(&b), *t1 | *t2),
+                    Ordering::Greater => Value::Symbolic(a._eq(&b.uext(width_diff as u32)), *t1 | *t2),
+                    Ordering::Less => Value::Symbolic(b._eq(&a.uext(-width_diff as u32)), *t1 | *t2)
                 }
             }
         }
@@ -429,12 +424,10 @@ impl Value {
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
                 let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.slt(&b), *t1 | *t2)
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.slt(&b.sext(width_diff as u32)), *t1 | *t2)
-                } else {
-                    Value::Symbolic(a.uext(-width_diff as u32).slt(&b), *t1 | *t2)
+                match width_diff.cmp(&0) {
+                    Ordering::Equal => Value::Symbolic(a.slt(&b), *t1 | *t2),
+                    Ordering::Greater => Value::Symbolic(a.slt(&b.sext(width_diff as u32)), *t1 | *t2),
+                    Ordering::Less => Value::Symbolic(a.uext(-width_diff as u32).slt(&b), *t1 | *t2)
                 }
             }
         }
@@ -471,12 +464,10 @@ impl Value {
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
                 let width_diff = a.get_width() as i32 - b.get_width() as i32;
-                if width_diff == 0 {
-                    Value::Symbolic(a.ult(&b), *t1 | *t2)
-                } else if width_diff > 0 {
-                    Value::Symbolic(a.ult(&b.uext(width_diff as u32)), *t1 | *t2)
-                } else {
-                    Value::Symbolic(a.uext(-width_diff as u32).ult(&b), *t1 | *t2)
+                match width_diff.cmp(&0) {
+                    Ordering::Equal => Value::Symbolic(a.ult(&b), *t1 | *t2),
+                    Ordering::Greater => Value::Symbolic(a.ult(&b.uext(width_diff as u32)), *t1 | *t2),
+                    Ordering::Less => Value::Symbolic(a.uext(-width_diff as u32).ult(&b), *t1 | *t2)
                 }
             }
         }

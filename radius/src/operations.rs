@@ -343,7 +343,7 @@ pub fn do_equal(state: &mut State, reg: StackItem, value: Value,
             state.registers.set_value(index, state.solver.conditional(
                 &Value::Symbolic(cond.to_owned(), 0), &value, &prev));
         } else {
-            state.registers.set_value(index, value.clone());
+            state.registers.set_value(index, value.to_owned());
         }
 
         if set_esil {
@@ -404,7 +404,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let arg1 = pop_value(state, true, false);
             let arg2 = pop_value(state, false, false);
 
-            state.esil.current = arg1.clone() - arg2;
+            state.esil.current = arg1.to_owned() - arg2;
             //println!("cmp {:?}", state.esil.current);
             state.esil.previous = arg1;
         },
@@ -560,7 +560,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let addr = pop_value(state, false, false);
 
             let val = state.memory_read_value(&addr, n);
-            state.esil.current = val.clone();
+            state.esil.current = val.to_owned();
             push_value(state, val);
 
             state.esil.previous = addr;
@@ -570,14 +570,14 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
 
-            if let Some(cond) = &state.condition.clone() {
+            if let Some(cond) = &state.condition.to_owned() {
                 let prev = state.memory_read_value(&addr, n);
                 //prev = state.translate_value(&prev);
                 
-                state.memory_write_value(&addr, state.solver.conditional(
+                state.memory_write_value(&addr, &state.solver.conditional(
                     &Value::Symbolic(cond.to_owned(), 0), &value, &prev), n);
             } else {
-                state.memory_write_value(&addr, value, n);
+                state.memory_write_value(&addr, &value, n);
             }
 
             //state.memory.write_value(addr, value, n);
@@ -589,14 +589,14 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
             let n = (get_size(state)/8) as usize;
             let value = pop_value(state, false, false);
 
-            if let Some(cond) = &state.condition.clone() {
+            if let Some(cond) = &state.condition.to_owned() {
                 let prev = state.memory_read_value(&addr, n);
                 //prev = state.translate_value(&prev);
                 
-                state.memory_write_value(&addr, state.solver.conditional(
+                state.memory_write_value(&addr, &state.solver.conditional(
                     &Value::Symbolic(cond.to_owned(), 0), &value, &prev), n);
             } else {
-                state.memory_write_value(&addr, value, n);
+                state.memory_write_value(&addr, &value, n);
             }
 
             //state.memory.write_value(addr, value, n);
@@ -606,11 +606,11 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         // this is a shit hack to do op pokes ~efficiently
         Operations::AddressStore => {
             let addr = pop_value(state, false, false);
-            state.esil.stored_address = Some(addr.clone());
+            state.esil.stored_address = Some(addr.to_owned());
             push_value(state, addr);
         },
         Operations::AddressRestore => {
-            let addr = state.esil.stored_address.as_ref().unwrap().clone();
+            let addr = state.esil.stored_address.as_ref().unwrap().to_owned();
             push_value(state, addr);
             state.esil.stored_address = None;
         },
@@ -675,7 +675,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         },
         Operations::FloatToDouble => {
             let val = pop_value(state, false, false);
-            push_value(state, val.clone());
+            push_value(state, val.to_owned());
 
             let arg1 = pop_float(state);
             let size = pop_concrete(state, false, false);
@@ -749,12 +749,12 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         },
         Operations::Pick => {
             let n = pop_concrete(state, false, false);
-            let item = state.stack[(state.stack.len()-n as usize)].clone();
+            let item = state.stack[(state.stack.len()-n as usize)].to_owned();
             state.stack.push(item);
         },
         Operations::ReversePick => {
             let n = pop_concrete(state, false, false);
-            let item = state.stack[n as usize].clone();
+            let item = state.stack[n as usize].to_owned();
             state.stack.push(item);
         },
         Operations::Pop => {
@@ -762,7 +762,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         },
         Operations::Duplicate => {
             let item = state.stack.pop().unwrap();
-            state.stack.push(item.clone());
+            state.stack.push(item.to_owned());
             state.stack.push(item);
         },
         Operations::Number => {
@@ -813,7 +813,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
                     let c2 = Value::Concrete(0x8040201008040201, 0);
                     let c3 = Value::Concrete(0x1ff, 0);
 
-                    let cur = state.esil.current.clone();
+                    let cur = state.esil.current.to_owned();
                     let lsb = cur & Value::Concrete(0xff, 0); 
                     let pf = !((((lsb * c1) & c2) % c3) & Value::Concrete(1, 0));
                     push_value(state, pf);
@@ -835,12 +835,12 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         },
         Operations::S => {
             let size = pop_value(state, false, false);
-            let cur = state.esil.current.clone();
+            let cur = state.esil.current.to_owned();
             let value = (cur >> size) & Value::Concrete(1, 0);
             push_value(state, value);
         },
         Operations::Ds => {
-            let cur = state.esil.current.clone();
+            let cur = state.esil.current.to_owned();
             let sz = Value::Concrete(state.esil.last_sz as u64, 0);
             let ds = (cur >> sz) & Value::Concrete(1, 0);
             push_value(state, ds);

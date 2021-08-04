@@ -43,7 +43,7 @@ impl Registers {
         };
     
         for alias in reg_info.alias_info {
-            registers.aliases.insert(alias.role_str.clone(), alias);
+            registers.aliases.insert(alias.role_str.to_owned(), alias);
         }
     
         let mut bounds_map: HashMap<Bounds,usize> = HashMap::new();
@@ -99,7 +99,7 @@ impl Registers {
     pub fn get_with_alias(&mut self, alias: &str) -> Value {
         let mut reg = alias.to_owned();
         if let Some(r) = self.aliases.get(alias) {
-            reg = r.reg.clone();
+            reg = r.reg.to_owned();
         }
         self.get_value(self.regs[reg.as_str()].index)
     }
@@ -107,7 +107,7 @@ impl Registers {
     pub fn set_with_alias(&mut self, alias: &str, value: Value) {
         let mut reg = alias.to_owned();
         if let Some(r) = self.aliases.get(alias) {
-            reg = r.reg.clone();
+            reg = r.reg.to_owned();
         }
 
         self.set_value(self.regs[reg.as_str()].index, value)
@@ -183,7 +183,7 @@ impl Registers {
             let taint;
 
             // TODO this may cause huge amounts of overtainting, maybe just use new
-            match (value, old_value.clone()) {
+            match (value, old_value.to_owned()) {
                 (Value::Concrete(new, t1), Value::Concrete(old, t2)) => {
                     let new_mask: u64 = (1 << size) - 1; 
                     let mask: u64 = 0xffffffffffffffff ^ (new_mask << offset);

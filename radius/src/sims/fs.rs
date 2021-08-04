@@ -51,6 +51,12 @@ pub struct SimFilesytem {
     pub files: Vec<SimFile>,
 }
 
+impl Default for SimFilesytem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SimFilesytem {
 
     pub fn new() -> Self {
@@ -165,35 +171,31 @@ impl SimFilesytem {
     }
 
     pub fn get_stdio() -> Vec<SimFile> {
-        let mut stdio = vec!();
-
-        stdio.push(SimFile {
-            path: "STDIN".to_owned(), // idk
-            fd: 0,
-            position: 0,
-            mode: FileMode::Read,
-            content: vec!(),
-            metadata: None
-        });
-
-        stdio.push(SimFile {
-            path: "STDOUT".to_owned(),
-            fd: 1,
-            position: 0,
-            mode: FileMode::Write,
-            content: vec!(),
-            metadata: None
-        });
-
-        stdio.push(SimFile {
-            path: "STDERR".to_owned(),
-            fd: 2,
-            position: 0,
-            mode: FileMode::Write,
-            content: vec!(),
-            metadata: None
-        });
-
-        stdio
+        vec!(
+            SimFile {
+                path: "STDIN".to_owned(), // idk
+                fd: 0,
+                position: 0,
+                mode: FileMode::Read,
+                content: vec!(),
+                metadata: None
+            },
+            SimFile {
+                path: "STDOUT".to_owned(),
+                fd: 1,
+                position: 0,
+                mode: FileMode::Write,
+                content: vec!(),
+                metadata: None
+            },
+            SimFile {
+                path: "STDERR".to_owned(),
+                fd: 2,
+                position: 0,
+                mode: FileMode::Write,
+                content: vec!(),
+                metadata: None
+            }
+        )
     }
 }
