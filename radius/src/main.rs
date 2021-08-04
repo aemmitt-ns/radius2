@@ -23,7 +23,7 @@ use crate::value::Value;
 #[test]
 fn looper() {
     let options = vec!(RadiusOption::Sims(false)); // RadiusOption::Debug(true));
-    let mut radius = Radius::new_with_options("tests/looper", options);
+    let mut radius = Radius::new_with_options("../tests/looper", options);
     let state = radius.call_state(0x100003f4c);
     //let state = radius.entry_state(&vec!("looper".to_owned()), &vec!());
     let mut new_state = radius.run_until(state, 0x100003fb4, vec!()).unwrap();
