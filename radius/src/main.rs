@@ -84,7 +84,7 @@ fn multi() {
     println!("{:?}", new_state.solver.evaluate(&bv));
 }
 
-//#[test]
+#[test]
 fn r100() {
     let options = vec!(RadiusOption::Debug(false));
     let mut radius = Radius::new_with_options("../tests/r100", options);
@@ -253,5 +253,5 @@ fn ioscrackme() {
 }
 
 fn main() {
-    r100();
+    //r100();
 }

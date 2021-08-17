@@ -33,7 +33,8 @@ pub struct Memory {
     pub heap:   Heap,
     pub bits:   u64,
     pub endian: Endian,
-    pub segs:   Vec<MemorySegment>
+    pub segs:   Vec<MemorySegment>,
+    pub blank:  bool
 }
 
 pub enum Permission {
@@ -53,7 +54,7 @@ pub struct MemorySegment {
 }
 
 impl Memory {
-    pub fn new(r2api: &mut R2Api, btor: Solver) -> Memory {
+    pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool) -> Memory {
         let segments = r2api.get_segments().unwrap();
         let mut segs = vec!();
 
@@ -78,7 +79,8 @@ impl Memory {
             heap: Heap::new(HEAP_START, HEAP_SIZE),
             bits: info.bin.bits,
             endian: Endian::from_string(endian),
-            segs
+            segs,
+            blank
         }
     }
 
@@ -370,7 +372,6 @@ impl Memory {
             // so that we can properly handle things like this
             self.handle_segfault(addr, length as u64, 'r');
         }
-        
 
         let mut data: Vec<Value> = Vec::with_capacity(length);
         for count in 0..length as u64 {
@@ -381,11 +382,16 @@ impl Memory {
                     data.push(byte.to_owned());
                 },
                 None => {
-                    let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
-                    data.push(Value::Concrete(bytes[0] as u64, 0));
-                    for (c, byte) in bytes.into_iter().enumerate() {
-                        let new_data = Value::Concrete(byte as u64, 0);
-                        self.mem.entry(caddr + c as u64).or_insert(new_data);
+                    if self.blank {
+                        let sym_name = format!("mem_{:08x}", caddr);
+                        data.push(Value::Symbolic(self.solver.bv(sym_name.as_str(), 64), 0))
+                    } else {
+                        let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
+                        data.push(Value::Concrete(bytes[0] as u64, 0));
+                        for (c, byte) in bytes.into_iter().enumerate() {
+                            let new_data = Value::Concrete(byte as u64, 0);
+                            self.mem.entry(caddr + c as u64).or_insert(new_data);
+                        }
                     }
                 }
             }

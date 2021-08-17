@@ -11,7 +11,7 @@ type BitVec = BV<Arc<Btor>>;
 #[derive(Debug, Clone)]
 pub struct Solver {
     pub btor: Arc<Btor>,
-    pub assertions: Vec<BitVec>, // yo dawg i heard you like types
+    pub assertions: Vec<BitVec>,
     pub indexes: Vec<usize>
 }
 

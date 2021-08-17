@@ -63,11 +63,12 @@ pub struct State {
     pub context:   HashMap<String, Vec<Value>>,
     pub taints:    HashMap<String, u64>,
     pub pid:       u64,
-    pub backtrace: Vec<u64>
+    pub backtrace: Vec<u64>,
+    pub blank:     bool
 }
 
 impl State {
-    pub fn new(r2api: &mut R2Api) -> Self {
+    pub fn new(r2api: &mut R2Api, blank: bool) -> Self {
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
             previous: Value::Concrete(0, 0),
@@ -80,8 +81,8 @@ impl State {
         };
 
         let solver = Solver::new();
-        let registers = Registers::new(r2api, solver.clone());
-        let memory = Memory::new(r2api, solver.clone());
+        let registers = Registers::new(r2api, solver.clone(), blank);
+        let memory = Memory::new(r2api, solver.clone(), blank);
 
         State {
             solver,
@@ -96,7 +97,8 @@ impl State {
             context: HashMap::new(),
             taints: HashMap::new(),
             backtrace: Vec::with_capacity(128),
-            pid: 1337 // sup3rh4x0r
+            pid: 1337, // sup3rh4x0r
+            blank
         }
     }
 
@@ -145,7 +147,8 @@ impl State {
             context: self.context.clone(),
             taints: self.taints.clone(),
             backtrace: self.backtrace.clone(),
-            pid: self.pid
+            pid: self.pid,
+            blank: self.blank
         }
     }
 

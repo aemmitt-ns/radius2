@@ -308,6 +308,7 @@ impl Processor {
                                 _ => vec!() // won't happen
                             };
 
+                            // this is weird but just a trick to not have to allloc a new vec
                             let mut new_stack = mem::take(&mut state.esil.temp1);
                             let mut old_stack = mem::take(&mut state.stack);
                             while !old_stack.is_empty() && !new_temp.is_empty() {

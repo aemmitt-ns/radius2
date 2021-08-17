@@ -29,12 +29,12 @@ pub struct Registers {
 }
 
 impl Registers {
-    pub fn new(r2api: &mut r2_api::R2Api, btor: Solver) -> Self {
+    pub fn new(r2api: &mut r2_api::R2Api, btor: Solver, blank: bool) -> Self {
         let mut reg_info = r2api.get_registers().unwrap();
         reg_info.reg_info.sort_by(|a, b| b.size.partial_cmp(&a.size).unwrap());
 
         let mut registers = Registers {
-            solver: btor,
+            solver: btor.clone(),
             r2api: r2api.clone(),
             aliases: HashMap::new(),
             regs:    HashMap::new(),
@@ -64,7 +64,13 @@ impl Registers {
             }
     
             if !in_bounds {
-                let val = Value::Concrete(r2api.get_register_value(&reg.name).unwrap(), 0);
+                let val = if !blank {
+                    Value::Concrete(r2api.get_register_value(&reg.name).unwrap(), 0)
+                } else {
+                    let sym_name = format!("reg_{}", reg.name);
+                    Value::Symbolic(btor.bv(sym_name.as_str(), reg.size as u32), 0)
+                };
+
                 bounds_map.insert(bounds.clone(), registers.values.len());
                 registers.values.push(val);
             }

@@ -103,7 +103,24 @@ impl Radius {
     }
 
     pub fn init_state(&mut self) -> State {
-        State::new(&mut self.r2api)
+        State::new(&mut self.r2api, false)
+    }
+
+    pub fn blank_state(&mut self) -> State {
+        State::new(&mut self.r2api, true)
+    }
+
+    // blank except for PC and SP
+    pub fn blank_call_state(&mut self, addr: u64) -> State {
+        self.r2api.seek(addr);
+        self.r2api.init_vm();
+        let mut state = self.blank_state();
+        let sp = self.r2api.get_register_value("SP").unwrap();
+        state.registers.set_with_alias("PC", Value::Concrete(addr, 0));
+        state.registers.set_with_alias("SP", Value::Concrete(sp, 0));
+        state.memory.add_stack();
+        state.memory.add_heap();
+        state
     }
 
     pub fn hook(&mut self, addr: u64, hook_callback: HookMethod) {
