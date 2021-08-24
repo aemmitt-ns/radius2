@@ -284,6 +284,79 @@ pub fn __libc_start_main(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 /*
+type = struct _IO_FILE {
+/*    0      |     4 */    int _flags;
+/* XXX  4-byte hole  */
+/*    8      |     8 */    char *_IO_read_ptr;
+/*   16      |     8 */    char *_IO_read_end;
+/*   24      |     8 */    char *_IO_read_base;
+/*   32      |     8 */    char *_IO_write_base;
+/*   40      |     8 */    char *_IO_write_ptr;
+/*   48      |     8 */    char *_IO_write_end;
+/*   56      |     8 */    char *_IO_buf_base;
+/*   64      |     8 */    char *_IO_buf_end;
+/*   72      |     8 */    char *_IO_save_base;
+/*   80      |     8 */    char *_IO_backup_base;
+/*   88      |     8 */    char *_IO_save_end;
+/*   96      |     8 */    struct _IO_marker *_markers;
+/*  104      |     8 */    struct _IO_FILE *_chain;
+/*  112      |     4 */    int _fileno;
+/*  116      |     4 */    int _flags2;
+/*  120      |     8 */    __off_t _old_offset;
+/*  128      |     2 */    unsigned short _cur_column;
+/*  130      |     1 */    signed char _vtable_offset;
+/*  131      |     1 */    char _shortbuf[1];
+/* XXX  4-byte hole  */
+/*  136      |     8 */    _IO_lock_t *_lock;
+/*  144      |     8 */    __off64_t _offset;
+/*  152      |     8 */    struct _IO_codecvt *_codecvt;
+/*  160      |     8 */    struct _IO_wide_data *_wide_data;
+/*  168      |     8 */    struct _IO_FILE *_freeres_list;
+/*  176      |     8 */    void *_freeres_buf;
+/*  184      |     8 */    size_t __pad5;
+/*  192      |     4 */    int _mode;
+/*  196      |    20 */    char _unused2[20];
+
+                           /* total size (bytes):  216 */
+                         }
+*/
+
+// beginning of shitty FILE function support
+
+pub fn fileno(state: &mut State, args: Vec<Value>) -> Value {
+    // _fileno offset from above linux x86_64
+    state.memory_read_value(&(args[0].add(&Value::Concrete(112,0))), 4) 
+}
+
+pub fn fopen(state: &mut State, args: Vec<Value>) -> Value {
+    // we are reaching levels of shit code previously undreamt
+    let fd = syscall::open(state, args.clone());
+    let file_struct = state.memory.alloc(&Value::Concrete(216, 0));
+    state.memory.write_value(file_struct, &fd, 4);
+    Value::Concrete(file_struct, 0)
+}
+
+pub fn fclose(state: &mut State, args: Vec<Value>) -> Value {
+    let fd = fileno(state, args.clone());
+    syscall::close(state, vec!(fd))
+}
+
+pub fn fread(state: &mut State, args: Vec<Value>) -> Value {
+    let fd = fileno(state, args.clone());
+    syscall::read(state, vec!(fd, args[1].to_owned(), args[2].to_owned()))
+}
+
+pub fn fwrite(state: &mut State, args: Vec<Value>) -> Value {
+    let fd = fileno(state, args.clone());
+    syscall::write(state, vec!(fd, args[1].to_owned(), args[2].to_owned()))
+}
+
+pub fn fseek(state: &mut State, args: Vec<Value>) -> Value {
+    let fd = fileno(state, args.clone());
+    syscall::lseek(state, vec!(fd, args[1].to_owned(), args[2].to_owned()))
+}
+
+/*
 pub fn atoi_helper(state: &mut State, addr, size=SIZE): // still sucks
     string, length = state.symbolic_string(addr)
 
@@ -415,44 +488,36 @@ pub fn zero(_state: &mut State, _args: Vec<Value>) -> Value {
     Value::Concrete(0, 0)
 }
 
-/*pub fn rand(state: &mut State, _args: Vec<Value>) -> Value {
-    let mut rng = rand::thread_rng();
-    let rn: u64 = rng.gen();
-    Value::Symbolic(state.bv(format!("rand_{}", rn), 32))
+pub fn rand(state: &mut State, _args: Vec<Value>) -> Value {
+    Value::Symbolic(state.bv("rand", 32), 0)
 }
 
-pub fn srand(state: &mut State, _args: Vec<Value>) -> Value {
-    //s = state.evaluate(s).as_long()
-    //random.seed(s)
+pub fn srand(_state: &mut State, _args: Vec<Value>) -> Value {
     Value::Concrete(1, 0)
 }
-
-pub fn abs(state: &mut State, args: Vec<Value>) -> Value {
-    state.solver.conditional(i.sext(
-        Value::Concrete(32)).slt(Value::Concrete(0, 0)), -i, i)
-}
-
-pub fn labs(state: &mut State, args: Vec<Value>) -> Value {
-    state.solver.conditional(args[0].clone().slt(Value::Concrete(0, 0)), -args[0], i)
-}
-
-pub fn div(state: &mut State, args: Vec<Value>) -> Value {
-    let nn = args[0].clone().slice(31, 0);
-    let nd = args[1].clone().slice(31, 0);
-    nn / nd
-}
-
-pub fn ldiv(state: &mut State, n: Value, d: Value) -> Value {
-    n / d 
-}
-*/
 
 pub fn fflush(_state: &mut State, _args: Vec<Value>) -> Value {
     Value::Concrete(0, 0)
 }
 
-pub fn getpid(state: &mut State, _args: Vec<Value>) -> Value {
-    Value::Concrete(state.pid, 0)
+pub fn getpid(state: &mut State, args: Vec<Value>) -> Value {
+    syscall::getpid(state, args)
+}
+
+pub fn getuid(state: &mut State, args: Vec<Value>) -> Value {
+    syscall::getuid(state, args)
+}
+
+pub fn getgid(state: &mut State, args: Vec<Value>) -> Value {
+    syscall::getuid(state, args)
+}
+
+pub fn geteuid(state: &mut State, args: Vec<Value>) -> Value {
+    syscall::getuid(state, args)
+}
+
+pub fn getegid(state: &mut State, args: Vec<Value>) -> Value {
+    syscall::getuid(state, args)
 }
 
 pub fn fork(state: &mut State, args: Vec<Value>) -> Value {
@@ -489,75 +554,21 @@ pub fn sleep(_state: &mut State, _args: Vec<Value>) -> Value {
     Value::Concrete(0, 0)
 }
 
-/*
-pub fn fileno(state: &mut State, f):
-    // this isn't how its really done so ima leave this
-    addr = state.evalcon(f).as_long()
-    bv = state.memory[addr]
-    return state.evalcon(bv).as_long()
-*/
-
 pub fn open(state: &mut State, args: Vec<Value>) -> Value {
     syscall::open(state, args)
 }
-
-/*
-pub fn mode_to_int(mode):
-    m = 0
-
-    if "rw" in mode:
-        m |= os.O_RDWR
-    elif "r" in mode:
-        m |= os.O_RDONLY
-    elif "w" in mode:
-        m |= os.O_WRONLY
-    elif "a" in mode:
-        m |= os.O_APPEND
-
-    if "+" in mode:
-        m |= os.O_CREAT
-
-    return m
-
-
-pub fn fopen(state: &mut State, path, mode):
-    f = state.mem_alloc(8)
-    mode = state.evaluate_string(state.symbolic_string(path)[0])
-    flags = mode_to_int(mode)
-    fd = open(state: &mut State, path, BV(flags), BV(0o777))
-    state.memory[f] = fd
-    return f
-*/
 
 pub fn close(state: &mut State, args: Vec<Value>) -> Value {
     syscall::close(state, args)
 }
 
-/*
-pub fn fclose(state: &mut State, f):
-    fd = fileno(state: &mut State, f)
-    return close(state: &mut State, BV(fd))
-*/
-
 pub fn read(state: &mut State, args: Vec<Value>) -> Value {
     syscall::read(state, args)
 }
 
-/*
-pub fn fread(state: &mut State, addr, sz, length, f):
-    fd = fileno(state: &mut State, f)
-    return read(state: &mut State, BV(fd), addr, sz*length)
-*/
-
 pub fn write(state: &mut State, args: Vec<Value>) -> Value {
     syscall::write(state, args)
 }
-
-/*
-pub fn fwrite(state: &mut State, addr, sz, length, f):
-    fd = fileno(state: &mut State, f)
-    return write(state: &mut State, BV(fd), addr, sz*length)
-*/
 
 pub fn lseek(state: &mut State, args: Vec<Value>) -> Value {
     syscall::lseek(state, args)

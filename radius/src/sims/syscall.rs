@@ -23,6 +23,11 @@ pub fn syscall(syscall_name: &str, state: &mut State, args: Vec<Value>) -> Value
         "munmap"   => munmap(state, args),
         "brk"      => brk(state, args),
         "sbrk"     => sbrk(state, args),
+        "getpid"   => getpid(state, args),
+        "getuid"   => getuid(state, args),
+        "geteuid"  => getuid(state, args),
+        "getgid"   => getuid(state, args),
+        "getegid"  => getuid(state, args),
         "fork"     => fork(state, args),
         "exit"     => exit(state, args),
          _         => error(state, args)
@@ -170,6 +175,7 @@ pub fn fstat(state: &mut State, args: Vec<Value>) -> Value {
     Value::Concrete(0, 0)
 }
 
+// TODO handle symbolic links
 pub fn lstat(state: &mut State, args: Vec<Value>) -> Value {
     stat(state, args)
 }
@@ -251,6 +257,14 @@ pub fn fork(state: &mut State, _args: Vec<Value>) -> Value {
     state.solver.assert(&a);
 
     Value::Symbolic(pid, 0)
+}
+
+pub fn getpid(state: &mut State, _args: Vec<Value>) -> Value {
+    Value::Concrete(state.pid, 0)
+}
+
+pub fn getuid(_state: &mut State, _args: Vec<Value>) -> Value {
+    Value::Concrete(0, 0)
 }
 
 pub fn exit(state: &mut State, _args: Vec<Value>) -> Value {
