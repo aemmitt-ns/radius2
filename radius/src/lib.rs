@@ -15,4 +15,4 @@ pub mod memory;
 pub mod radius;
 pub mod solver;
 pub mod sims;
-
+pub mod test;

@@ -567,6 +567,18 @@ pub fn access(state: &mut State, args: Vec<Value>) -> Value {
     syscall::access(state, args)
 }
 
+pub fn stat(state: &mut State, args: Vec<Value>) -> Value {
+    syscall::stat(state, args)
+}
+
+pub fn fstat(state: &mut State, args: Vec<Value>) -> Value {
+    syscall::fstat(state, args)
+}
+
+pub fn lstat(state: &mut State, args: Vec<Value>) -> Value {
+    syscall::lstat(state, args)
+}
+
 pub fn exit(state: &mut State, args: Vec<Value>) -> Value {
     syscall::exit(state, args)
 }

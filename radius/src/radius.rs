@@ -30,7 +30,8 @@ pub struct Radius {
     pub processor: Processor,
     pub processors: Arc<Mutex<Vec<Processor>>>,
     pub states: Arc<Mutex<Vec<State>>>,
-    pub merges: HashMap<u64, State>
+    pub merges: HashMap<u64, State>,
+    pub check: bool
 }
 
 impl Radius {
@@ -48,6 +49,7 @@ impl Radius {
         let lazy = !options.contains(&RadiusOption::Lazy(false));
         let force = options.contains(&RadiusOption::Force(true));
         let prune = options.contains(&RadiusOption::Prune(true));
+        let check = options.contains(&RadiusOption::Permissions(true));
 
         let mut processor = Processor::new(opt, debug, lazy, force, prune);
         let processors = Arc::new(Mutex::new(vec!()));
@@ -74,7 +76,8 @@ impl Radius {
             processor,
             processors,
             states,
-            merges: HashMap::new()
+            merges: HashMap::new(),
+            check
         }
     }
 
@@ -103,11 +106,11 @@ impl Radius {
     }
 
     pub fn init_state(&mut self) -> State {
-        State::new(&mut self.r2api, false)
+        State::new(&mut self.r2api, false, self.check)
     }
 
     pub fn blank_state(&mut self) -> State {
-        State::new(&mut self.r2api, true)
+        State::new(&mut self.r2api, true, self.check)
     }
 
     // blank except for PC and SP
@@ -242,7 +245,8 @@ impl Radius {
     pub fn merge(&mut self, mut state: State) {
         let pc = state.registers.get_with_alias("PC").as_u64().unwrap();
         
-        if !self.merges.contains_key(&pc) {
+        let has_pc = self.merges.contains_key(&pc); 
+        if !has_pc { // trick clippy idk
             self.merges.insert(pc, state);
         } else {
             let mut merge_state = self.merges.remove(&pc).unwrap();

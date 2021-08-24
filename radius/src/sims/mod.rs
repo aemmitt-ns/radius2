@@ -79,6 +79,9 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("write",   libc::write, 3),
         make_sim("lseek",   libc::lseek, 2),
         make_sim("access",  libc::access, 1),
+        make_sim("stat",    libc::stat, 2),
+        make_sim("fstat",   libc::fstat, 2),
+        make_sim("lstat",   libc::lstat, 2),
 
         make_sim("sleep",   libc::sleep, 1),
         make_sim("getpid",  libc::getpid, 0),

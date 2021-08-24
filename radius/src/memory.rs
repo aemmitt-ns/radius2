@@ -17,7 +17,7 @@ const HEAP_SIZE:  u64 = 0x4000000;
 const STACK_START: u64 = 0x100000;
 const STACK_SIZE:  u64 = 0x78000*2;
 
-pub const CHECK_PERMS: bool = false;
+// pub const CHECK_PERMS: bool = false;
 
 // i think these are different on darwin
 const PROT_NONE:  u64 = 0x0;
@@ -34,7 +34,8 @@ pub struct Memory {
     pub bits:   u64,
     pub endian: Endian,
     pub segs:   Vec<MemorySegment>,
-    pub blank:  bool
+    pub blank:  bool,
+    pub check:  bool
 }
 
 pub enum Permission {
@@ -50,11 +51,12 @@ pub struct MemorySegment {
     pub size:  u64,
     pub read:  bool,
     pub write: bool,
-    pub exec:  bool
+    pub exec:  bool,
+    pub init:  bool
 }
 
 impl Memory {
-    pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool) -> Memory {
+    pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool, check: bool) -> Memory {
         let segments = r2api.get_segments().unwrap();
         let mut segs = vec!();
 
@@ -65,7 +67,8 @@ impl Memory {
                 size:  seg.size,
                 read:  seg.perm.contains('r'),
                 write: seg.perm.contains('w'),
-                exec:  seg.perm.contains('x')
+                exec:  seg.perm.contains('x'),
+                init:  true
             });
         }
 
@@ -80,7 +83,8 @@ impl Memory {
             bits: info.bin.bits,
             endian: Endian::from_string(endian),
             segs,
-            blank
+            blank,
+            check
         }
     }
 
@@ -99,13 +103,14 @@ impl Memory {
     }
 
     #[inline]
-    pub fn check_permission(&mut self, addr: u64, length: u64, perm: char) -> bool {
+    pub fn check_permission(&self, addr: u64, length: u64, perm: char) -> bool {
         for seg in &self.segs {
             if addr >= seg.addr && addr + length <= seg.addr+seg.size {
                 match perm {
                     'r' => return seg.read,
                     'w' => return seg.write,
                     'x' => return seg.exec,
+                    'i' => return seg.init,
                      _  => return false // uhhh shouldnt happen
                 }
             }
@@ -121,16 +126,17 @@ impl Memory {
             size,
             read:  perms.contains('r'),
             write: perms.contains('w'),
-            exec:  perms.contains('x')
+            exec:  perms.contains('x'),
+            init:  perms.contains('i')
         });
     }
 
     pub fn add_heap(&mut self) {
-        self.add_segment("heap", HEAP_START, HEAP_SIZE, "rw-");
+        self.add_segment("heap", HEAP_START, HEAP_SIZE, "rw--");
     }
 
     pub fn add_stack(&mut self) {
-        self.add_segment("stack", STACK_START, STACK_SIZE, "rw-");
+        self.add_segment("stack", STACK_START, STACK_SIZE, "rw--");
     }
 
     pub fn brk(&mut self, address: u64) -> bool {
@@ -367,24 +373,27 @@ impl Memory {
 
     pub fn read(&mut self, addr: u64, length: usize) -> Vec<Value> {
 
-        if CHECK_PERMS && !self.check_permission(addr, length as u64, 'r') {
+        if self.check && !self.check_permission(addr, length as u64, 'r') {
             // everything needs to be reworked to have Result<...> 
             // so that we can properly handle things like this
             self.handle_segfault(addr, length as u64, 'r');
-        }
+        } 
+
+        let make_sym = self.blank && !self.check_permission(addr, length as u64, 'i');
 
         let mut data: Vec<Value> = Vec::with_capacity(length);
         for count in 0..length as u64 {
             let caddr = addr + count;
             let mem = self.mem.get(&caddr);
+
             match mem {
                 Some(byte) => {
                     data.push(byte.to_owned());
                 },
                 None => {
-                    if self.blank {
+                    if make_sym {
                         let sym_name = format!("mem_{:08x}", caddr);
-                        data.push(Value::Symbolic(self.solver.bv(sym_name.as_str(), 64), 0))
+                        data.push(Value::Symbolic(self.solver.bv(sym_name.as_str(), 8), 0))
                     } else {
                         let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
                         data.push(Value::Concrete(bytes[0] as u64, 0));
@@ -451,7 +460,7 @@ impl Memory {
         //println!("write {:?}", data);
         let length = data.len();
 
-        if CHECK_PERMS && !self.check_permission(addr, length as u64, 'w') {
+        if self.check && !self.check_permission(addr, length as u64, 'w') {
             self.handle_segfault(addr, length as u64, 'w');
         }
 

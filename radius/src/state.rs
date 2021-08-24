@@ -68,7 +68,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(r2api: &mut R2Api, blank: bool) -> Self {
+    pub fn new(r2api: &mut R2Api, blank: bool, check: bool) -> Self {
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
             previous: Value::Concrete(0, 0),
@@ -82,7 +82,7 @@ impl State {
 
         let solver = Solver::new();
         let registers = Registers::new(r2api, solver.clone(), blank);
-        let memory = Memory::new(r2api, solver.clone(), blank);
+        let memory = Memory::new(r2api, solver.clone(), blank, check);
 
         State {
             solver,

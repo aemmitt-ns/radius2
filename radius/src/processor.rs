@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use crate::state::{State, StateStatus, StackItem, ExecMode};
 use crate::sims::{SimMethod};
 use crate::sims::syscall::syscall;
-use crate::memory::CHECK_PERMS;
 
 //use std::time::SystemTime;
 //use boolector::BV;
@@ -241,7 +240,7 @@ impl Processor {
             }
 
             //println!("word: {:?} {:?}", &word, &state.stack);
-            match word {                
+            match word {
                 Word::Literal(val) => {
                     state.stack.push(StackItem::StackValue(val.to_owned()));
                 },
@@ -308,7 +307,7 @@ impl Processor {
                                 _ => vec!() // won't happen
                             };
 
-                            // this is weird but just a trick to not have to allloc a new vec
+                            // this is weird but just a trick to not have to alloc a new vec
                             let mut new_stack = mem::take(&mut state.esil.temp1);
                             let mut old_stack = mem::take(&mut state.stack);
                             while !old_stack.is_empty() && !new_temp.is_empty() {
@@ -480,7 +479,7 @@ impl Processor {
     pub fn execute(&self, state: &mut State, pc_index: usize, instr: &Instruction, 
         status: &InstructionStatus, words: &[Word]) {
 
-        if CHECK_PERMS && !state.memory.check_permission(instr.offset, instr.size, 'x') {
+        if state.memory.check && !state.memory.check_permission(instr.offset, instr.size, 'x') {
             state.memory.handle_segfault(instr.offset, instr.size, 'x');
         }
 

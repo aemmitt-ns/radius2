@@ -1,27 +1,10 @@
-#[macro_use]
-extern crate r2pipe;
-extern crate serde_json;
-extern crate boolector;
-extern crate hex;
-extern crate backtrace;
 
-pub mod r2_api;
-pub mod registers;
-pub mod value;
-pub mod processor;
-pub mod state;
-pub mod operations;
-pub mod memory;
-pub mod radius;
-pub mod solver;
-pub mod sims;
-
-use crate::radius::{Radius, RadiusOption};
-use crate::value::Value;
 //use crate::state::State;
 
 #[test]
 fn looper() {
+    use crate::radius::{Radius, RadiusOption};
+
     let options = vec!(RadiusOption::Sims(false)); // RadiusOption::Debug(true));
     let mut radius = Radius::new_with_options("../tests/looper", options);
     let state = radius.call_state(0x100003f4c);
@@ -32,6 +15,8 @@ fn looper() {
 
 #[test]
 fn hello() {
+    use crate::radius::Radius;
+
     let mut radius = Radius::new("../tests/hello");
     let state = radius.call_state(0x00001149);
     let mut new_state = radius.run_until(state, 0x00001163, vec!()).unwrap();
@@ -40,6 +25,9 @@ fn hello() {
 
 #[test]
 fn strstuff() {
+    use crate::radius::Radius;
+    use crate::value::Value;
+
     let mut radius = Radius::new("../tests/strstuff");
     let main = radius.r2api.get_address("main").unwrap();
     let mut state = radius.call_state(main);
@@ -59,6 +47,9 @@ fn strstuff() {
 
 #[test]
 fn simple() {
+    use crate::radius::Radius;
+    use crate::value::Value;
+
     let mut radius = Radius::new("../tests/simple");
     let mut state = radius.call_state(0x5fa);
 
@@ -73,6 +64,9 @@ fn simple() {
 
 #[test]
 fn multi() {
+    use crate::radius::Radius;
+    use crate::value::Value;
+
     let mut radius = Radius::new("../tests/multi");
     let check = radius.r2api.get_address("sym.check").unwrap();
     let mut state = radius.call_state(check);
@@ -86,6 +80,9 @@ fn multi() {
 
 #[test]
 fn r100() {
+    use crate::radius::{Radius, RadiusOption};
+    use crate::value::Value;
+
     let options = vec!(RadiusOption::Debug(false));
     let mut radius = Radius::new_with_options("../tests/r100", options);
     let mut state = radius.call_state(0x004006fd);
@@ -104,6 +101,9 @@ fn r100() {
 
 #[test]
 fn r200() {
+    use crate::radius::{Radius, RadiusOption};
+    use crate::value::Value;
+
     let options = vec!(RadiusOption::Debug(false));
     let mut radius = Radius::new_with_options("../tests/r200", options);
     let mut state = radius.call_state(0x00400886);
@@ -124,6 +124,9 @@ fn r200() {
 
 #[test]
 fn unbreakable() {
+    use crate::radius::Radius;
+    use crate::value::Value;
+
     let mut radius = Radius::new("../tests/unbreakable");
     let mut state = radius.call_state(0x004005bd);
     let len: usize = 0x33;
@@ -150,6 +153,9 @@ fn unbreakable() {
 
 #[test]
 fn symmem() {
+    use crate::radius::{Radius, RadiusOption};
+    use crate::value::Value;
+
     let mut radius = Radius::new_with_options("../tests/symmem", vec!(RadiusOption::Debug(true)));
     let main = radius.r2api.get_address("main").unwrap();
     let mut state = radius.call_state(main);
@@ -222,6 +228,9 @@ fn symmem() {
 
 #[test]
 fn ioscrackme() {
+    use crate::radius::Radius;
+    use crate::value::Value;
+
     let mut radius = Radius::new("ipa://../tests/ioscrackme.ipa");
     //radius.r2api.r2p.cmd("e asm.arch=arm.v35");
     let len: usize = 16;
@@ -250,8 +259,4 @@ fn ioscrackme() {
     let flag = new_state.evaluate_string(&bv);
     println!("FLAG: {}", flag.unwrap());
     radius.r2api.close();
-}
-
-fn main() {
-    //r100();
 }

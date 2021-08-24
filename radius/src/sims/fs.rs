@@ -1,5 +1,6 @@
 use crate::value::Value;
 use std::fs;
+use std::time::SystemTime;
 
 #[derive(Debug, Clone)]
 pub enum FileMode {
@@ -10,30 +11,28 @@ pub enum FileMode {
 
 /// Stat structure from kernel_stat64
 #[derive(Default, Debug, Clone)]
-struct Stat {
-    st_dev:     u64,
-    st_ino:     u64,
-    st_mode:    u32,
-    st_nlink:   u32,
-    st_uid:     u32,
-    st_gid:     u32,
-    st_rdev:    u64,
-    __pad1:     u64,
+pub struct Stat {
+    pub st_dev:     u64,
+    pub st_ino:     u64,
+    pub st_mode:    u32,
+    pub st_nlink:   u32,
+    pub st_uid:     u32,
+    pub st_gid:     u32,
 
-    st_size:    i64,
-    st_blksize: i32,
-    __pad2:     i32,
+    pub __pad0:     u32,
+    pub st_rdev:    u64,
+    pub st_size:    i64,
+    pub st_blksize: i32,
+    pub st_blocks: i64,
 
-    st_blocks: i64,
-
-    st_atime:     u64,
-    st_atimensec: u64,
-    st_mtime:     u64,
-    st_mtimensec: u64,
-    st_ctime:     u64,
-    st_ctimensec: u64,
+    pub st_atime:     u64,
+    pub st_atimensec: u64,
+    pub st_mtime:     u64,
+    pub st_mtimensec: u64,
+    pub st_ctime:     u64,
+    pub st_ctimensec: u64,
     
-    __glibc_reserved: [i32; 2],
+    pub __glibc_reserved: [i32; 2],
 }
 
 #[derive(Debug, Clone)]
@@ -137,6 +136,24 @@ impl SimFilesytem {
         self.files.insert(fd, file);
     }
 
+    pub fn getfd(&mut self, path: &str) -> Option<usize> {
+        for file in &self.files {
+            if file.path == path {
+                return Some(file.fd);
+            }
+        }
+        None
+    }
+
+    pub fn getpath(&mut self, fd: usize) -> Option<String> {
+        for file in &self.files {
+            if file.fd == fd {
+                return Some(file.path.to_owned());
+            }
+        }
+        None
+    }
+
     pub fn access(&mut self, path: &str) -> Value {
         for file in &self.files {
             if file.path == path {
@@ -148,6 +165,40 @@ impl SimFilesytem {
             Value::Concrete(0, 0)
         } else {
             Value::Concrete(-1i64 as u64, 0)
+        }
+    }
+
+    pub fn stat(&mut self, path: &str) -> Option<Stat> {
+        let metadata = fs::metadata(path);
+        if let Ok(meta) = metadata {
+            Some(Stat {
+                st_dev:     16777234,
+                st_ino:     3334575,
+                st_mode:    33188,
+                st_nlink:   0,
+                st_uid:     0,
+                st_gid:     0,
+                st_rdev:    0,
+                __pad0:     0,
+            
+                st_size:    meta.len() as i64,
+                st_blksize: 0x1000,            
+                st_blocks: 8,
+            
+                st_atime:     meta.accessed().unwrap()
+                    .duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs(),
+                st_atimensec: 0,
+                st_mtime:     meta.modified().unwrap()
+                    .duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs(),
+                st_mtimensec: 0,
+                st_ctime:     meta.created().unwrap()
+                    .duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs(),
+                st_ctimensec: 0,
+                
+                __glibc_reserved: [0, 0],
+            })
+        } else {
+            None
         }
     }
 
