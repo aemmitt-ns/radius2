@@ -194,6 +194,32 @@ impl State {
         self.memory.write_string(address, string)
     }
 
+    // TODO do this in a way that isn't a global maximum of stupidity
+    // apply this state to the radare2 instance
+    pub fn apply(&mut self) {
+        let mut inds = vec!();
+        for reg in &self.registers.indexes {
+            if !inds.contains(&reg.value_index) {
+                inds.push(reg.value_index);
+                let rval = self.registers.values[reg.value_index].to_owned();
+                let r = self.solver.evalcon_to_u64(&rval).unwrap();
+                self.r2api.set_register_value(&reg.reg_info.name, r);
+            }
+        }
+
+        for addr in self.memory.addresses() {
+            let bval = self.memory.read_value(addr, 1);
+            let b = self.solver.evalcon_to_u64(&bval).unwrap() as u8;
+            self.r2api.write(addr, vec!(b)); 
+        }
+    }
+
+    // useful for constraining the data in some initial
+    // state with the assertions of some desired final state
+    pub fn constrain_with_state(&mut self, state: &Self) {
+       self.solver = state.solver.clone(); 
+    }
+
     #[inline]
     pub fn bv(&self, s: &str, n: u32) -> BV<Arc<Btor>>{
         self.solver.bv(s, n)

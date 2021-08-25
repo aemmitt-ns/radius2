@@ -635,7 +635,6 @@ impl Processor {
 
     pub fn step(&mut self, mut state: State, duplicate: bool) -> Vec<State> {
         let pc_allocs = 32;
-        let mut states: Vec<State> = Vec::with_capacity(pc_allocs);
         let pc_index = self.pc.unwrap();
 
         let pc_value = state.registers.get_value(pc_index);
@@ -670,8 +669,10 @@ impl Processor {
         
 
         if pcs.len() == 1 && new_pc.as_u64().is_some() {
-            states.push(state);
+            vec!(state)
         } else if !pcs.is_empty() {
+            let mut states: Vec<State> = Vec::with_capacity(pc_allocs);
+
             let last = pcs.len()-1;
             for new_pc_val in &pcs[..last] {
                 let mut new_state = if duplicate { 
@@ -696,9 +697,11 @@ impl Processor {
             }
             state.registers.set_value(pc_index, Value::Concrete(new_pc_val, 0));
             states.push(state);
-        }
 
-        states
+            states
+        } else {
+            vec!()
+        }
     }
 
     pub fn run_until(&mut self, state: State, addr: u64, avoid: Vec<u64>) -> Option<State> {

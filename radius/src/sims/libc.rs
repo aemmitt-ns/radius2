@@ -152,14 +152,14 @@ pub fn strncpy(state: &mut State, args: Vec<Value>) -> Value {
 pub fn strcat(state: &mut State, args: Vec<Value>) -> Value {
     let length1 = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0));
     let length2 = state.memory_strlen(&args[1], &Value::Concrete(MAX_LEN, 0))+Value::Concrete(1, 0);
-    state.memory_move(&(args[0].to_owned() + length1), &args[1], &length2);
+    state.memory_move(&args[0].add(&length1), &args[1], &length2);
     args[0].to_owned()
 }
 
 pub fn strncat(state: &mut State, args: Vec<Value>) -> Value {
     let length1 = state.memory_strlen(&args[0], &args[2]);
     let length2 = state.memory_strlen(&args[1], &args[2])+Value::Concrete(1, 0);
-    state.memory_move(&(args[0].to_owned() + length1), &args[1], &length2);
+    state.memory_move(&args[0].add(&length1), &args[1], &length2);
     args[0].to_owned()
 }
 
@@ -323,16 +323,19 @@ type = struct _IO_FILE {
 
 // beginning of shitty FILE function support
 
+// _fileno offset from above linux x86_64
+pub const FILENO_OFFSET: u64 = 112;
+
 pub fn fileno(state: &mut State, args: Vec<Value>) -> Value {
-    // _fileno offset from above linux x86_64
-    state.memory_read_value(&(args[0].add(&Value::Concrete(112,0))), 4) 
+    let fd_addr = args[0].add(&Value::Concrete(FILENO_OFFSET, 0));
+    state.memory_read_value(&(fd_addr), 4) 
 }
 
 pub fn fopen(state: &mut State, args: Vec<Value>) -> Value {
     // we are reaching levels of shit code previously undreamt
     let fd = syscall::open(state, args.clone());
     let file_struct = state.memory.alloc(&Value::Concrete(216, 0));
-    state.memory.write_value(file_struct, &fd, 4);
+    state.memory.write_value(file_struct+FILENO_OFFSET, &fd, 4);
     Value::Concrete(file_struct, 0)
 }
 
@@ -489,11 +492,11 @@ pub fn zero(_state: &mut State, _args: Vec<Value>) -> Value {
 }
 
 pub fn rand(state: &mut State, _args: Vec<Value>) -> Value {
-    Value::Symbolic(state.bv("rand", 32), 0)
+    state.symbolic_value("rand", 32)
 }
 
 pub fn srand(_state: &mut State, _args: Vec<Value>) -> Value {
-    Value::Concrete(1, 0)
+    Value::Concrete(0, 0)
 }
 
 pub fn fflush(_state: &mut State, _args: Vec<Value>) -> Value {

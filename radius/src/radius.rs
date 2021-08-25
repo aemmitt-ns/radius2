@@ -2,7 +2,7 @@ use crate::r2_api::{R2Api, R2Result, FunctionInfo, BasicBlock, Instruction, Info
 use crate::processor::{Processor, HookMethod};
 use crate::state::{State, StateStatus};
 //use crate::value::Value;
-use crate::sims::{get_sims, SimMethod};
+use crate::sims::{get_sims, SimMethod, zero};
 use crate::sims::syscall::{indirect};
 use crate::value::Value;
 
@@ -17,6 +17,7 @@ use std::collections::HashMap;
 pub enum RadiusOption {
     Syscalls(bool),    // use simulated syscalls
     Sims(bool),        // use simulated imports 
+    SimAll(bool),      // sim all imports, with stub if missing
     Optimize(bool),    // optimize executed ESIL expressions
     Debug(bool),       // enable debug output
     Lazy(bool),        // don't check sat on symbolic pcs
@@ -50,6 +51,7 @@ impl Radius {
         let force = options.contains(&RadiusOption::Force(true));
         let prune = options.contains(&RadiusOption::Prune(true));
         let check = options.contains(&RadiusOption::Permissions(true));
+        let sim_all = options.contains(&RadiusOption::SimAll(true));
 
         let mut processor = Processor::new(opt, debug, lazy, force, prune);
         let processors = Arc::new(Mutex::new(vec!()));
@@ -68,7 +70,7 @@ impl Radius {
 
         // this is weird, idk
         if !options.contains(&RadiusOption::Sims(false)) {
-            Radius::register_sims(&mut r2api, &mut processor);
+            Radius::register_sims(&mut r2api, &mut processor, sim_all);
         }
 
         Radius {
@@ -136,19 +138,45 @@ impl Radius {
         }
     }
 
-    pub fn register_sims(r2api: &mut R2Api, processor: &mut Processor) {
+    pub fn register_sims(r2api: &mut R2Api, processor: &mut Processor, sim_all: bool) {
         let sims = get_sims();
+        let symbols = r2api.get_symbols().unwrap();
+        let mut symmap: HashMap<String, u64> = HashMap::new();
+
+        for symbol in symbols {
+            symmap.insert(symbol.flagname, symbol.vaddr);
+        }
 
         // TODO expand this to handle other symbols
         let prefix = "sym.imp.";
         for sim in sims {
             let sym = String::from(prefix) + sim.symbol.as_str();
-            let addr = r2api.get_address(sym.as_str()).unwrap();
+            let addropt = symmap.remove(&sym);
 
-            if addr != 0 {
+            if let Some(addr) = addropt {
                 processor.sims.insert(addr, sim.function);
             }
         }
+
+        if sim_all {
+            for addr in symmap.values() {
+                processor.sims.insert(*addr, zero);
+            }
+        }
+
+        // while i am doing ad hoc nonsense...
+        /*let stds = ["stdin", "stdout", "stderr"];
+        for std in &stds {
+            let mut addr = r2api.get_address(&("obj.".to_owned() + std)).unwrap();
+            if addr == 0 {
+                addr = r2api.get_address(&("reloc.__".to_owned() + std + "p")).unwrap();
+            }
+
+            if addr != 0 {
+                let bits = r2api.info.as_ref().unwrap().bin.bits;
+                let fileobj = .... wtf am i doing
+            }
+        }*/
     }
 
     pub fn trap(&mut self, trap_num: u64, sim: SimMethod) {

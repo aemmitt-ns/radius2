@@ -19,6 +19,14 @@ pub fn make_sim(symbol: &str, function: SimMethod,
     Sim {symbol: String::from(symbol), function, arguments}
 }
 
+pub fn error(_state: &mut State, _args: Vec<Value>) -> Value {
+    Value::Concrete(-1i64 as u64, 0)
+}
+
+pub fn zero(_state: &mut State, _args: Vec<Value>) -> Value {
+    Value::Concrete(0, 0)
+}
+
 // get a vec of all available Sims
 pub fn get_sims() -> Vec<Sim> {
     vec!(
@@ -83,12 +91,19 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("fstat",   libc::fstat, 2),
         make_sim("lstat",   libc::lstat, 2),
 
+        make_sim("getuid",  libc::getuid, 0),
+        make_sim("getgid",  libc::getgid, 0),
+        make_sim("geteuid",  libc::geteuid, 0),
+        make_sim("getegid",  libc::getegid, 0),
+
         make_sim("sleep",   libc::sleep, 1),
         make_sim("getpid",  libc::getpid, 0),
         make_sim("fork",    libc::fork, 0),
-
         make_sim("ptrace",    libc::zero, 0),
         make_sim("syscall",    libc::c_syscall, 0),
+
+        make_sim("rand",   libc::rand, 0),
+        make_sim("srand",  libc::srand, 1),
 
         make_sim("gethostname", libc::gethostname, 0),
         make_sim("getpagesize", libc::getpagesize, 0),

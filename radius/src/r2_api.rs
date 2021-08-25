@@ -213,6 +213,20 @@ pub struct BasicBlock {
     pub fail: u64  
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Symbol {
+    pub name: String,
+    pub flagname: String,
+    pub realname: String,
+    pub ordinal: usize,
+    pub bind: String,
+    pub size: usize,
+    pub r#type: String,
+    pub vaddr: u64,
+    pub paddr: u64,
+    pub is_imported: bool
+}
+
 pub type R2Result<T> = Result<T, String>;
 pub fn r2_result<T, E>(result: Result<T, E>) -> R2Result<T> {
     if let Ok(res) = result {
@@ -325,6 +339,11 @@ impl R2Api {
         Ok(u64::from_str_radix(&val[2..val.len()-1], 16).unwrap())
     }
 
+    pub fn set_register_value(&mut self, reg: &str, value: u64) {
+        let cmd = format!("aer {}={}", reg, value);
+        let _r = self.cmd(cmd.as_str());
+    }
+
     pub fn get_syscall_str(&mut self, sys_num: u64) -> R2Result<String> {
         let cmd = format!("asl {}", sys_num);
         let ret = self.cmd(cmd.as_str())?;
@@ -365,6 +384,11 @@ impl R2Api {
         self.init_vm();
         // this is very weird but this is how it works
         let _r = self.cmd(format!(".aeis {} {} {} @ SP", argc, argv, env).as_str());
+    }
+
+    pub fn get_symbols(&mut self) -> R2Result<Vec<Symbol>> {
+        let json = self.cmd("isj")?;
+        r2_result(serde_json::from_str(json.as_str()))
     }
 
     pub fn disassemble(&mut self, addr: u64, num: usize) -> R2Result<Vec<Instruction>> {
