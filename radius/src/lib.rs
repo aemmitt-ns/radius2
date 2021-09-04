@@ -1,9 +1,6 @@
-#[macro_use]
 extern crate r2pipe;
 extern crate serde_json;
 extern crate boolector;
-extern crate hex;
-extern crate backtrace;
 
 pub mod r2_api;
 pub mod registers;

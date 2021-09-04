@@ -189,30 +189,31 @@ impl Registers {
             let taint;
 
             // TODO this may cause huge amounts of overtainting, maybe just use new
+            // im pulling trig and just using new, the downside of not is too high
             match (value, old_value.to_owned()) {
-                (Value::Concrete(new, t1), Value::Concrete(old, t2)) => {
+                (Value::Concrete(new, t1), Value::Concrete(old, _t2)) => {
                     let new_mask: u64 = (1 << size) - 1; 
-                    let mask: u64 = 0xffffffffffffffff ^ (new_mask << offset);
+                    let mask: u64 = !(new_mask << offset);
 
-                    taint = t1 | t2;
+                    taint = t1; // | t2;
                     let new_value = (old & mask) + ((new & new_mask) << offset);
                     self.values[register.value_index] = Value::Concrete(new_value, taint);
                     return;
                 },
-                (Value::Concrete(new, t1), Value::Symbolic(old, t2)) => {
+                (Value::Concrete(new, t1), Value::Symbolic(old, _t2)) => {
                     new_sym = self.solver.bvv(new, size as u32);
                     old_sym = old; 
-                    taint = t1 | t2;
+                    taint = t1; // | t2;
                 },
-                (Value::Symbolic(new, t1), Value::Concrete(old, t2)) => {
+                (Value::Symbolic(new, t1), Value::Concrete(old, _t2)) => {
                     old_sym = self.solver.bvv(old, bound_size);
-                    new_sym = new; 
-                    taint = t1 | t2;
+                    new_sym = new;
+                    taint = t1; // | t2;
                 },
-                (Value::Symbolic(new, t1), Value::Symbolic(old, t2)) => {
+                (Value::Symbolic(new, t1), Value::Symbolic(old, _t2)) => {
                     old_sym = old; 
                     new_sym = new; 
-                    taint = t1 | t2;
+                    taint = t1; // | t2;
                 }
             }
 

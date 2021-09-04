@@ -1,7 +1,8 @@
 
-use r2pipe::R2Pipe;
+use r2pipe::{R2Pipe, R2PipeSpawnOptions};
 use serde::{Deserialize, Serialize};
 use std::u64;
+use std::u8;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -227,6 +228,15 @@ pub struct Symbol {
     pub is_imported: bool
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Import {
+    pub ordinal: usize,
+    pub bind: String,
+    pub r#type: String,
+    pub name: String,
+    pub plt: u64
+}
+
 pub type R2Result<T> = Result<T, String>;
 pub fn r2_result<T, E>(result: Result<T, E>) -> R2Result<T> {
     if let Ok(res) = result {
@@ -234,6 +244,21 @@ pub fn r2_result<T, E>(result: Result<T, E>) -> R2Result<T> {
     } else {
         Err("Deserialization error".to_owned())
     }
+}
+
+pub fn hex_encode(data: &[u8]) -> String {
+    data.iter()
+        .map(|d| {format!("{:02x}", *d)})
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+pub fn hex_decode(data: &str) -> Vec<u8> {
+    let mut result = Vec::with_capacity(data.len());
+    for i in 0..data.len()/2 {
+        result.push(u8::from_str_radix(&data[2*i..2*i+2], 16).unwrap());
+    }
+    result
 }
 
 // #[derive(DerefMut)]
@@ -246,9 +271,24 @@ pub struct R2Api {
 }
 
 impl R2Api {
-    pub fn new(filename: Option<String>) -> R2Api {
+    pub fn new(filename: Option<String>, opts: Option<Vec<&'static str>>) -> R2Api {
+        let options = if let Some(o) = &opts {
+            Some(R2PipeSpawnOptions { 
+                exepath: "r2".to_owned(), 
+                args: o.clone()
+            })
+        } else {
+            None
+        };
+
+        let r2pipe = match (filename, opts) {
+            (None, None) => R2Pipe::open(),
+            (Some(name), _) => R2Pipe::spawn(name, options),
+            _ => Err("cannot have options for non-spawed")
+        };
+
         let mut r2api = R2Api {
-            r2p: Arc::new(Mutex::new(open_pipe!(filename).unwrap())),
+            r2p: Arc::new(Mutex::new(r2pipe.unwrap())),
             //instructions: HashMap::new(),
             //permissions: HashMap::new(),
             info: None
@@ -391,16 +431,26 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }
 
+    pub fn get_imports(&mut self) -> R2Result<Vec<Import>> {
+        let json = self.cmd("iij")?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
     pub fn disassemble(&mut self, addr: u64, num: usize) -> R2Result<Vec<Instruction>> {
         let cmd = format!("pdj {} @ {}", num, addr);
         let json = self.cmd(cmd.as_str())?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
+    pub fn disassemble_bytes(&mut self, data: &[u8]) -> R2Result<String> {
+        let cmd = format!("pad {}", hex_encode(data));
+        self.cmd(cmd.as_str())
+    }
+
     pub fn assemble(&mut self, instruction: &str) -> R2Result<Vec<u8>> {
         let cmd = format!("pa {}", instruction);
         let hexpairs = self.cmd(cmd.as_str())?;
-        r2_result(hex::decode(hexpairs))
+        Ok(hex_decode(&hexpairs))
     }
 
     pub fn read(&mut self, addr: u64, length: usize) -> R2Result<Vec<u8>> {
@@ -410,7 +460,7 @@ impl R2Api {
     }
 
     pub fn write(&mut self, addr: u64, data: Vec<u8>) {
-        let cmd = format!("wx {} @ {}", hex::encode(data), addr);
+        let cmd = format!("wx {} @ {}", hex_encode(&data), addr);
         let _r = self.cmd(cmd.as_str());
     }
 

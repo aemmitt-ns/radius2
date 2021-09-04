@@ -6,7 +6,7 @@ fn looper() {
     use crate::radius::{Radius, RadiusOption};
 
     let options = vec!(RadiusOption::Sims(false)); // RadiusOption::Debug(true));
-    let mut radius = Radius::new_with_options("../tests/looper", options);
+    let mut radius = Radius::new_with_options("../tests/looper", options, None);
     let state = radius.call_state(0x100003f4c);
     //let state = radius.entry_state(&vec!("looper".to_owned()), &vec!());
     let mut new_state = radius.run_until(state, 0x100003fb4, vec!()).unwrap();
@@ -84,7 +84,7 @@ fn r100() {
     use crate::value::Value;
 
     let options = vec!(RadiusOption::Debug(false));
-    let mut radius = Radius::new_with_options("../tests/r100", options);
+    let mut radius = Radius::new_with_options("../tests/r100", options, None);
     let mut state = radius.call_state(0x004006fd);
     let bv = state.bv("flag", 12*8);
     let addr: u64 = 0x100000;
@@ -105,7 +105,7 @@ fn r200() {
     use crate::value::Value;
 
     let options = vec!(RadiusOption::Debug(false));
-    let mut radius = Radius::new_with_options("../tests/r200", options);
+    let mut radius = Radius::new_with_options("../tests/r200", options, None);
     let mut state = radius.call_state(0x00400886);
     let bv = state.bv("flag", 6*8);
 
@@ -156,7 +156,12 @@ fn symmem() {
     use crate::radius::{Radius, RadiusOption};
     use crate::value::Value;
 
-    let mut radius = Radius::new_with_options("../tests/symmem", vec!(RadiusOption::Debug(true)));
+    let mut radius = Radius::new_with_options(
+        "../tests/symmem", 
+        vec!(RadiusOption::Debug(true)), 
+        None
+    );
+    
     let main = radius.r2api.get_address("main").unwrap();
     let mut state = radius.call_state(main);
 

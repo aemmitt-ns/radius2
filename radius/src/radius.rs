@@ -23,7 +23,7 @@ pub enum RadiusOption {
     Lazy(bool),        // don't check sat on symbolic pcs
     Permissions(bool), // check memory permissions
     Force(bool),       // force execution of all branches
-    Prune(bool)        // only exec blocks once per unique bt
+    Topological(bool)  // execute blocks in topological order
 }
 
 pub struct Radius {
@@ -38,22 +38,25 @@ pub struct Radius {
 impl Radius {
 
     pub fn new(filename: &str) -> Self {
-        Radius::new_with_options(filename, vec!())
+        // no radius options and no r2 errors by default
+        Radius::new_with_options(filename, vec!(), Some(vec!("-2")))
     }
 
-    pub fn new_with_options(filename: &str, options: Vec<RadiusOption>) -> Self {
+    pub fn new_with_options(filename: &str, options: Vec<RadiusOption>, 
+            args: Option<Vec<&'static str>>) -> Self {
+                
         let file = String::from(filename);
-        let mut r2api = R2Api::new(Some(file));
+        let mut r2api = R2Api::new(Some(file), args);
 
         let opt = !options.contains(&RadiusOption::Optimize(false));
         let debug = options.contains(&RadiusOption::Debug(true));
         let lazy = !options.contains(&RadiusOption::Lazy(false));
         let force = options.contains(&RadiusOption::Force(true));
-        let prune = options.contains(&RadiusOption::Prune(true));
+        let topological = options.contains(&RadiusOption::Topological(true));
         let check = options.contains(&RadiusOption::Permissions(true));
         let sim_all = options.contains(&RadiusOption::SimAll(true));
 
-        let mut processor = Processor::new(opt, debug, lazy, force, prune);
+        let mut processor = Processor::new(opt, debug, lazy, force, topological);
         let processors = Arc::new(Mutex::new(vec!()));
         let states = Arc::new(Mutex::new(vec!()));
 
@@ -140,19 +143,16 @@ impl Radius {
 
     pub fn register_sims(r2api: &mut R2Api, processor: &mut Processor, sim_all: bool) {
         let sims = get_sims();
-        let symbols = r2api.get_symbols().unwrap();
+        let symbols = r2api.get_imports().unwrap();
         let mut symmap: HashMap<String, u64> = HashMap::new();
 
         for symbol in symbols {
-            symmap.insert(symbol.flagname, symbol.vaddr);
+            symmap.insert(symbol.name, symbol.plt);
         }
 
         // TODO expand this to handle other symbols
-        let prefix = "sym.imp.";
         for sim in sims {
-            let sym = String::from(prefix) + sim.symbol.as_str();
-            let addropt = symmap.remove(&sym);
-
+            let addropt = symmap.remove(&sim.symbol);
             if let Some(addr) = addropt {
                 processor.sims.insert(addr, sim.function);
             }

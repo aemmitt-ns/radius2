@@ -4,12 +4,11 @@ use crate::operations::{Operations, pop_value,
     pop_stack_value, pop_concrete, do_operation, OPS};
 
 use std::collections::HashMap;
+//use std::collections::hash_map::DefaultHasher;
+
 use crate::state::{State, StateStatus, StackItem, ExecMode};
 use crate::sims::{SimMethod};
 use crate::sims::syscall::syscall;
-
-//use std::time::SystemTime;
-//use boolector::BV;
 use std::mem;
 
 const INSTR_NUM: usize = 64;
@@ -42,8 +41,7 @@ pub struct Processor {
     pub debug: bool,
     pub lazy: bool,
     pub force: bool,
-    pub prune: bool
-    //pub states: Vec<State>
+    pub topological: bool // execute blocks in topological sort order
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -72,7 +70,7 @@ const BFS:   bool = true;    // dequeue states instead of popping
 const ALLOW_INVALID: bool = true; // Allow invalid instructions (exec as NOP)
 
 impl Processor {
-    pub fn new(optimized: bool, debug: bool, lazy: bool, force: bool, prune: bool) -> Self {
+    pub fn new(optimized: bool, debug: bool, lazy: bool, force: bool, topological: bool) -> Self {
         Processor {
             pc: None,
             instructions: HashMap::new(),
@@ -87,14 +85,15 @@ impl Processor {
             debug,
             lazy,
             force,
-            prune
+            topological
             //states: vec!()
         }
     }
 
     pub fn tokenize(&self, state: &mut State, esil: &str) -> Vec<Word> {
         let mut tokens: Vec<Word> = Vec::with_capacity(128);
-        let split_esil = esil.split(',');
+        let ugh = esil.replace("=}", "=,}");
+        let split_esil = ugh.split(',');
 
         for s in split_esil {
 
@@ -107,7 +106,7 @@ impl Processor {
                 tokens.push(operator);
 
             // all this garbage is for the combo ones like ++=[8] ...
-            } else if s.len() > 1 && &s[s.len()-1..s.len()] == "="
+            } else if s.len() > 1 && &s[s.len()-1..] == "="
                     && OPS.contains(&&s[0..s.len()-1]) {
 
                 let reg_word = tokens.pop().unwrap();
@@ -117,7 +116,7 @@ impl Processor {
                 tokens.push(reg_word);
                 tokens.push(Word::Operator(Operations::Equal))
 
-            } else if s.len() > 4 && &s[s.len()-1..s.len()] == "]" 
+            } else if s.len() > 4 && &s[s.len()-1..] == "]" 
                     && OPS.contains(&&s[0..s.len()-4]) {
 
                 tokens.push(Word::Operator(Operations::AddressStore));

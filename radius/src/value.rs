@@ -590,7 +590,6 @@ impl Value {
         }
     }
 
-
     #[inline]
     pub fn add(&self, rhs: &Value) -> Value {
         binary_ops!(self, rhs, add, +)

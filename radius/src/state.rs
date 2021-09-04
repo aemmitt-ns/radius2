@@ -210,7 +210,7 @@ impl State {
         for addr in self.memory.addresses() {
             let bval = self.memory.read_value(addr, 1);
             let b = self.solver.evalcon_to_u64(&bval).unwrap() as u8;
-            self.r2api.write(addr, vec!(b)); 
+            self.r2api.write(addr, vec!(b));
         }
     }
 

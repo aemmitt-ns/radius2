@@ -1,8 +1,8 @@
 use radius::radius::{Radius, RadiusOption};
 
 fn main() {
-    let options = vec!(RadiusOption::Debug(true));
-    let mut radius = Radius::new_with_options("tests/r100", options);
+    let options = vec!(RadiusOption::Debug(false));
+    let mut radius = Radius::new_with_options("tests/r100", options, None);
     let mut state = radius.call_state(0x004006fd);
     let addr: u64 = 0x100000;
     let flag_val = state.symbolic_value("flag", 12*8);
