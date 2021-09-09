@@ -50,13 +50,13 @@ pub struct Instruction {
     pub r#type: String,
 
     #[serde(default="zero")]
-    pub type_num: u64,
+    pub type_num: i64,
 
     #[serde(default="zero")]
-    pub jump: u64,
+    pub jump: i64,
 
     #[serde(default="zero")]
-    pub fail: u64  
+    pub fail: i64  
 }
 
 fn invalid() -> String {
@@ -67,7 +67,7 @@ fn blank() -> String {
     "".to_string()
 }
 
-fn zero() -> u64 {
+fn zero() -> i64 {
     0
 }
 
@@ -208,10 +208,10 @@ pub struct BasicBlock {
     pub traced: bool,
 
     #[serde(default="zero")]
-    pub jump: u64,
+    pub jump: i64,
 
     #[serde(default="zero")]
-    pub fail: u64  
+    pub fail: i64  
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -439,6 +439,7 @@ impl R2Api {
     pub fn disassemble(&mut self, addr: u64, num: usize) -> R2Result<Vec<Instruction>> {
         let cmd = format!("pdj {} @ {}", num, addr);
         let json = self.cmd(cmd.as_str())?;
+        //println!("json: {}", json);
         r2_result(serde_json::from_str(json.as_str()))
     }
 

@@ -13,8 +13,8 @@ use std::mem;
 
 const INSTR_NUM: usize = 64;
 
-const CALL_TYPE: u64 = 3;
-const RETN_TYPE: u64 = 5;
+const CALL_TYPE: i64 = 3;
+const RETN_TYPE: i64 = 5;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Word {
@@ -28,7 +28,7 @@ pub type HookMethod = fn (&mut State) -> bool;
 
 #[derive(Clone)]
 pub struct Processor {
-    pub pc: Option<usize>,
+    pub pc: Option<usize>, // this still sucks
     pub instructions: HashMap<u64, InstructionEntry>,
     pub hooks: HashMap<u64, Vec<HookMethod>>,
     pub sims: HashMap<u64, SimMethod>,
@@ -487,10 +487,10 @@ impl Processor {
 
         state.esil.pcs.clear();
         if instr.jump != 0 {
-            state.esil.pcs.push(instr.jump);
+            state.esil.pcs.push(instr.jump as u64);
 
             if instr.fail != 0 {
-                state.esil.pcs.push(instr.fail);
+                state.esil.pcs.push(instr.fail as u64);
             }
         } 
 
