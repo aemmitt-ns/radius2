@@ -2,6 +2,7 @@ use radius::radius::{Radius, RadiusOption};
 use radius::state::State;
 use radius::value::Value;
 
+// simulates the scanf("%d", dst) calls with sym inputs
 fn scanf_sim(state: &mut State, args: Vec<Value>) -> Value {
     let input_len = state.context.entry("ints".to_owned()).or_insert(vec!()).len();
     let new_int = state.symbolic_value(&format!("int{}", input_len), 32);
@@ -16,7 +17,9 @@ fn main() {
     let mut radius = Radius::new_with_options("tests/baby-re", options, None);
     let main = radius.get_address("main").unwrap();
     let scanf = radius.get_address("sym.imp.__isoc99_scanf").unwrap();
-    radius.processor.sims.insert(scanf, scanf_sim);
+
+    // register the custom sim
+    radius.simulate(scanf, scanf_sim);
 
     let state = radius.call_state(main); // start at main
     let new_state = radius.run_until(state, 0x004028e9, vec!(0x00402941)).unwrap();

@@ -92,6 +92,7 @@ impl Radius {
         let mut state = self.init_state();
         state.memory.add_stack();
         state.memory.add_heap();
+        state.memory.add_std_streams();
         state
     }
 
@@ -107,6 +108,7 @@ impl Radius {
 
         state.memory.add_stack();
         state.memory.add_heap();
+        state.memory.add_std_streams();
         state
     }
 
@@ -128,6 +130,7 @@ impl Radius {
         state.registers.set_with_alias("SP", Value::Concrete(sp, 0));
         state.memory.add_stack();
         state.memory.add_heap();
+        state.memory.add_std_streams();
         state
     }
 
@@ -163,20 +166,6 @@ impl Radius {
                 processor.sims.insert(*addr, zero);
             }
         }
-
-        // while i am doing ad hoc nonsense...
-        /*let stds = ["stdin", "stdout", "stderr"];
-        for std in &stds {
-            let mut addr = r2api.get_address(&("obj.".to_owned() + std)).unwrap();
-            if addr == 0 {
-                addr = r2api.get_address(&("reloc.__".to_owned() + std + "p")).unwrap();
-            }
-
-            if addr != 0 {
-                let bits = r2api.info.as_ref().unwrap().bin.bits;
-                let fileobj = .... wtf am i doing
-            }
-        }*/
     }
 
     pub fn trap(&mut self, trap_num: u64, sim: SimMethod) {

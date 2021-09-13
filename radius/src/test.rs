@@ -152,6 +152,36 @@ fn unbreakable() {
 }*/
 
 #[test]
+fn fileread() {
+    use crate::radius::{Radius, RadiusOption};
+    use crate::value::Value;
+
+    let options = vec!(RadiusOption::Debug(true));
+    let mut radius = Radius::new_with_options("../tests/fileread", options, None);
+    radius.analyze(2); // necessary for sims for some reason
+    let mut state = radius.call_state(0x100003e7c);
+    let data = vec!(
+        Value::Concrete(0x68, 0),
+        Value::Concrete(0x6d, 0),
+        Value::Concrete(0x6d, 0),
+        Value::Concrete(0x6d, 0),
+        Value::Concrete(0x6d, 0)
+    );
+    state.filesystem.add_file("test.txt", &data);
+    let mut new_state = radius.run_until(state, 0x100003f14, vec!()).unwrap();
+
+    // dump stdout
+    let data = new_state.filesystem.dump(1);
+
+    let mut str_bytes = vec!();
+    for d in data {
+        str_bytes.push(new_state.solver.eval_to_u64(&d).unwrap() as u8);
+    }
+    let string = String::from_utf8(str_bytes).unwrap();
+    assert_eq!(string, "hmmm\n");
+}   
+
+#[test]
 fn symmem() {
     use crate::radius::{Radius, RadiusOption};
     use crate::value::Value;

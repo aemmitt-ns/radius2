@@ -142,6 +142,7 @@ pub fn stat(state: &mut State, args: Vec<Value>) -> Value {
 
     if let Some(statdata) = statopt {
         // oof this is just one case, any different bits, arch, or os could be different
+        // this definitely sucks.
         state.memory.write_value(statbuf, &Value::Concrete(statdata.st_dev, 0), 8);
         state.memory.write_value(statbuf+8, &Value::Concrete(statdata.st_ino, 0), 8);
         state.memory.write_value(statbuf+16, &Value::Concrete(statdata.st_mode as u64, 0), 8);

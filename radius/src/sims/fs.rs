@@ -115,17 +115,13 @@ impl SimFilesytem {
         data
     }
 
-    pub fn write(&mut self, fd: usize, data: Vec<Value>) {
-        let mut file = self.files.remove(fd);
-        file.position = data.len();
-        file.content.extend(data);
-        self.files.insert(fd, file);
+    pub fn dump(&mut self, fd: usize) -> Vec<Value> {
+        self.files[fd].content.clone()
     }
 
-    // for adding data to a file without moving position
-    // basically if you want to fake data in a file to be read
-    pub fn add(&mut self, fd: usize, data: Vec<Value>) {
+    pub fn write(&mut self, fd: usize, data: Vec<Value>) {
         let mut file = self.files.remove(fd);
+        file.position += data.len();
         file.content.extend(data);
         self.files.insert(fd, file);
     }
@@ -219,6 +215,30 @@ impl SimFilesytem {
 
     pub fn close(&mut self, fd: usize) {
         self.seek(fd, 0); // uhh just go to 0 for now
+    }
+
+    pub fn add_file(&mut self, path: &str, data: &[Value]) {
+        self.files.push(SimFile {
+            path: path.to_owned(),
+            fd: self.files.len(),
+            position: 0,
+            mode: FileMode::Read,
+            content: data.to_owned(),
+            metadata: None
+        });
+    }
+
+    // TODO this isnt very rusty
+    pub fn remove_file(&mut self, path: &str) {
+        let mut ind = None;
+        for (i, f) in self.files.iter().enumerate() {
+            if f.path == path {
+                ind = Some(i);
+            }
+        }
+        if let Some(index) = ind {
+            self.files.remove(index);
+        } 
     }
 
     pub fn get_stdio() -> Vec<SimFile> {

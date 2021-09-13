@@ -139,6 +139,37 @@ impl Memory {
         self.add_segment("stack", STACK_START, STACK_SIZE, "rw--");
     }
 
+    pub fn add_std_streams(&mut self) {
+        let mut fd = 0;
+        let stds = ["stdin", "stdout", "stderr"];
+        let bits = self.r2api.info.as_ref().unwrap().bin.bits;
+        for std in &stds {
+            let mut addr = self.r2api.get_address(&("obj.".to_owned() + std)).unwrap();
+            if addr == 0 {
+                addr = self.r2api.get_address(&("reloc.__".to_owned() + std + "p")).unwrap();
+            }
+
+            if addr != 0 {
+                // from libc.rs should be in a common place
+                let file_struct = self.alloc(&Value::Concrete(216, 0));
+                self.write_value(file_struct+112, &Value::Concrete(fd, 0), 4);
+                self.write_value(addr, &Value::Concrete(file_struct, 0), (bits/8) as usize); 
+                fd += 1;
+            }
+        }
+
+        // Also put the macos canary here idk
+        let stk_chk = self.r2api.get_address("reloc.__stack_chk_guard").unwrap();
+        if stk_chk != 0 {
+            let chk_value_addr = self.heap.alloc(8);
+            self.write_value(
+                chk_value_addr, 
+                &(Value::Symbolic(self.solver.bv("radius_canary", 64), 0)), 
+                (bits/8) as usize
+            );
+        }
+    }
+
     pub fn brk(&mut self, address: u64) -> bool {
         for seg in &mut self.segs {
             if seg.name == ".data" {
