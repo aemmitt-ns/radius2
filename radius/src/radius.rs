@@ -36,7 +36,8 @@ pub enum RadiusOption {
  * Example
  * 
  * ```
- * let mut radius = Radius::new("tests/r200");
+ * use radius::radius::Radius;
+ * let mut radius = Radius::new("../tests/r200");
  * ```
  * 
  */
@@ -57,7 +58,8 @@ impl Radius {
      * **Example**
      * 
      * ```
-     * let mut radius = Radius::new("tests/r100");
+     * use radius::radius::Radius;
+     * let mut radius = Radius::new("../tests/r100");
      * ```
      */
     pub fn new(filename: &str) -> Self {
@@ -72,8 +74,9 @@ impl Radius {
      * **Example**
      * 
      * ```
+     * use radius::radius::{Radius, RadiusOption};
      * let options = vec!(RadiusOption::Optimize(false), RadiusOption::Sims(false));
-     * let mut radius = Radius::new_with_options("tests/baby-re", options, Some(vec!("-2")));
+     * let mut radius = Radius::new_with_options("../tests/baby-re", options, Some(vec!("-2")));
      * ```
      */
     pub fn new_with_options(filename: &str, options: Vec<RadiusOption>, 
@@ -127,6 +130,8 @@ impl Radius {
      * **Example**
      * 
      * ```
+     * use radius::radius::Radius;
+     * let mut radius = Radius::new("../tests/r100");
      * let mut state = radius.call_state(0x004006fd);
      * ```
      */
@@ -147,10 +152,11 @@ impl Radius {
      * **Example**
      * 
      * ```
+     * use radius::radius::Radius;
+     * let mut radius = Radius::new("../tests/r100");
      * let mut state = radius.entry_state(
-     *     0x004006fd, 
-     *     &vec!("r100", "ok"), 
-     *     &vec!()
+     *     &["r100".to_string()], 
+     *     &[]
      * );
      * ```
      */
