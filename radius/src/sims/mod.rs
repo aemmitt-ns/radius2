@@ -93,14 +93,14 @@ pub fn get_sims() -> Vec<Sim> {
 
         make_sim("getuid",  libc::getuid, 0),
         make_sim("getgid",  libc::getgid, 0),
-        make_sim("geteuid",  libc::geteuid, 0),
-        make_sim("getegid",  libc::getegid, 0),
+        make_sim("geteuid", libc::geteuid, 0),
+        make_sim("getegid", libc::getegid, 0),
 
         make_sim("sleep",   libc::sleep, 1),
         make_sim("getpid",  libc::getpid, 0),
         make_sim("fork",    libc::fork, 0),
-        make_sim("ptrace",    libc::zero, 0),
-        make_sim("syscall",    libc::c_syscall, 0),
+        make_sim("ptrace",  libc::zero, 0),
+        make_sim("syscall", libc::c_syscall, 0),
 
         make_sim("rand",   libc::rand, 0),
         make_sim("srand",  libc::srand, 1),

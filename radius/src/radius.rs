@@ -26,6 +26,20 @@ pub enum RadiusOption {
     Topological(bool)  // execute blocks in topological order
 }
 
+/**
+ * Main Radius struct that coordinates and configures
+ * the symbolic execution of a binary. 
+ * 
+ * Radius can be instantiated using either `Radius::new(filename: &str)`
+ * or `Radius::new_with_options(...)` 
+ * 
+ * Example
+ * 
+ * ```
+ * let mut radius = Radius::new("tests/r200");
+ * ```
+ * 
+ */
 pub struct Radius {
     pub r2api: R2Api,
     pub processor: Processor,
@@ -37,11 +51,31 @@ pub struct Radius {
 
 impl Radius {
 
+    /**
+     * Create a new Radius instance for the provided binary
+     * 
+     * **Example**
+     * 
+     * ```
+     * let mut radius = Radius::new("tests/r100");
+     * ```
+     */
     pub fn new(filename: &str) -> Self {
         // no radius options and no r2 errors by default
         Radius::new_with_options(filename, vec!(), Some(vec!("-2")))
     }
 
+    /**
+     * Create a new Radius instance for the provided binary with a vec of `RadiusOption`
+     * And an optional vector of radare2 arguments
+     * 
+     * **Example**
+     * 
+     * ```
+     * let options = vec!(RadiusOption::Optimize(false), RadiusOption::Sims(false));
+     * let mut radius = Radius::new_with_options("tests/baby-re", options, Some(vec!("-2")));
+     * ```
+     */
     pub fn new_with_options(filename: &str, options: Vec<RadiusOption>, 
             args: Option<Vec<&'static str>>) -> Self {
                 
@@ -86,6 +120,16 @@ impl Radius {
         }
     }
 
+    /**
+     * Initialized state at the provided function address with an initialized stack
+     * (if applicable) 
+     * 
+     * **Example**
+     * 
+     * ```
+     * let mut state = radius.call_state(0x004006fd);
+     * ```
+     */
     pub fn call_state(&mut self, addr: u64) -> State {
         self.r2api.seek(addr);
         self.r2api.init_vm();
@@ -96,6 +140,20 @@ impl Radius {
         state
     }
 
+    /**
+     * Initialized state at the program entry point (the first if multiple).
+     * Can also be passed concrete args and env variables
+     * 
+     * **Example**
+     * 
+     * ```
+     * let mut state = radius.entry_state(
+     *     0x004006fd, 
+     *     &vec!("r100", "ok"), 
+     *     &vec!()
+     * );
+     * ```
+     */
     pub fn entry_state(&mut self, args: &[String], env: &[String]) -> State {
         //self.r2api.seek(addr);
         self.r2api.init_entry(args, env);
@@ -120,7 +178,7 @@ impl Radius {
         State::new(&mut self.r2api, true, self.check)
     }
 
-    // blank except for PC and SP
+    /// Blank except for PC and SP
     pub fn blank_call_state(&mut self, addr: u64) -> State {
         self.r2api.seek(addr);
         self.r2api.init_vm();
@@ -134,6 +192,7 @@ impl Radius {
         state
     }
 
+    /// Hook an address with a callback that is passed the `State`
     pub fn hook(&mut self, addr: u64, hook_callback: HookMethod) {
         let hooks = self.processor.hooks.remove(&addr);
         if let Some(mut hook_vec) = hooks {
@@ -144,6 +203,7 @@ impl Radius {
         }
     }
 
+    // internal method to register import sims 
     pub fn register_sims(r2api: &mut R2Api, processor: &mut Processor, sim_all: bool) {
         let sims = get_sims();
         let symbols = r2api.get_imports().unwrap();
@@ -168,32 +228,47 @@ impl Radius {
         }
     }
 
+    /// Register a trap to call the provided `SimMethod`
     pub fn trap(&mut self, trap_num: u64, sim: SimMethod) {
         self.processor.traps.insert(trap_num, sim);
     }
 
+    /// Register a `SimMethod` for the provided function address
     pub fn simulate(&mut self, addr: u64, sim: SimMethod) {
         self.processor.sims.insert(addr, sim);
     }
 
+    /// Add a breakpoint at the provided address. 
+    /// This is where execution will stop after `run` is called
     pub fn breakpoint(&mut self, addr: u64) {
         self.processor.breakpoints.insert(addr, true);
     }
 
+    /// Add a mergepoint, an address where many states will be combined
+    /// into a single state with the proper constraints
     pub fn mergepoint(&mut self, addr: u64) {
         self.processor.mergepoints.insert(addr, true);
     }
 
+    /// Add addresses that will be avoided during execution. Any
+    /// `State` that reaches these addresses will be marked inactive
     pub fn avoid(&mut self, addrs: Vec<u64>) {
         for addr in addrs {
             self.processor.avoidpoints.insert(addr, true);
         }
     }
 
+    /// Simple way to execute until a given target address while avoiding a vec of other addrs
     pub fn run_until(&mut self, state: State, target: u64, avoid: Vec<u64>) -> Option<State> {
         self.processor.run_until(state, target, avoid)
     }
 
+    /**
+     * Main run method, start or continue a symbolic execution
+     * 
+     * More words 
+     * 
+     */
     pub fn run(&mut self, state: Option<State>, threads: usize) -> Option<State> {
         let mut handles = vec!();
         if let Some(s) = state {
@@ -305,54 +380,57 @@ impl Radius {
         }
     }
 
-    // run r2 analysis
+    /// Run radare2 analysis
     pub fn analyze(&mut self, n: usize) {
         let _r = self.r2api.analyze(n);
     }
 
+    /// Get information about the binary and radare2 session
     pub fn get_info(&mut self) -> R2Result<Information> {
         self.r2api.get_info()
     }
 
-    // get address of symbol
+    /// Get address of symbol
     pub fn get_address(&mut self, symbol: &str) -> R2Result<u64> {
         self.r2api.get_address(symbol)
     }
 
-    // get all functions
+    /// Get all functions
     pub fn get_functions(&mut self) -> R2Result<Vec<FunctionInfo>> {
         self.r2api.get_functions()
     }
 
-    // get function information at this address
+    /// Get function information at this address
     pub fn get_function(&mut self, address: u64) -> R2Result<FunctionInfo> {
         self.r2api.get_function_info(address)
     }
 
-    // get basic blocks of a function
+    /// Get basic blocks of a function
     pub fn get_blocks(&mut self, address: u64) -> R2Result<Vec<BasicBlock>> {
         self.r2api.get_blocks(address)
     }
 
+    /// Disassemble at the provided address
     pub fn disassemble(&mut self, address: u64, num: usize) -> R2Result<Vec<Instruction>> {
         self.r2api.disassemble(address, num)
     }
 
+    /// Assemble the given instruction
     pub fn assemble(&mut self, instruction: &str) -> R2Result<Vec<u8>> {
         self.r2api.assemble(instruction)
     }
 
-    // read directly from binary
+    /// Read directly from binary
     pub fn read(&mut self, address: u64, length: usize) -> R2Result<Vec<u8>> {
         self.r2api.read(address, length)
     }
 
-    // patch binary
+    /// Patch binary
     pub fn write(&mut self, address: u64, data: Vec<u8>) {
         self.r2api.write(address, data)
     }
 
-    // run an r2 command 
+    /// Run any r2 command 
     pub fn cmd(&mut self, cmd: &str) -> R2Result<String> { 
         self.r2api.cmd(cmd)
     }

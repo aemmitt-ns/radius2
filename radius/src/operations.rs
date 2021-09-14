@@ -367,7 +367,7 @@ macro_rules! binary_float_operation {
         let t = get_stack_taint($state, 1);
         let arg1 = pop_double($state);
         let arg2 = pop_double($state);
-        let value = Value::Concrete(f64::to_bits(arg1 $op arg2), t); // TODO fix fp tainted
+        let value = Value::Concrete(f64::to_bits(arg1 $op arg2), t);
         push_value($state, value);
     };
 }

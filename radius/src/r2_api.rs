@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::u64;
 use std::u8;
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Endian {
@@ -237,6 +238,31 @@ pub struct Import {
     pub plt: u64
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClassMethod {
+    pub name: String,
+    pub addr: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClassField {
+    pub name: String,
+    pub addr: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClassInfo {
+    pub classname: String,
+    pub addr: u64,
+    pub index: i64, 
+    //pub r#super: String,
+    pub methods: Vec<ClassMethod>,
+    pub fields: Vec<ClassField>,
+
+    #[serde(rename = "super")]
+    pub superclass: String
+}
+
 pub type R2Result<T> = Result<T, String>;
 pub fn r2_result<T, E>(result: Result<T, E>) -> R2Result<T> {
     if let Ok(res) = result {
@@ -284,7 +310,7 @@ impl R2Api {
         let r2pipe = match (filename, opts) {
             (None, None) => R2Pipe::open(),
             (Some(name), _) => R2Pipe::spawn(name, options),
-            _ => Err("cannot have options for non-spawed")
+            _ => Err("cannot have options for non-spawned")
         };
 
         let mut r2api = R2Api {
@@ -338,6 +364,20 @@ impl R2Api {
         } else {
             self.get_cc(pc)
         }
+    }
+
+    pub fn get_classes(&mut self) -> R2Result<Vec<ClassInfo>> {
+        let json = self.cmd(format!("icj").as_str())?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    pub fn get_class_map(&mut self) -> R2Result<HashMap<String, ClassInfo>> {
+        let classes = self.get_classes()?;
+        let mut class_map = HashMap::new();
+        for c in &classes {
+            class_map.insert(c.classname.clone(), c.to_owned());
+        }    
+        Ok(class_map)
     }
 
     pub fn get_segments(&mut self) -> R2Result<Vec<Segment>> {

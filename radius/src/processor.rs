@@ -92,8 +92,8 @@ impl Processor {
 
     pub fn tokenize(&self, state: &mut State, esil: &str) -> Vec<Word> {
         let mut tokens: Vec<Word> = Vec::with_capacity(128);
-        let ugh = esil.replace("=}", "=,}");
-        let split_esil = ugh.split(',');
+        //let ugh = esil.replace("=}", "=,}");
+        let split_esil = esil.split(',');
 
         for s in split_esil {
 
@@ -135,7 +135,7 @@ impl Processor {
         tokens
     }
 
-    // attempt to tokenize word as number literal (eg. 0x8)
+    /// attempt to tokenize word as number literal (eg. 0x8)
     pub fn get_literal(&self, word: &str) -> Option<Word> {        
         if let Ok(i) = word.parse::<u64>() {
             let val = Value::Concrete(i, 0);
@@ -151,12 +151,12 @@ impl Processor {
         }
     }
 
-    // attempt to tokenize word as register (eg. rbx)
+    /// attempt to tokenize word as register (eg. rbx)
     pub fn get_register(&self,  state: &mut State, word: &str) -> Option<Word> {
         state.registers.get_register(word).map(|reg| Word::Register(reg.index))
     }
 
-    // attempt to tokenize word as operation (eg. +)
+    /// attempt to tokenize word as operation (eg. +)
     pub fn get_operator(&self, word: &str) -> Option<Word> {
         let op = Operations::from_string(word);
         match op {
@@ -165,7 +165,7 @@ impl Processor {
         }
     }
 
-    // print instruction if debug output is enabled
+    /// print instruction if debug output is enabled
     #[inline]
     pub fn print_instr(&self, instr: &Instruction) {
         if self.debug {
@@ -208,7 +208,7 @@ impl Processor {
         self.parse(state, &words);
     }
 
-    /* 
+    /**
      * Parse and execute the vector of tokenized ESIL words. 
      * The difficult parts here are the temporary stacks for IF/ELSE
      * When a conditional is symbolic the stack needs to be copied
@@ -370,7 +370,7 @@ impl Processor {
         }
     }
 
-    // removes words that weak set flag values that are never read, and words that are NOPs
+    /// removes words that weak set flag values that are never read, and words that are NOPs
     pub fn optimize(&mut self, state: &mut State, prev_pc: u64, curr_instr: &InstructionEntry) {
         let prev_instr = &self.instructions[&prev_pc];
         if  !prev_instr.tokens.contains(&Word::Operator(Operations::WeakEqual)) ||
@@ -469,7 +469,7 @@ impl Processor {
         }
     }
 
-    /*
+    /**
      * Update the status of the state and execute the instruction at PC
      * If the instruction is hooked or the method is simulated perform the
      * respective callback. Hooks returning false will skip the instruction
@@ -632,6 +632,8 @@ impl Processor {
         }
     }
 
+
+    /// Take single step with the state provided
     pub fn step(&mut self, mut state: State, duplicate: bool) -> Vec<State> {
         let pc_allocs = 32;
         let pc_index = self.pc.unwrap();
@@ -703,6 +705,7 @@ impl Processor {
         }
     }
 
+    /// simple version of `run` that only takes a target `addr` and a vec of avoided adresses
     pub fn run_until(&mut self, state: State, addr: u64, avoid: Vec<u64>) -> Option<State> {
         if self.pc.is_none() {
             let pc_reg = &state.registers.aliases["PC"];
@@ -743,6 +746,7 @@ impl Processor {
         None
     }
 
+    /// run the state until a breakpoint is hit
     pub fn run(&mut self, state: State, split: bool, dup: bool) -> Vec<State> {
 
         let mut states = vec!();

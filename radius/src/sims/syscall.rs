@@ -268,7 +268,7 @@ pub fn getuid(_state: &mut State, _args: Vec<Value>) -> Value {
     Value::Concrete(0, 0)
 }
 
-pub fn exit(state: &mut State, _args: Vec<Value>) -> Value {
+pub fn exit(state: &mut State, args: Vec<Value>) -> Value {
     state.status = StateStatus::Inactive;
-    Value::Concrete(0, 0)
+    args[0].to_owned()
 }

@@ -89,8 +89,13 @@ impl Memory {
     }
 
     pub fn alloc(&mut self, length: &Value) -> u64 {
-        let len = length.as_u64().unwrap(); //solver.max_value(length);
+        let len = length.as_u64().unwrap(); 
         self.heap.alloc(len)
+    }
+
+    pub fn alloc_sym(&mut self, length: &Value, solver: &mut Solver) -> Value {
+        let len = solver.max_value(length);
+        Value::Concrete(self.heap.alloc(len), 0)
     }
 
     pub fn free(&mut self, addr: &Value) -> Value {

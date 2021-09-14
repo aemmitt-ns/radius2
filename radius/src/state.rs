@@ -153,6 +153,10 @@ impl State {
     }
 
     // yes i hate all of this
+    pub fn memory_alloc(&mut self, length: &Value) -> Value {
+        self.memory.alloc_sym(length, &mut self.solver)
+    }
+
     pub fn memory_read(&mut self, address: &Value, length: &Value) -> Vec<Value> {
         self.memory.read_sym_len(address, length, &mut self.solver)
     }
@@ -332,15 +336,19 @@ impl State {
         let mut data: Vec<u8> = vec!();
         if self.solver.is_sat() {
             //let one_sol = new_bv.get_a_solution().disambiguate();
-            let solution = self.solver.solution(&new_bv).unwrap();
-            for i in 0..(new_bv.get_width()/8) as usize {
-                let sol = u8::from_str_radix(&solution[i*8..(i+1)*8], 2);
-                data.push(sol.unwrap());
+            let solution_opt = self.solver.solution(&new_bv);
+            if let Some(solution) = solution_opt {
+                for i in 0..(new_bv.get_width()/8) as usize {
+                    let sol = u8::from_str_radix(&solution[i*8..(i+1)*8], 2);
+                    data.push(sol.unwrap());
+                }
+                if self.memory.endian == Endian::Little {
+                    data.reverse();
+                }
+                String::from_utf8(data).ok()
+            } else {
+                None
             }
-            if self.memory.endian == Endian::Little {
-                data.reverse();
-            }
-            Some(String::from_utf8(data).unwrap())
         } else {
             None
         }
