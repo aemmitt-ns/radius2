@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 
 const EVAL_MAX: u64 = 256;
 
-type BitVec = BV<Arc<Btor>>;
+pub type BitVec = BV<Arc<Btor>>;
 
 #[derive(Debug, Clone)]
 pub struct Solver {
@@ -93,11 +93,11 @@ impl Solver {
             },
             Value::Symbolic(val, _t) => {
                 //let new_val = self.translate(val).unwrap();
-                let szdiff = (val.get_width() - length) as i32;
+                let szdiff = val.get_width() as i32 - length as i32;
                 match szdiff.cmp(&0) {
                     Ordering::Equal => val.to_owned(),
                     Ordering::Greater => val.slice(length-1, 0),
-                    Ordering::Less => val.uext(-szdiff as u32)
+                    Ordering::Less => val.uext((-szdiff) as u32)
                 }
             }
         }
@@ -251,10 +251,19 @@ impl Solver {
     }
 
     #[inline]
-    pub fn assert(&mut self, bv: &BV<Arc<Btor>>) {
+    pub fn assert(&mut self, bv: &BitVec) {
         //let new_bv = self.translate(bv).unwrap();
         //new_bv.assert();
         self.assertions.push(bv.to_owned());
+    }
+
+    // pitfall is that concrete values still need to be 0 or 1
+    // eg. 2 will evaluate to false. This isn't used anywhere though
+    #[inline]
+    pub fn assert_value(&mut self, value: &Value) {
+        //let new_bv = self.translate(bv).unwrap();
+        //new_bv.assert();
+        self.assertions.push(self.to_bv(value, 1));
     }
 
     #[inline]

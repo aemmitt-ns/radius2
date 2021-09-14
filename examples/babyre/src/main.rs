@@ -12,7 +12,7 @@ fn scanf_sim(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 fn main() {
-    // runs better without opt and sims
+    // runs better without opt and default sims
     let options = vec!(RadiusOption::Optimize(false), RadiusOption::Sims(false));
     let mut radius = Radius::new_with_options("tests/baby-re", options, None);
     let main = radius.get_address("main").unwrap();

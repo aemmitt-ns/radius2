@@ -2,11 +2,9 @@ use crate::r2_api::{R2Api, Endian};
 use crate::registers::Registers;
 use crate::memory::Memory;
 use crate::value::Value;
-use crate::solver::Solver;
+use crate::solver::{Solver, BitVec};
 use crate::sims::fs::SimFilesytem;
 
-use boolector::{Btor, BV};
-use std::sync::Arc;
 use std::u8;
 use std::collections::HashMap;
 
@@ -55,7 +53,7 @@ pub struct State {
     pub r2api:     R2Api,
     pub stack:     Vec<StackItem>,
     pub esil:      EsilState,
-    pub condition: Option<BV<Arc<Btor>>>,
+    pub condition: Option<BitVec>,
     pub registers: Registers,
     pub memory:    Memory,
     pub filesystem:SimFilesytem,
@@ -68,6 +66,7 @@ pub struct State {
 }
 
 impl State {
+    /// Create a new state, should generally not be called directly
     pub fn new(r2api: &mut R2Api, blank: bool, check: bool) -> Self {
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
@@ -153,53 +152,68 @@ impl State {
     }
 
     // yes i hate all of this
+
+    /// Allocate a block of memory `length` bytes in size
     pub fn memory_alloc(&mut self, length: &Value) -> Value {
         self.memory.alloc_sym(length, &mut self.solver)
     }
 
+    /// Read `length` bytes from `address`
     pub fn memory_read(&mut self, address: &Value, length: &Value) -> Vec<Value> {
         self.memory.read_sym_len(address, length, &mut self.solver)
     }
 
+    /// Write `length` bytes to `address`
     pub fn memory_write(&mut self, address: &Value, values: &[Value], length: &Value) {
         self.memory.write_sym_len(address, values, length, &mut self.solver)
     }
 
+    /// Read `length` byte value from `address`
     pub fn memory_read_value(&mut self, address: &Value, length: usize) -> Value {
         self.memory.read_sym(address, length, &mut self.solver)
     }
 
+    /// Write `length` byte value to `address`
     pub fn memory_write_value(&mut self, address: &Value, value: &Value, length: usize) {
         self.memory.write_sym(address, value, length, &mut self.solver)
     }
 
+    /// Search for `needle` at the address `addr` for a maximum of `length` bytes 
     pub fn memory_search(&mut self, addr: &Value, needle: &Value, length: &Value, reverse: bool) -> Value {
         self.memory.search(addr, needle, length, reverse, &mut self.solver)
     }
 
+    /// Compare memory at `dst` and `src` address up to `length` bytes.
+    /// This is akin to memcmp but will handle symbolic addrs and length
     pub fn memory_compare(&mut self, dst: &Value, src: &Value, length: &Value) -> Value {
         self.memory.compare(dst, src, length, &mut self.solver)
     }
 
+    /// Get the length of the null terminated string at `addr`
     pub fn memory_strlen(&mut self, addr: &Value, length: &Value) -> Value {
         self.memory.strlen(addr, length, &mut self.solver)
     }
 
+    /// Move `length` bytes from `src` to `dst`
     pub fn memory_move(&mut self, dst: &Value, src: &Value, length: &Value) {
         self.memory.memmove(dst, src, length, &mut self.solver)
     }
 
+    /// Read a string from `address` up to `length` bytes long
     pub fn memory_read_string(&mut self, address: u64, length: usize) -> String {
         self.memory.read_string(address, length, &mut self.solver)
     }
 
     // this doesnt need to be here, just for consistency sake
+    /// Write `string` to `address`
     pub fn memory_write_string(&mut self, address: u64, string: &str) {
         self.memory.write_string(address, string)
     }
 
     // TODO do this in a way that isn't a global maximum of stupidity
-    // apply this state to the radare2 instance
+    /// Apply this state to the radare2 instance. This writes all the values
+    /// in the states memory back to the memory in r2 as well as the register
+    /// values, evaluating any symbolic expressions. 
     pub fn apply(&mut self) {
         let mut inds = vec!();
         for reg in &self.registers.indexes {
@@ -218,22 +232,26 @@ impl State {
         }
     }
 
-    // useful for constraining the data in some initial
-    // state with the assertions of some desired final state
+    /// Use the constraints from the provided state. This is
+    /// useful for constraining the data in some initial
+    /// state with the assertions of some desired final state
     pub fn constrain_with_state(&mut self, state: &Self) {
        self.solver = state.solver.clone(); 
     }
 
+    /// Create a bitvector from this states solver
     #[inline]
-    pub fn bv(&self, s: &str, n: u32) -> BV<Arc<Btor>>{
+    pub fn bv(&self, s: &str, n: u32) -> BitVec {
         self.solver.bv(s, n)
     }
 
+    /// Create a bitvector value from this states solver
     #[inline]
-    pub fn bvv(&self, v: u64, n: u32) -> BV<Arc<Btor>>{
+    pub fn bvv(&self, v: u64, n: u32) -> BitVec {
         self.solver.bvv(v, n)
     }
 
+    /// Create a `Value::Concrete` from a value `v` and bit width `n`
     pub fn concrete_value(&self, v: u64, n: u32) -> Value {
         let mask = if n < 64 { 
             (1 << n) - 1
@@ -243,10 +261,12 @@ impl State {
         Value::Concrete(v & mask, 0)
     }
 
+    /// Create a `Value::Symbolic` from a name `s` and bit width `n` 
     pub fn symbolic_value(&self, s: &str, n: u32) -> Value {
         Value::Symbolic(self.bv(s, n), 0)
     }
 
+    /// Create a tainted `Value::Concrete` from a value `v` and bit width `n`
     pub fn tainted_concrete_value(&mut self, t: &str, v: u64, n: u32) -> Value {
         let mask = if n < 64 { 
             (1 << n) - 1
@@ -257,11 +277,13 @@ impl State {
         Value::Concrete(v & mask, taint)
     }
 
+    /// Create a tainted `Value::Symbolic` from a name `s` and bit width `n` 
     pub fn tainted_symbolic_value(&mut self, t: &str, s: &str, n: u32) -> Value {
         let taint = self.get_tainted_identifier(t);
         Value::Symbolic(self.bv(s, n), taint)
     }
 
+    /// Get the numeric identifier for the given taint name
     pub fn get_tainted_identifier(&mut self, t: &str) -> u64 {
         if let Some(taint) = self.taints.get(t) {
             *taint
@@ -277,12 +299,16 @@ impl State {
         }
     }
 
+    /// Check if the `value` is tainted with the given `taint`  
     pub fn is_tainted_with(&mut self, value: &Value, taint: &str) -> bool {
-        value.get_taint() & self.get_tainted_identifier(taint) != 0
+        (value.get_taint() & self.get_tainted_identifier(taint)) != 0
     }
 
+    // I generally don't want to expose these since they really shouldnt be used
+    // the Solver struct should be used to abstract away different solvers 
+    // while having the same Btor instance to avoid state merge issues
     #[inline]
-    pub fn translate(&mut self, bv: &BV<Arc<Btor>>) -> Option<BV<Arc<Btor>>> {
+    pub fn translate(&mut self, bv: &BitVec) -> Option<BitVec> {
         self.solver.translate(bv)
     }
 
@@ -291,27 +317,30 @@ impl State {
         self.solver.translate_value(value)
     }
 
+    /// Evaluate a `Value` `val`
     #[inline]
     pub fn eval(&mut self, val: &Value) -> Option<Value> {
         self.solver.eval(val)
     }
 
+    /// Evaluate a bitvector `bv`
     #[inline]
-    pub fn evaluate(&mut self, bv: &BV<Arc<Btor>>) -> Option<Value> {
+    pub fn evaluate(&mut self, bv: &BitVec) -> Option<Value> {
         self.solver.evaluate(bv)
     }
 
-    // evaluate and constrain the symbol to the value
+    /// Evaluate and constrain the symbol to the u64
     #[inline]
-    pub fn evalcon(&mut self, bv: &BV<Arc<Btor>>) -> Option<u64> {
+    pub fn evalcon(&mut self, bv: &BitVec) -> Option<u64> {
         self.solver.evalcon(bv)
     }
 
     // TODO
-    /*pub fn constrain_bytes(&mut self, bv: &BV<Arc<Btor>>, pattern: &str) {
+    /*pub fn constrain_bytes(&mut self, bv: &BitVec, pattern: &str) {
 
     }*/
 
+    /// Check if this state is satisfiable and mark the state `Unsat` if not
     #[inline]
     pub fn is_sat(&mut self) -> bool {
         if self.solver.is_sat() {
@@ -322,16 +351,25 @@ impl State {
         }
     }
 
+    /// Assert the truth of the given bitvector (value != 0)
     #[inline]
-    pub fn assert(&mut self, bv: &BV<Arc<Btor>>) {
+    pub fn assert(&mut self, bv: &BitVec) {
         self.solver.assert(bv)
     }
 
-    pub fn evaluate_many(&mut self, bv: &BV<Arc<Btor>>) -> Vec<u64> {
+    /// Assert the truth of the given `Value` (lsb of value != 0)
+    #[inline]
+    pub fn assert_value(&mut self, value: &Value) {
+        self.solver.assert_value(value)
+    }
+
+    /// Evaluate multiple solutions to bv
+    pub fn evaluate_many(&mut self, bv: &BitVec) -> Vec<u64> {
         self.solver.evaluate_many(bv)
     }
 
-    pub fn evaluate_string(&mut self, bv: &BV<Arc<Btor>>) -> Option<String> {
+    /// Evaluate a string from bitvector `bv` 
+    pub fn evaluate_string(&mut self, bv: &BitVec) -> Option<String> {
         let new_bv = self.translate(bv).unwrap();
         let mut data: Vec<u8> = vec!();
         if self.solver.is_sat() {
@@ -354,6 +392,7 @@ impl State {
         }
     }
 
+    /// Evaluate string from value
     pub fn evaluate_string_value(&mut self, value: &Value) -> Option<String> {
         self.evaluate_string(value.as_bv().as_ref().unwrap())
     }

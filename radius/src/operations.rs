@@ -382,8 +382,8 @@ macro_rules! binary_method {
 
 #[inline]
 pub fn genmask(bits: u64) -> u64 {
-    if bits > 0 && bits < 64 {
-        (2 << bits) - 1
+    if bits > 0 && bits < 63 {
+        (2u64 << bits) - 1
     } else {
         0xffffffffffffffff
     }

@@ -50,7 +50,7 @@ impl Registers {
         for reg in reg_info.reg_info {
             let mut bounds = Bounds {
                 start: reg.offset,
-                end: reg.offset+reg.size,
+                end: reg.offset.wrapping_add(reg.size),
                 size: reg.size
             };
     
@@ -89,10 +89,12 @@ impl Registers {
         registers
     }
 
+    /// Get the value of the register `reg`
     pub fn get(&mut self, reg: &str) -> Value {
         self.get_value(self.regs[reg].index)
     }
 
+    /// Set the value of the register `reg`
     pub fn set(&mut self, reg: &str, value: Value) {
         self.set_value(self.regs[reg].index, value)
     }
@@ -102,6 +104,7 @@ impl Registers {
         self.regs.get(reg)
     }
 
+    /// Get register with name OR alias, eg. `PC`, `SP`
     pub fn get_with_alias(&mut self, alias: &str) -> Value {
         let mut reg = alias.to_owned();
         if let Some(r) = self.aliases.get(alias) {
@@ -110,6 +113,7 @@ impl Registers {
         self.get_value(self.regs[reg.as_str()].index)
     }
 
+    /// Set register with name OR alias, eg. `PC`, `SP`
     pub fn set_with_alias(&mut self, alias: &str, value: Value) {
         let mut reg = alias.to_owned();
         if let Some(r) = self.aliases.get(alias) {
