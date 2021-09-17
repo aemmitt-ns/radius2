@@ -190,7 +190,7 @@ impl Memory {
             if seg.name == ".data" {
                 seg.size = seg.addr+seg.size+inc;
                 return seg.addr;
-            } 
+            }
         }
         -1i64 as u64
     }
@@ -342,10 +342,10 @@ impl Memory {
                 if *res != 0 {
                     break;
                 }
-            } /*else if value.id(&needle) == Value::Concrete(1, 0) {
+            } else if value.id(&needle).as_u64().unwrap() == 1 {
                 // this is weird but cuts searches on identical values
                 break;
-            }*/
+            }
         }
         
         result
@@ -489,6 +489,7 @@ impl Memory {
         for d in data {
             data_value.push(Value::Concrete(*d as u64, 0));
         }
+        data_value.push(Value::Concrete(0, 0));
         self.write(addr, &mut data_value);
     }
 

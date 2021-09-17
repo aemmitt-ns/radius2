@@ -185,10 +185,11 @@ fn fileread() {
 fn symmem() {
     use crate::radius::{Radius, RadiusOption};
     use crate::value::Value;
+    use crate::sims::libc::atoi_helper;
 
     let mut radius = Radius::new_with_options(
         "../tests/symmem", 
-        vec!(RadiusOption::Debug(true)), 
+        vec!(RadiusOption::Debug(false)), 
         None
     );
     
@@ -235,6 +236,18 @@ fn symmem() {
         c._eq(&state.bvv(0, 64)).assert();
         println!("{}", state.evaluate_string(&x).unwrap());
     }
+
+    let len = 8;
+    state.memory.write_string(0x200000, "00000110");
+    let atoi_addr = Value::Concrete(0x200000, 0);
+    let numstr = state.symbolic_value("numstr", 32);
+    //state.memory_write_value(&atoi_addr, &numstr, len as usize);
+    let num = atoi_helper(&mut state, &atoi_addr, &numstr);
+    state.assert_value(&num.eq(&Value::Concrete(110i64 as u64, 0)));
+    println!("num: {:?}", num);
+    //println!("atoi: {:?}", state.memory_read_string(0x200000, len));
+    //println!("atoi: {:?}", state.evaluate_string_value(&numstr));
+    println!("atoi: {:?}", state.eval(&numstr));
 
     //println!("cmp: {:?}", cmp);
 

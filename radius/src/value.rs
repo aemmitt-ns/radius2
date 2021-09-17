@@ -71,7 +71,6 @@ macro_rules! binary_ops {
     };
 }
 
-// this kinda sucks but its maybe necessary?
 macro_rules! wrapping_binary_ops {
     ($self:expr, $rhs:expr, $method:ident, $wrapping:ident) => {
         match ($self, $rhs) {

@@ -360,36 +360,113 @@ pub fn fseek(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 /*
-pub fn atoi_helper(state: &mut State, addr, size=SIZE): // still sucks
-    string, length = state.symbolic_string(addr)
+ * From SO
+ * atoi reads digits from the buffer until it can't any more. It stops when it 
+ * encounters any character that isn't a digit, except whitespace (which it skips)
+ * or a '+' or a '-' before it has seen any digits (which it uses to select the 
+ * appropriate sign for the result). It returns 0 if it saw no digits.
+ */
 
-    if z3.is_bv_value(string):
-        cstr = state.evaluate_string(string)
-        return BV(int(cstr), size)
-    else:
-        length = state.evalcon(length).as_long() // unfortunate
+ fn vc(n: u64) -> Value {
+    Value::Concrete(n, 0)
+ }
 
-        result = BV(0, size)
-        is_neg = z3.BoolVal(False)
-        m = BV(ord("-"), 8)
-        for i in range(length):
-            d = state.mem_read_bv(addr+i, 1)
-            is_neg = z3.If(d == m, z3.BoolVal(True), is_neg)
-            c = z3.If(d == m, BV(0, size), z3.ZeroExt(size-8, d-BV_0))
-            result = result+(c*BV(10**(length-(i+1)), size))
+ // is digit
+fn isdig(c: &Value) -> Value {
+    c.ult(&Value::Concrete(0x3a, 0)) & !c.ult(&Value::Concrete(0x30, 0))
+}
 
-        result = z3.If(is_neg, -result, result)
-        return result
+// is whitespace
+fn _isws(c: &Value) -> Value {
+    c.eq(&Value::Concrete(0x09, 0)) | 
+    c.eq(&Value::Concrete(0x20, 0)) | 
+    c.eq(&Value::Concrete(0x0d, 0)) | 
+    c.eq(&Value::Concrete(0x0a, 0))
+}
 
-pub fn atoi(state: &mut State, addr):
-    return atoi_helper(state: &mut State, addr, 32)
+fn bv_pow(bv: &Value, exp: u32) -> Value {
+    let mut result = vc(1);
+    for _ in 0..exp {
+        result = result * bv.clone();
+    }
+    result
+}
 
-pub fn atol(state: &mut State, addr):
-    return atoi_helper(state: &mut State, addr, state.bits)
+// is valid digit of base
+fn isbasedigit(state: &State, c: &Value, base: &Value) -> Value {
+    state.solver.conditional(
+        &base.ult(&vc(11)),
+        &(c.ult(&(vc('0' as u64)+base.clone())) & !c.ult(&vc('0' as u64))),
+        &(isdig(c) | (c.ult(&(vc('a' as u64)+base.sub(&vc(10)))) & !c.ult(&vc('a' as u64))) |
+        (c.ult(&(vc('A' as u64)+base.sub(&vc(10)))) & !c.ult(&vc('A' as u64)))))
+}
 
-pub fn atoll(state: &mut State, addr):
-    return atoi_helper(state: &mut State, addr, 64)
+fn tonum(state: &State, c: &Value) -> Value {
+    let alpha = state.solver.conditional(
+        &c.ulte(&vc('Z' as u64)),
+        &c.sub(&vc('A' as u64 - 10)),
+        &c.sub(&vc('a' as u64 - 10))
+    );
 
+    state.solver.conditional(
+        &c.ulte(&vc('9' as u64)),
+        &c.sub(&vc('0' as u64)),
+        &alpha
+    )
+}
+
+// for now and maybe forever this only works 
+pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value) -> Value {
+    let length = state.memory_strlen(&addr, &Value::Concrete(64, 0)); 
+    let data = state.memory_read(&addr, &length);
+    let len = data.len();
+
+    state.assert_value(&length.eq(&vc(len as u64)));
+    if len == 0 {
+        return Value::Concrete(0, 0);
+    }
+    let mut result = Value::Concrete(0, 0);
+
+    // multiplier for negative nums
+    let neg_mul = state.solver.conditional(
+        &data[0].eq(&vc('-' as u64)),
+        &Value::Concrete(-1i64 as u64, 0),
+        &Value::Concrete(1, 0));
+
+    for (i, d) in data.iter().enumerate() {
+        let dx = d.uext(&vc(8)); 
+        let exp = (len-i-1) as u32;
+
+        // digit or minus
+        let cond = if i == 0 {
+            isbasedigit(state, &dx, base) | dx.eq(&vc('-' as u64))
+        } else {
+            isbasedigit(state, &dx, base)
+        };
+        state.assert_value(&cond);
+
+        // add d*10**n to result
+        result = result + state.solver.conditional(
+            &!isbasedigit(state, &dx, base), &vc(0),
+            &(bv_pow(base, exp) * tonum(state, &dx))
+        );
+    }
+    result * neg_mul
+}
+
+pub fn atoi(state: &mut State, args: Vec<Value>) -> Value {
+    atoi_helper(state, &args[0], &vc(10)).slice(31, 0)
+}
+
+pub fn atol(state: &mut State, args: Vec<Value>) -> Value {
+    atoi_helper(state, &args[0], &vc(10)).slice(31, 0)
+}
+
+pub fn atoll(state: &mut State, args: Vec<Value>) -> Value {
+    atoi_helper(state, &args[0], &vc(10))
+}
+
+/*
 pub fn digit_to_char(digit):
     if digit < 10:
         return str(digit)

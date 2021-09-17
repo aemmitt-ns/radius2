@@ -33,7 +33,7 @@ pub enum RadiusOption {
  * Radius can be instantiated using either `Radius::new(filename: &str)`
  * or `Radius::new_with_options(...)` 
  * 
- * Example
+ * **Example**
  * 
  * ```
  * use radius::radius::Radius;

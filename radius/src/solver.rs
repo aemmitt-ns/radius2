@@ -115,7 +115,7 @@ impl Solver {
             },
             Value::Symbolic(val, t) => {
                 let taint = if_val.get_taint() | else_val.get_taint();
-                Value::Symbolic(val.cond_bv(
+                Value::Symbolic(val.slice(0, 0).cond_bv(
                     &self.to_bv(if_val, 64),
                     &self.to_bv(else_val, 64)), taint | t)
             }
