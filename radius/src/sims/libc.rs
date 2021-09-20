@@ -482,7 +482,7 @@ pub fn atoi(state: &mut State, args: Vec<Value>) -> Value {
 
 pub fn atol(state: &mut State, args: Vec<Value>) -> Value {
     let bits = state.memory.bits;
-    atoi_helper(state, &args[0], &vc(10)).slice(bits, 0)
+    atoi_helper(state, &args[0], &vc(10)).slice(bits-1, 0)
 }
 
 pub fn atoll(state: &mut State, args: Vec<Value>) -> Value {
@@ -508,7 +508,7 @@ pub fn strtod(state: &mut State, args: Vec<Value>) -> Value {
 
 pub fn strtol(state: &mut State, args: Vec<Value>) -> Value {
     let bits = state.memory.bits;
-    strtoll(state, args).slice(bits, 0)
+    strtoll(state, args).slice(bits-1, 0)
 }
 
 pub fn itoa_helper(state: &mut State, value: &Value, 
