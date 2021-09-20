@@ -415,7 +415,21 @@ fn tonum(state: &State, c: &Value) -> Value {
     )
 }
 
-// for now and maybe forever this only works 
+fn atoi_concrete(state: &mut State, addr: &Value, base: &Value, len: usize) -> Value {
+    let numstr = state.memory_read_string(addr.as_u64().unwrap(), len);
+    let numstr = numstr.trim_start(); // trim whitespace
+
+    let start = if &numstr[0..2] == "0x" { 2 } else { 0 }; // offset
+    // oof this is rough, atoi / strtol stop at first nondigit, from_str_radix gives 0
+    let end = if let Some(n) = numstr[start+1..].chars().position(|c| isbasedigit(
+        state, &vc(c as u64), base).as_u64().unwrap() != 1) { start+n+1 } else { len }; // oof
+
+    let numopt = u64::from_str_radix(&numstr[start..end], base.as_u64().unwrap() as u32);
+    return if let Ok(n) = numopt { vc(n) } else { vc(0) };
+}
+
+// for now and maybe forever this only works for strings that 
+// don't have garbage in them. so only strings with digits or +/- 
 pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value) -> Value {
     let length = state.memory_strlen(&addr, &Value::Concrete(64, 0)); 
     let data = state.memory_read(&addr, &length);
@@ -425,6 +439,13 @@ pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value) -> Value {
     if len == 0 {
         return Value::Concrete(0, 0);
     }
+
+    // gonna take the easy way out and special case out all concrete
+    if addr.is_concrete() && base.is_concrete() 
+        && data.iter().all(|x| x.is_concrete()) {
+        return atoi_concrete(state, addr, base, len);
+    }
+
     let mut result = Value::Concrete(0, 0);
 
     // multiplier for negative nums
@@ -437,9 +458,10 @@ pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value) -> Value {
         let dx = d.uext(&vc(8)); 
         let exp = (len-i-1) as u32;
 
-        // digit or minus
+        // digit or + / - 
         let cond = if i == 0 {
-            isbasedigit(state, &dx, base) | dx.eq(&vc('-' as u64))
+            isbasedigit(state, &dx, base) | 
+            dx.eq(&vc('-' as u64)) | dx.eq(&vc('+' as u64))
         } else {
             isbasedigit(state, &dx, base)
         };
@@ -459,64 +481,90 @@ pub fn atoi(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 pub fn atol(state: &mut State, args: Vec<Value>) -> Value {
-    atoi_helper(state, &args[0], &vc(10)).slice(31, 0)
+    let bits = state.memory.bits;
+    atoi_helper(state, &args[0], &vc(10)).slice(bits, 0)
 }
 
 pub fn atoll(state: &mut State, args: Vec<Value>) -> Value {
     atoi_helper(state, &args[0], &vc(10))
 }
 
-/*
-pub fn digit_to_char(digit):
-    if digit < 10:
-        return str(digit)
+pub fn strtoll(state: &mut State, args: Vec<Value>) -> Value {
+    // not perfect but idk
+    if let Value::Concrete(addr, _) = args[1] {
+        if addr != 0 {
+            let length = state.memory_strlen(&args[0], &Value::Concrete(64, 0)); 
+            state.memory_write_value(&args[1], &args[0].add(&length), 
+                state.memory.bits as usize / 8);
+        }
+    }
 
-    return chr(ord('a') + digit - 10)
+    atoi_helper(state, &args[0], &args[2])
+}
 
-pub fn str_base(number, base):
-    if number < 0:
-        return '-' + str_base(-number, base)
+pub fn strtod(state: &mut State, args: Vec<Value>) -> Value {
+    strtoll(state, args).slice(31, 0)
+}
 
-    (d, m) = divmod(number, base)
-    if d > 0:
-        return str_base(d, base) + digit_to_char(m)
+pub fn strtol(state: &mut State, args: Vec<Value>) -> Value {
+    let bits = state.memory.bits;
+    strtoll(state, args).slice(bits, 0)
+}
 
-    return digit_to_char(m)
+pub fn itoa_helper(state: &mut State, value: &Value, 
+    string: &Value, base: &Value, sign: bool, size: usize) -> Value {
 
-pub fn bvpow(bv, ex):
-    nbv = BV(1, 128)
-    for i in range(ex):
-        nbv = nbv*bv
-    
-    return z3.simplify(nbv)
+    let mut data = vec!();
 
-pub fn itoa_helper(state: &mut State, value, string, base, sign=True):
-    // ok so whats going on here is... uhh it works
-    data = [BZERO]
-    nvalue = z3.SignExt(96, z3.Extract(31, 0, value))
-    pvalue = z3.ZeroExt(64, value)
-    do_neg = z3.And(nvalue < 0, base == 10, z3.BoolVal(sign))
-    base = z3.ZeroExt(64, base)
-    new_value = z3.If(do_neg, -nvalue, pvalue)
-    shift = BV(0, 128)
-    for i in range(32):
-        d = (new_value % bvpow(base, i+1)) / bvpow(base, i)
-        c = z3.Extract(7, 0, d)
-        shift = z3.If(c == BZERO, shift+BV(8, 128), BV(0, 128))
-        data.append(z3.If(c < 10, c+BV_0, (c-10)+BV_a))
+    // condition to add a minus sign -
+    let neg_cond = &(value.slt(&vc(0)) & base.eq(&vc(10)) & vc(sign as u64));
 
-    pbv = z3.Concat(*data)
-    szdiff = pbv.size()-shift.size()
-    pbv = pbv >> z3.ZeroExt(szdiff, shift)
-    nbv = z3.simplify(z3.Concat(pbv, BV(ord("-"),8)))
-    pbv = z3.simplify(z3.Concat(BV(0,8), pbv)) // oof
-    state.mem_write(string, z3.If(do_neg, nbv, pbv))
+    let uval = state.solver.conditional(
+        &neg_cond, &value.mul(&vc(-1i64 as u64)), &value);
+
+    let uval = Value::Symbolic(state.solver.to_bv(&uval, 128), 0); 
+    let ubase = Value::Symbolic(state.solver.to_bv(&base, 128), 0); 
+    let mut shift = Value::Symbolic(state.solver.bvv(0, 64), 0); 
+
+    for i in 0..size as u32 {
+        let dx = uval.rem(&bv_pow(&ubase, i+1)).div(&bv_pow(&ubase, i));
+
+        // shift that will be applied to remove 00000...
+        shift = state.solver.conditional(
+            &!dx.clone(), &shift.add(&vc(8)), &vc(0));
+
+        data.push(state.solver.conditional(
+            &dx.ult(&vc(10)),
+            &dx.add(&vc('0' as u64)),
+            &dx.sub(&vc(10)).add(&vc('a' as u64))
+        ));
+    }
+
+    data.reverse();
+
+    let bv = state.memory.pack(&data).as_bv().unwrap();
+    let shift_bits = 31 - bv.get_width().leading_zeros(); // log2(n)
+    let bv = bv.srl(&shift.as_bv().unwrap().slice(shift_bits-1, 0));
+    let mut new_addr = string.clone();
+
+    if sign { 
+        let b = state.solver.conditional(
+            &neg_cond, &vc('-' as u64), &vc('+' as u64));
         
-    return string
+        state.memory_write_value(&string, &b, 1);
 
-pub fn itoa(state: &mut State, value, string, base):
-    return itoa_helper(state: &mut State, value, string, base)
-*/
+        // if we add a minus, write number to addr+1 
+        new_addr = state.solver.conditional(
+            &neg_cond, &(new_addr.clone()+vc(1)), &new_addr);
+    }
+    state.memory_write_value(&new_addr, &Value::Symbolic(bv,0), data.len());
+
+    string.to_owned()
+}
+
+pub fn itoa(state: &mut State, args: Vec<Value>) -> Value {
+    itoa_helper(state, &args[0], &args[1], &args[2], true, 32)
+}
 
 pub fn islower(_state: &mut State, args: Vec<Value>) -> Value {
     let c = args[0].slice(7, 0);

@@ -5,12 +5,10 @@ use std::sync::Arc;
 use std::ops;
 use std::cmp::Ordering;
 
-// hyper efficient log_2 
-pub const LOG: [u32; 65] = 
-   [0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
-    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 
-    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6];
+#[inline]
+pub fn log2(x: u32) -> u32 {
+    31 - x.leading_zeros()
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -235,7 +233,7 @@ impl ops::Shl<Value> for Value {
                 Value::Concrete(a.wrapping_shl(b as u32), t1 | t2)
             },
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
-                let bv = make_bv(&a, b, LOG[a.get_width() as usize]);
+                let bv = make_bv(&a, b, log2(a.get_width()));
                 Value::Symbolic(a.sll(&bv), t1 | t2)
             },
             (Value::Concrete(a, t1), Value::Symbolic(b, t2)) => {
@@ -243,7 +241,7 @@ impl ops::Shl<Value> for Value {
                 Value::Symbolic(bv.sll(&b.slice(5, 0)), t1 | t2)
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
-                Value::Symbolic(a.sll(&b.slice(LOG[a.get_width() as usize]-1, 0)), t1 | t2)
+                Value::Symbolic(a.sll(&b.slice(log2(a.get_width())-1, 0)), t1 | t2)
             }
         }
     }
@@ -259,7 +257,7 @@ impl ops::Shr<Value> for Value {
                 Value::Concrete(a.wrapping_shr(b as u32), t1 | t2)
             },
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
-                let bv = make_bv(&a, b, LOG[a.get_width() as usize]);
+                let bv = make_bv(&a, b, log2(a.get_width()));
                 //println!("{:?} {:?}", a, b);
                 Value::Symbolic(a.srl(&bv), t1 | t2)
             },
@@ -268,7 +266,7 @@ impl ops::Shr<Value> for Value {
                 Value::Symbolic(bv.srl(&b.slice(5, 0)), t1 | t2)
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
-                Value::Symbolic(a.srl(&b.slice(LOG[a.get_width() as usize]-1, 0)), t1 | t2)
+                Value::Symbolic(a.srl(&b.slice(log2(a.get_width())-1, 0)), t1 | t2)
             }
         }
     }
@@ -336,15 +334,15 @@ impl Value {
                 Value::Concrete(((sign_ext as i64) >> (b as i64)) as u64, t1 | t2)
             },
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
-                let bv = make_bv(&a, b, LOG[sz as usize]);
+                let bv = make_bv(&a, b, log2(sz));
                 Value::Symbolic(a.slice(sz-1, 0).sra(&bv), t1 | t2)
             },
             (Value::Concrete(a, t1), Value::Symbolic(b, t2)) => {
                 let bv = make_bv(&b, a, sz);
-                Value::Symbolic(bv.sra(&b.slice(LOG[sz as usize]-1, 0)), t1 | t2)
+                Value::Symbolic(bv.sra(&b.slice(log2(sz)-1, 0)), t1 | t2)
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
-                Value::Symbolic(a.slice(sz-1, 0).sra(&b.slice(LOG[sz as usize]-1, 0)), t1 | t2)
+                Value::Symbolic(a.slice(sz-1, 0).sra(&b.slice(log2(sz)-1, 0)), t1 | t2)
             }
         }
     }
@@ -360,15 +358,15 @@ impl Value {
                 Value::Concrete(val, t1 | t2)
             },
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
-                let bv = make_bv(&a, b, LOG[sz as usize]);
+                let bv = make_bv(&a, b, log2(sz));
                 Value::Symbolic(a.slice(sz-1, 0).ror(&bv), t1 | t2)
             },
             (Value::Concrete(a, t1), Value::Symbolic(b, t2)) => {
                 let bv = make_bv(&b, a, sz);
-                Value::Symbolic(bv.slice(sz-1, 0).ror(&b.slice(LOG[sz as usize]-1, 0)), t1 | t2)
+                Value::Symbolic(bv.slice(sz-1, 0).ror(&b.slice(log2(sz)-1, 0)), t1 | t2)
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
-                Value::Symbolic(a.slice(sz-1, 0).ror(&b.slice(LOG[sz as usize]-1, 0)), t1 | t2)
+                Value::Symbolic(a.slice(sz-1, 0).ror(&b.slice(log2(sz)-1, 0)), t1 | t2)
             }
         }
     }
@@ -385,15 +383,15 @@ impl Value {
                 Value::Concrete(val, t1 | t2)
             },
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
-                let bv = make_bv(&a, b, LOG[sz as usize]);
+                let bv = make_bv(&a, b, log2(sz));
                 Value::Symbolic(a.slice(sz-1, 0).rol(&bv), t1 | t2)
             },
             (Value::Concrete(a, t1), Value::Symbolic(b, t2)) => {
                 let bv = make_bv(&b, a, sz);
-                Value::Symbolic(bv.slice(sz-1, 0).rol(&b.slice(LOG[sz as usize]-1, 0)), t1 | t2)
+                Value::Symbolic(bv.slice(sz-1, 0).rol(&b.slice(log2(sz)-1, 0)), t1 | t2)
             },
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
-                Value::Symbolic(a.slice(sz-1, 0).rol(&b.slice(LOG[sz as usize]-1, 0)), t1 | t2)
+                Value::Symbolic(a.slice(sz-1, 0).rol(&b.slice(log2(sz)-1, 0)), t1 | t2)
             }
         }
     }
@@ -634,6 +632,24 @@ impl Value {
     }
 
     #[inline]
+    pub fn is_concrete(&self) -> bool {
+        if let Value::Concrete(_, _) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    #[inline]
+    pub fn is_symbolic(&self) -> bool {
+        if let Value::Symbolic(_, _) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    #[inline]
     pub fn add(&self, rhs: &Value) -> Value {
         wrapping_binary_ops!(self, rhs, add, wrapping_add)
     }
@@ -657,7 +673,6 @@ impl Value {
     pub fn rem(&self, rhs: &Value) -> Value {
         wrapping_binary_ops!(self, rhs, urem, wrapping_rem)
     }
-
 
     #[inline]
     pub fn and(&self, rhs: &Value) -> Value {

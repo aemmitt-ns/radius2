@@ -71,6 +71,14 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("calloc",  libc::calloc, 2),
         make_sim("free",    libc::strnlen, 1),
 
+        make_sim("atoi", libc::atoi, 1),
+        make_sim("atol", libc::atoi, 1),
+        make_sim("itoa", libc::itoa, 3),
+
+        make_sim("strtol", libc::strtol, 3),
+        make_sim("strtoll", libc::strtol, 3),
+        make_sim("strtod", libc::strtol, 3),
+
         make_sim("islower", libc::islower, 1),
         make_sim("isupper", libc::isupper, 1),
         make_sim("isalpha", libc::isalpha, 1),

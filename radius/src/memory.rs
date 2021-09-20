@@ -225,7 +225,7 @@ impl Memory {
                 //let mut value = Value::Symbolic(self.solver.bvv(0, 64));
                 for a in addrs {
                     let read_val = self.read_value(a, len);
-                    let bv = solver.bvv(a, 64);
+                    let bv = solver.bvv(a, addr.get_width());
                     let cond = Value::Symbolic(addr._eq(&bv), *t);
                     let new_val = solver.conditional(&cond, &value, &read_val);
                     self.write_value(a, &new_val, len);
@@ -409,6 +409,10 @@ impl Memory {
 
     pub fn read(&mut self, addr: u64, length: usize) -> Vec<Value> {
 
+        if length == 0 {
+            return vec!();
+        }
+
         if self.check && !self.check_permission(addr, length as u64, 'r') {
             // everything needs to be reworked to have Result<...> 
             // so that we can properly handle things like this
@@ -525,17 +529,7 @@ impl Memory {
         }
 
         // if length > 64 bits use sym to cheat
-        let mut is_sym = length > 8; 
-        if !is_sym {
-            for datum in new_data {
-                if let Value::Symbolic(_val, _t) = datum {
-                    is_sym = true;
-                    break;
-                }
-            }
-        }
-
-        if is_sym {
+        if length > 8 || new_data.iter().any(|x| x.is_symbolic()) {
             // this value isn't used, idk
             let mut sym_val = self.solver.bvv(0, 1);
 
@@ -554,7 +548,7 @@ impl Memory {
                         taint |= t;
                     },
                     Value::Concrete(val, t) => {
-                        let new_val = self.solver.bvv(val << (8*count as u64), 8);
+                        let new_val = self.solver.bvv(*val/* << (8*count as u64)*/, 8);
 
                         if sym_val.get_width() == 1 {
                             sym_val = new_val;

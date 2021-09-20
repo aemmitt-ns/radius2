@@ -28,7 +28,7 @@ impl Solver {
         btor.set_opt(BtorOption::ModelGen(ModelGen::All));
         btor.set_opt(BtorOption::Incremental(true));
         btor.set_opt(BtorOption::OutputNumberFormat(NumberFormat::Hexadecimal));
-        btor.set_opt(BtorOption::PrettyPrint(false));
+        //btor.set_opt(BtorOption::PrettyPrint(false));
 
         Solver {
             btor,
@@ -105,6 +105,21 @@ impl Solver {
 
     #[inline]
     pub fn conditional(&self, cond: &Value, if_val: &Value, else_val: &Value) -> Value {
+        let mut max_bit = 1;
+        if if_val.is_symbolic() || else_val.is_symbolic() {
+            if let Value::Symbolic(ifv, _) = if_val {
+                max_bit = ifv.get_width();
+            }
+
+            if let Value::Symbolic(elv, _) = else_val {
+                if elv.get_width() > max_bit {
+                    max_bit = elv.get_width()
+                }
+            }
+        } else {
+            max_bit = 64;
+        }
+
         match cond {
             Value::Concrete(val, t) => {
                 if *val != 0 {
@@ -116,12 +131,11 @@ impl Solver {
             Value::Symbolic(val, t) => {
                 let taint = if_val.get_taint() | else_val.get_taint();
                 Value::Symbolic(val.slice(0, 0).cond_bv(
-                    &self.to_bv(if_val, 64),
-                    &self.to_bv(else_val, 64)), taint | t)
+                    &self.to_bv(if_val, max_bit),
+                    &self.to_bv(else_val, max_bit)), taint | t)
             }
         }
     }
-
 
     #[inline]
     pub fn evaluate(&self, bv: &BitVec) -> Option<Value> {

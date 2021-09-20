@@ -7,10 +7,12 @@ fn looper() {
 
     let options = vec!(RadiusOption::Sims(false)); // RadiusOption::Debug(true));
     let mut radius = Radius::new_with_options("../tests/looper", options, None);
-    let state = radius.call_state(0x100003f4c);
+    let state = radius.call_state(0x100003f88);
     //let state = radius.entry_state(&vec!("looper".to_owned()), &vec!());
     let mut new_state = radius.run_until(state, 0x100003fb4, vec!()).unwrap();
-    println!("{:?}", new_state.registers.get("x0"));
+    let x0 = new_state.registers.get("x0");
+    println!("{:?}", x0);
+    assert_eq!(x0.as_u64(), Some(1837180037));
 }
 
 #[test]
@@ -185,7 +187,7 @@ fn fileread() {
 fn symmem() {
     use crate::radius::{Radius, RadiusOption};
     use crate::value::Value;
-    use crate::sims::libc::atoi_helper;
+    use crate::sims::libc::{atoi_helper, itoa_helper};
 
     let mut radius = Radius::new_with_options(
         "../tests/symmem", 
@@ -240,14 +242,21 @@ fn symmem() {
     let len = 8;
     state.memory.write_string(0x200000, "00000110");
     let atoi_addr = Value::Concrete(0x200000, 0);
-    let numstr = state.symbolic_value("numstr", 32);
-    //state.memory_write_value(&atoi_addr, &numstr, len as usize);
-    let num = atoi_helper(&mut state, &atoi_addr, &numstr);
-    state.assert_value(&num.eq(&Value::Concrete(110i64 as u64, 0)));
-    println!("num: {:?}", num);
-    //println!("atoi: {:?}", state.memory_read_string(0x200000, len));
-    //println!("atoi: {:?}", state.evaluate_string_value(&numstr));
-    println!("atoi: {:?}", state.eval(&numstr));
+    let numstr = state.symbolic_value("numstr", 8*len);
+    state.memory_write_value(&atoi_addr, &numstr, len as usize);
+    let num = atoi_helper(&mut state, &atoi_addr, &Value::Concrete(2, 0)); //numstr);
+    state.assert_value(&num.sgt(&Value::Concrete(110i64 as u64, 0)));
+    //println!("num: {:?}", num);
+    println!("atoi: {:?}", state.evaluate_string_value(&numstr));
+
+    let itoa_addr = Value::Concrete(0x300000, 0);
+    let citoa_val = Value::Concrete(0x003239343731, 0);
+    //let itoa_val = Value::Concrete(0x4454, 0);
+    let itoa_val = state.symbolic_value("itoa", 32);
+    itoa_helper(&mut state, &itoa_val, &itoa_addr, &Value::Concrete(10, 0), true, 32);
+    let ibv = state.memory_read_value(&itoa_addr, 7);
+    state.assert_value(&ibv.eq(&citoa_val));
+    println!("itoa: {:?}", state.eval(&itoa_val));
 
     //println!("cmp: {:?}", cmp);
 
@@ -299,7 +308,6 @@ fn ioscrackme() {
     let buf_addr: u64 = 0x100000;
     state.registers.set("x0", Value::Concrete(buf_addr, 0));
     state.memory.write_value(buf_addr, &Value::Symbolic(bv.clone(), 0), len);
-
 
     let mut new_state = radius.run_until(
         state, 0x10000600c, vec!(0x100006044)).unwrap();
