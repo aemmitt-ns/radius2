@@ -3,7 +3,7 @@ use radius::state::State;
 use radius::value::Value;
 
 // simulates the scanf("%d", dst) calls with sym inputs
-fn scanf_sim(state: &mut State, args: Vec<Value>) -> Value {
+fn scanf_sim(state: &mut State, args: &[Value]) -> Value {
     let input_len = state.context.entry("ints".to_owned()).or_insert(vec!()).len();
     let new_int = state.symbolic_value(&format!("int{}", input_len), 32);
     state.memory_write_value(&args[1], &new_int, 4);
@@ -13,8 +13,8 @@ fn scanf_sim(state: &mut State, args: Vec<Value>) -> Value {
 
 fn main() {
     // runs better without opt and default sims
-    let options = vec!(RadiusOption::Optimize(false), RadiusOption::Sims(false));
-    let mut radius = Radius::new_with_options("tests/baby-re", options, None);
+    let options = [RadiusOption::Optimize(false), RadiusOption::Sims(false)];
+    let mut radius = Radius::new_with_options(Some("tests/baby-re"), &options);
     let main = radius.get_address("main").unwrap();
     let scanf = radius.get_address("sym.imp.__isoc99_scanf").unwrap();
 
@@ -22,7 +22,7 @@ fn main() {
     radius.simulate(scanf, scanf_sim);
 
     let state = radius.call_state(main); // start at main
-    let new_state = radius.run_until(state, 0x004028e9, vec!(0x00402941)).unwrap();
+    let new_state = radius.run_until(state, 0x004028e9, &[0x00402941]).unwrap();
 
     // solving takes the majority of the ~5 sec runtime
     let mut flag_bytes = vec!(); // the hook writes the flag bytes, collect them

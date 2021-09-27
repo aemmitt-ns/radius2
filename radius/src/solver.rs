@@ -4,7 +4,7 @@ use boolector::option::{BtorOption, ModelGen, NumberFormat};
 use std::sync::Arc;
 use std::cmp::Ordering;
 
-const EVAL_MAX: u64 = 256;
+const EVAL_MAX: usize = 256;
 
 pub type BitVec = BV<Arc<Btor>>;
 
@@ -12,18 +12,19 @@ pub type BitVec = BV<Arc<Btor>>;
 pub struct Solver {
     pub btor: Arc<Btor>,
     pub assertions: Vec<BitVec>,
-    pub indexes: Vec<usize>
+    pub indexes: Vec<usize>,
+    pub eval_max: usize
 }
 
 impl Default for Solver {
     fn default() -> Self {
-        Self::new()
+        Self::new(EVAL_MAX)
     }
 }
 
 impl Solver {
 
-    pub fn new() -> Self {
+    pub fn new(eval_max: usize) -> Self {
         let btor = Arc::new(Btor::new());
         btor.set_opt(BtorOption::ModelGen(ModelGen::All));
         btor.set_opt(BtorOption::Incremental(true));
@@ -33,24 +34,25 @@ impl Solver {
         Solver {
             btor,
             assertions: vec!(),
-            indexes: vec!()
+            indexes: vec!(),
+            eval_max
         }
     }
 
     pub fn duplicate(&self) -> Self {
         let btor = Arc::new(self.btor.duplicate());
-        let mut assertions = vec!();
 
-        for assertion in &self.assertions {
-            let new_assert = self.translate(assertion);
-            assertions.push(new_assert.unwrap());
-        }
-
-        Solver {
+        let mut solver = Solver {
             btor,
-            assertions,
-            indexes: self.indexes.clone()
-        }
+            assertions: vec!(),
+            indexes: self.indexes.clone(),
+            eval_max: self.eval_max
+        };
+
+        solver.assertions = self.assertions.iter()
+            .map(|a| solver.translate(a).unwrap()).collect();
+
+        solver
     }
 
     pub fn apply_assertions(&self) {
@@ -266,18 +268,12 @@ impl Solver {
 
     #[inline]
     pub fn assert(&mut self, bv: &BitVec) {
-        //let new_bv = self.translate(bv).unwrap();
-        //new_bv.assert();
         self.assertions.push(bv.to_owned());
     }
 
-    // pitfall is that concrete values still need to be 0 or 1
-    // eg. 2 will evaluate to false. This isn't used anywhere though
     #[inline]
     pub fn assert_value(&mut self, value: &Value) {
-        //let new_bv = self.translate(bv).unwrap();
-        //new_bv.assert();
-        self.assertions.push(self.to_bv(value, 1));
+        self.assertions.push(self.to_bv(&!value.eq(&Value::Concrete(0,0)), 1));
     }
 
     #[inline]
@@ -289,12 +285,22 @@ impl Solver {
         sat
     }
 
+    /// check the satisfiability of the assertion
+    pub fn check_sat(&mut self, assertion: &Value) -> bool {
+        self.btor.push(1);
+        self.assert_value(assertion);
+        self.apply_assertions();
+        let sat = self.btor.sat() == SolverResult::Sat;
+        self.btor.pop(1);
+        sat
+    }
+
     pub fn evaluate_many(&mut self, bv: &BitVec) -> Vec<u64> {
-        let mut solutions: Vec<u64> = Vec::with_capacity(EVAL_MAX as usize);
+        let mut solutions: Vec<u64> = Vec::with_capacity(self.eval_max);
         //let new_bv = self.translate(bv).unwrap();
         self.btor.push(1);
         self.apply_assertions();
-        for _i in 0..EVAL_MAX {
+        for _i in 0..self.eval_max {
             if self.btor.sat() == SolverResult::Sat {
                 let sol = bv.get_a_solution().as_u64().unwrap();
                 solutions.push(sol);
@@ -308,7 +314,7 @@ impl Solver {
         }
         self.btor.pop(1);
 
-        if solutions.len() == EVAL_MAX as usize {
+        if solutions.len() == self.eval_max {
             // if there are more possibilities than EVAL_MAX
             // constrain it to be in the eval subset
             self.assert_in(bv, &solutions);

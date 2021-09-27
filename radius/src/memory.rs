@@ -1,5 +1,8 @@
-use std::collections::HashMap;
-use crate::r2_api::{R2Api, Endian};
+//use std::collections::HashMap;
+use ahash::AHashMap;
+type HashMap<P, Q> = AHashMap<P, Q>;
+
+use crate::r2_api::{R2Api, Endian, STACK_START, STACK_SIZE};
 use crate::value::Value;
 use crate::solver::Solver;
 use std::mem;
@@ -11,11 +14,8 @@ const READ_CACHE: usize = 256;
 // one day I will make a reasonable heap impl
 // today is not that day
 const HEAP_START: u64 = 0x40000000;
-const HEAP_SIZE:  u64 = 0x4000000;
+const HEAP_SIZE:  u64 = 0x04000000;
 // const HEAP_CHUNK: u64 = 0x100;
-
-const STACK_START: u64 = 0x100000;
-const STACK_SIZE:  u64 = 0x78000*2;
 
 // pub const CHECK_PERMS: bool = false;
 
@@ -105,6 +105,11 @@ impl Memory {
         } else {
             Value::Concrete(0, 0) // idk none of this is right
         }
+    }
+
+    pub fn free_sym(&mut self, addr: &Value, solver: &mut Solver) -> Value {
+        let address = solver.evalcon_to_u64(addr).unwrap();
+        self.free(&Value::Concrete(address, 0))
     }
 
     #[inline]
@@ -222,7 +227,6 @@ impl Memory {
             },
             Value::Symbolic(addr, t) => {
                 let addrs = solver.evaluate_many(addr);
-                //let mut value = Value::Symbolic(self.solver.bvv(0, 64));
                 for a in addrs {
                     let read_val = self.read_value(a, len);
                     let bv = solver.bvv(a, addr.get_width());
@@ -243,7 +247,6 @@ impl Memory {
             },
             Value::Symbolic(addr, t) => {
                 let addrs = solver.evaluate_many(addr);
-                //println!("addrs: {:?}", addrs);
                 let mut values = vec!();
                 for a in addrs {
                     let read_vals = self.read(a, len);
@@ -262,7 +265,6 @@ impl Memory {
                     }
                     values = new_vals;
                 }
-                //println!("value: {:?}", value);
                 values
             }
         }
@@ -475,16 +477,17 @@ impl Memory {
         prot_str
     }
 
+    pub fn read_bytes(&mut self, addr: u64, length: usize, solver: &mut Solver) -> Vec<u8> {
+        let data = self.read(addr, length);
+        solver.push();
+        let data_u8 = data.iter().map(|d| solver.evalcon_to_u64(&d).unwrap() as u8).collect();
+        solver.pop();
+        data_u8
+    }
+
     //read utf8 string
     pub fn read_string(&mut self, addr: u64, length: usize, solver: &mut Solver) -> String {
-        let data = self.read(addr, length);
-        let mut data_u8 = vec!();
-        solver.push();
-        for d in data {
-            data_u8.push(solver.evalcon_to_u64(&d).unwrap() as u8);
-        }
-        solver.pop();
-        String::from_utf8(data_u8).unwrap()
+        String::from_utf8(self.read_bytes(addr, length, solver)).unwrap()
     }
 
     pub fn write_string(&mut self, addr: u64, string: &str) {
@@ -548,7 +551,7 @@ impl Memory {
                         taint |= t;
                     },
                     Value::Concrete(val, t) => {
-                        let new_val = self.solver.bvv(*val/* << (8*count as u64)*/, 8);
+                        let new_val = self.solver.bvv(*val, 8);
 
                         if sym_val.get_width() == 1 {
                             sym_val = new_val;

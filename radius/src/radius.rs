@@ -8,22 +8,41 @@ use crate::value::Value;
 
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::collections::HashMap;
+use std::collections::VecDeque;
 
-//const DO_SYSCALLS: bool = true;
-//const DO_SIMS:     bool = true;
+use ahash::AHashMap;
+type HashMap<P, Q> = AHashMap<P, Q>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RadiusOption {
-    Syscalls(bool),    // use simulated syscalls
-    Sims(bool),        // use simulated imports 
-    SimAll(bool),      // sim all imports, with stub if missing
-    Optimize(bool),    // optimize executed ESIL expressions
-    Debug(bool),       // enable debug output
-    Lazy(bool),        // don't check sat on symbolic pcs
-    Permissions(bool), // check memory permissions
-    Force(bool),       // force execution of all branches
-    Topological(bool)  // execute blocks in topological order
+    /// Use simulated syscalls
+    Syscalls(bool),
+    /// Use simulated imports     
+    Sims(bool),
+    /// Sim all imports, with stub if missing        
+    SimAll(bool),
+    /// Optimize executed ESIL expressions      
+    Optimize(bool),
+    /// Enable debug output
+    Debug(bool),
+    /// Don't check sat on symbolic pcs
+    Lazy(bool),
+    /// Check memory permissions
+    Permissions(bool),
+    /// Force execution of all branches
+    Force(bool),
+    /// Execute blocks in topological order
+    Topological(bool), 
+    /// Maximum values to evaluate for sym PCs
+    EvalMax(usize),
+    /// Radare2 argument, must be static
+    R2Argument(&'static str),
+    /// Handle self-modifying code (poorly)
+    SelfModify(bool),
+    /// Load libraries
+    LoadLibs(bool),
+    /// Path to load library from
+    LibPath(String)
 }
 
 /**
@@ -45,9 +64,9 @@ pub struct Radius {
     pub r2api: R2Api,
     pub processor: Processor,
     pub processors: Arc<Mutex<Vec<Processor>>>,
-    pub states: Arc<Mutex<Vec<State>>>,
-    pub merges: HashMap<u64, State>,
-    pub check: bool
+    pub eval_max: usize,
+    pub check: bool,
+    pub debug: bool
 }
 
 impl Radius {
@@ -62,40 +81,62 @@ impl Radius {
      * let mut radius = Radius::new("../tests/r100");
      * ```
      */
-    pub fn new(filename: &str) -> Self {
+    pub fn new<T: AsRef<str>>(filename: T) -> Self {
         // no radius options and no r2 errors by default
-        Radius::new_with_options(filename, vec!(), Some(vec!("-2")))
+        Radius::new_with_options(Some(filename), &[])
     }
 
     /**
      * Create a new Radius instance for the provided binary with a vec of `RadiusOption`
-     * And an optional vector of radare2 arguments
      * 
      * **Example**
      * 
      * ```
      * use radius::radius::{Radius, RadiusOption};
-     * let options = vec!(RadiusOption::Optimize(false), RadiusOption::Sims(false));
-     * let mut radius = Radius::new_with_options("../tests/baby-re", options, Some(vec!("-2")));
+     * let options = [RadiusOption::Optimize(false), RadiusOption::Sims(false)];
+     * let mut radius = Radius::new_with_options(Some("../tests/baby-re"), &options);
      * ```
      */
-    pub fn new_with_options(filename: &str, options: Vec<RadiusOption>, 
-            args: Option<Vec<&'static str>>) -> Self {
+    pub fn new_with_options<T: AsRef<str>>(
+        filename: Option<T>, 
+        options: &[RadiusOption]) -> Self {
                 
-        let file = String::from(filename);
-        let mut r2api = R2Api::new(Some(file), args);
+        let mut argv = vec!();
+        let mut eval_max = 256;
+        let mut paths = vec!();
+        for o in options {
+            if let RadiusOption::R2Argument(arg) = o {
+                argv.push(*arg);
+            } else if let RadiusOption::EvalMax(m) = o {
+                eval_max = *m;
+            } else if let RadiusOption::LibPath(p) = o {
+                paths.push(p.to_owned());
+            }
+        }
+
+        let debug = options.contains(&RadiusOption::Debug(true));
+
+        if !debug {
+            argv.push("-2"); // silence r2 errors
+        }
+
+        let args = if argv.len() > 0 {
+            Some(argv)
+        } else {
+            None
+        };
+
+        let mut r2api = R2Api::new(filename, args);
 
         let opt = !options.contains(&RadiusOption::Optimize(false));
-        let debug = options.contains(&RadiusOption::Debug(true));
         let lazy = !options.contains(&RadiusOption::Lazy(false));
         let force = options.contains(&RadiusOption::Force(true));
         let topological = options.contains(&RadiusOption::Topological(true));
         let check = options.contains(&RadiusOption::Permissions(true));
         let sim_all = options.contains(&RadiusOption::SimAll(true));
-
-        let mut processor = Processor::new(opt, debug, lazy, force, topological);
+        let selfmod = options.contains(&RadiusOption::SelfModify(true));
+        let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topological);
         let processors = Arc::new(Mutex::new(vec!()));
-        let states = Arc::new(Mutex::new(vec!()));
 
         if !options.contains(&RadiusOption::Syscalls(false)) {
             let syscalls = r2api.get_syscalls().unwrap();
@@ -108,6 +149,12 @@ impl Radius {
             }
         }
 
+        let _libs = if options.contains(&RadiusOption::LoadLibs(true)) {
+            r2api.load_libraries(&paths).unwrap()
+        } else {
+            vec!()
+        };
+
         // this is weird, idk
         if !options.contains(&RadiusOption::Sims(false)) {
             Radius::register_sims(&mut r2api, &mut processor, sim_all);
@@ -117,9 +164,9 @@ impl Radius {
             r2api,
             processor,
             processors,
-            states,
-            merges: HashMap::new(),
-            check
+            eval_max,
+            check,
+            debug
         }
     }
 
@@ -154,34 +201,83 @@ impl Radius {
      * ```
      * use radius::radius::Radius;
      * let mut radius = Radius::new("../tests/r100");
-     * let mut state = radius.entry_state(
-     *     &["r100".to_string()], 
-     *     &[]
-     * );
+     * let mut state = radius.entry_state(&["r100"], &[]);
      * ```
      */
-    pub fn entry_state(&mut self, args: &[String], env: &[String]) -> State {
-        //self.r2api.seek(addr);
-        self.r2api.init_entry(args, env);
+    pub fn entry_state<T: AsRef<str>>(&mut self, args: &[T], env: &[T]) -> State {
+        // get the entrypoint
+        let entry = self.r2api.get_entrypoints().unwrap()[0].vaddr;
+        self.r2api.seek(entry);
+        self.r2api.init_vm();
         let mut state = self.init_state();
+        state.memory.add_stack();
+        state.memory.add_heap();
+
+        // we write args to both regs and stack
+        // i think this is ok
+        let sp = state.registers.get_with_alias("SP");
+        let ptrlen = (state.memory.bits/8) as usize;
+        let argc = Value::Concrete(args.len() as u64, 0);
+        state.memory_write_value(
+            &sp, &argc, ptrlen);
+
+        state.registers.set_with_alias("A0", argc);
+
+        let types = ["argv", "env"];
+        let mut current = sp+Value::Concrete(ptrlen as u64, 0);
+        for (i, strings) in [args, env].iter().enumerate() {
+            state.context.insert(types[i].to_owned(), vec!(current.clone()));
+            let alias = format!("A{}", i+1);
+            state.registers.set_with_alias(&alias, current.clone());
+            for (j, string) in strings.iter().enumerate() {
+                let addr = state.memory.alloc(
+                    &Value::Concrete(string.as_ref().len() as u64 +1, 0));
+
+                let mut esc = false;
+                for (k, c) in string.as_ref().chars().enumerate() {
+                    if c == '\\' {
+                        esc = true;
+                    } else {
+                        let v;
+                        if !esc && c == '~' { // ~ become symbolic bytes
+                            let sym = format!("{}[{}][{}]", types[i], j, k);
+                            v = state.symbolic_value(&sym, 8);
+                        } else {
+                            v = state.concrete_value(c as u64, 8);
+                        }
+                        state.memory.write_value(addr+k as u64, &v, 1);
+                        esc = false
+                    }
+                }
+                state.memory.write_value(
+                    addr+string.as_ref().len() as u64, &Value::Concrete(0,0), 1);
+
+                state.memory_write_value(
+                    &current, &Value::Concrete(addr, 0), ptrlen);
+
+                current = current + Value::Concrete(ptrlen as u64, 0); 
+            }
+            state.memory_write_value(
+                &current, &Value::Concrete(0, 0), ptrlen); // write a long null
+                
+            current = current + Value::Concrete(ptrlen as u64, 0); 
+        }
 
         let start_main_reloc = self.r2api.get_address(
             "reloc.__libc_start_main").unwrap();
 
         self.hook(start_main_reloc, __libc_start_main);
 
-        state.memory.add_stack();
-        state.memory.add_heap();
-        state.memory.add_std_streams();
+        //state.memory.add_std_streams();
         state
     }
 
     pub fn init_state(&mut self) -> State {
-        State::new(&mut self.r2api, false, self.check)
+        State::new(&mut self.r2api, self.eval_max, self.debug, false, self.check)
     }
 
     pub fn blank_state(&mut self) -> State {
-        State::new(&mut self.r2api, true, self.check)
+        State::new(&mut self.r2api, self.eval_max, self.debug, true, self.check)
     }
 
     /// Blank except for PC and SP
@@ -194,7 +290,7 @@ impl Radius {
         state.registers.set_with_alias("SP", Value::Concrete(sp, 0));
         state.memory.add_stack();
         state.memory.add_heap();
-        state.memory.add_std_streams();
+        //state.memory.add_std_streams();
         state
     }
 
@@ -210,28 +306,36 @@ impl Radius {
     }
 
     // internal method to register import sims 
-    pub fn register_sims(r2api: &mut R2Api, processor: &mut Processor, sim_all: bool) {
+    fn register_sims(r2api: &mut R2Api, processor: &mut Processor, sim_all: bool) {
         let sims = get_sims();
-        let symbols = r2api.get_imports().unwrap();
-        let mut symmap: HashMap<String, u64> = HashMap::new();
+        let files = r2api.get_files().unwrap();
 
-        for symbol in symbols {
-            symmap.insert(symbol.name, symbol.plt);
-        }
+        for file in files {
+            r2api.set_file_fd(file.fd);
+            let symbols = r2api.get_imports().unwrap();
+            let mut symmap: HashMap<String, u64> = HashMap::new();
 
-        // TODO expand this to handle other symbols
-        for sim in sims {
-            let addropt = symmap.remove(&sim.symbol);
-            if let Some(addr) = addropt {
-                processor.sims.insert(addr, sim.function);
+            for symbol in symbols {
+                symmap.insert(symbol.name, symbol.plt);
+            }
+
+            // TODO expand this to handle other symbols
+            for sim in &sims {
+                let addropt = symmap.remove(&sim.symbol);
+                if let Some(addr) = addropt {
+                    processor.sims.insert(addr, sim.function);
+                }
+            }
+
+            if sim_all {
+                for addr in symmap.values() {
+                    processor.sims.insert(*addr, zero);
+                }
             }
         }
 
-        if sim_all {
-            for addr in symmap.values() {
-                processor.sims.insert(*addr, zero);
-            }
-        }
+        // back to main file
+        r2api.set_file_fd(3);
     }
 
     /// Register a trap to call the provided `SimMethod`
@@ -258,15 +362,17 @@ impl Radius {
 
     /// Add addresses that will be avoided during execution. Any
     /// `State` that reaches these addresses will be marked inactive
-    pub fn avoid(&mut self, addrs: Vec<u64>) {
+    pub fn avoid(&mut self, addrs: &[u64]) {
         for addr in addrs {
-            self.processor.avoidpoints.insert(addr, true);
+            self.processor.avoidpoints.insert(*addr, true);
         }
     }
 
     /// Simple way to execute until a given target address while avoiding a vec of other addrs
-    pub fn run_until(&mut self, state: State, target: u64, avoid: Vec<u64>) -> Option<State> {
-        self.processor.run_until(state, target, avoid)
+    pub fn run_until(&mut self, state: State, target: u64, avoid: &[u64]) -> Option<State> {
+        self.breakpoint(target);
+        self.avoid(avoid);
+        self.processor.run(state, false).pop_front()
     }
 
     /**
@@ -275,24 +381,29 @@ impl Radius {
      * More words 
      * 
      */
-    pub fn run(&mut self, state: Option<State>, threads: usize) -> Option<State> {
-        let mut handles = vec!();
-        if let Some(s) = state {
-            self.states.lock().unwrap().push(s);
-        }
+    pub fn run(&mut self, state: State, mut threads: usize) -> Option<State> {
+        let mut handles = Vec::with_capacity(threads);
+        let statevector = Arc::new(Mutex::new(VecDeque::with_capacity(self.eval_max)));
+        statevector.lock().unwrap().push_back(state);
 
         // if there are multiple threads we need to duplicate solvers
         // else there will be race conditions. Unfortunately this 
-        // will prevent mergers from happening. this sucks
-        let duplicate = threads > 1 && self.processor.mergepoints.is_empty();
+        // will prevent mergers from happening. this sucks 
+        if !self.processor.mergepoints.is_empty() {
+            threads = 1;
+        }
 
         loop {
             let mut count = 0;
-            while count < threads && !self.states.lock().unwrap().is_empty() {
+            while count < threads && !statevector.lock().unwrap().is_empty() {
                 //println!("on thread {}!", thread_count);
                 let procs = self.processors.clone();
-                let states = self.states.clone();
-                let state = states.lock().unwrap().remove(0);
+                let states = statevector.clone();
+                let state = if threads > 1 {
+                    states.lock().unwrap().pop_front().unwrap().duplicate()
+                } else {
+                    states.lock().unwrap().pop_front().unwrap()
+                };
 
                 let mut processor = if !procs.lock().unwrap().is_empty() {
                     procs.lock().unwrap().pop().unwrap()
@@ -300,17 +411,12 @@ impl Radius {
                     self.processor.clone()
                 };
 
-                match state.status {
-                    StateStatus::Break => return Some(state),
-                    StateStatus::Merge => {
-                        self.merge(state);
-                        continue;
-                    },
-                    _ => {}
+                if state.status == StateStatus::Break {
+                    return Some(state);
                 }
 
                 let handle = thread::spawn(move || {
-                    let new_states = processor.run(state, true, duplicate);
+                    let new_states = processor.run(state, threads > 1);
                     states.lock().unwrap().extend(new_states);
                     procs.lock().unwrap().push(processor);
                 });
@@ -322,67 +428,14 @@ impl Radius {
                 handles.pop().unwrap().join().unwrap();
             }
 
-            if self.states.lock().unwrap().is_empty() {
-                if self.merges.is_empty() {
-                    break None
-                } else {
-                    // pop one out of mergers 
-                    let key = *self.merges.keys().next().unwrap();
-                    let mut merge = self.merges.remove(&key).unwrap();
-                    merge.status = StateStatus::PostMerge;
-                    self.states.lock().unwrap().push(merge);
-                }
+            if statevector.lock().unwrap().is_empty() {
+                break None;
+            } 
+
+            if let Some(state) = statevector.lock().unwrap().iter() 
+                .find(|s| s.status == StateStatus::Break) {
+                break Some(state.to_owned()); 
             }
-        }
-    }
-
-    // TODO do not merge if backtraces are different
-    // really i guess it should be a vector of states with
-    // unique backtraces for every merge address
-    // but thats complicated and i dont wanna do it right now
-    pub fn merge(&mut self, mut state: State) {
-        let pc = state.registers.get_with_alias("PC").as_u64().unwrap();
-        
-        let has_pc = self.merges.contains_key(&pc); 
-        if !has_pc { // trick clippy idk
-            self.merges.insert(pc, state);
-        } else {
-            let mut merge_state = self.merges.remove(&pc).unwrap();
-            let state_asserts = state.solver.assertions.clone();
-            let assertion = state.solver.and_all(&state_asserts).unwrap();
-            let asserted = Value::Symbolic(assertion.clone(), 0);
-
-            // merge registers 
-            let mut new_regs = vec!();
-            let reg_count = state.registers.values.len();
-            for index in 0..reg_count {
-                let reg = &merge_state.registers.values[index];
-                let curr_reg  = state.registers.values[index].clone();
-                new_regs.push(state.solver.conditional(&asserted, &curr_reg, &reg));
-            }
-            merge_state.registers.values = new_regs;
-
-            // merge memory 
-            let mut new_mem = HashMap::new();
-            let merge_addrs = merge_state.memory.addresses();
-            let state_addrs = state.memory.addresses();
-
-            let mut addrs = vec!();
-            addrs.extend(merge_addrs);
-            addrs.extend(state_addrs);
-            for addr in addrs {
-                let mem = &merge_state.memory.read_value(addr, 1);
-                let curr_mem = state.memory.read_value(addr, 1);
-                new_mem.insert(addr, state.solver.conditional(&asserted, &curr_mem, mem));
-            }
-            merge_state.memory.mem = new_mem;
-
-            // merge solvers
-            let assertions = merge_state.solver.assertions.clone();
-            let current = state.solver.and_all(&assertions).unwrap();
-            merge_state.solver.reset();
-            merge_state.assert(&current.or(&assertion));
-            self.merges.insert(pc, merge_state);
         }
     }
 
@@ -453,6 +506,7 @@ pub fn __libc_start_main(state: &mut State) -> bool {
     let main = state.registers.get_with_alias("A0");
     let argc = state.registers.get_with_alias("A1");
     let argv = state.registers.get_with_alias("A2");
+    let env  = state.registers.get_with_alias("A3");
 
     // TODO go to init then main 
     // but we need a nice arch neutral way to push ret 
@@ -464,7 +518,12 @@ pub fn __libc_start_main(state: &mut State) -> bool {
     state.registers.set_with_alias("A1", argv);
 
     // TODO set env
-    state.registers.set_with_alias("A2", Value::Concrete(0, 0));
+    state.registers.set_with_alias("A2", env);
 
     false
+}
+
+/// convenience method for making an untainted `Value::Concrete`
+pub fn vc(v: u64) -> Value {
+    Value::Concrete(v, 0)
 }

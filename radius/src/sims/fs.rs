@@ -115,6 +115,10 @@ impl SimFilesytem {
         data
     }
 
+    pub fn fill(&mut self, fd: usize, data: &[Value]) {
+        self.files[fd].content.extend(data.to_owned());
+    }
+
     pub fn dump(&mut self, fd: usize) -> Vec<Value> {
         self.files[fd].content.clone()
     }

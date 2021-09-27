@@ -13,10 +13,9 @@ fn main() {
 
     let addr: u64 = 0x6042c0;
     state.memory.write_value(addr, &Value::Symbolic(bv.clone(), 0), len);
-    let mut new_state = radius.run_until(
-        state, 0x00400830, vec!(0x00400850)).unwrap();
+    let new_state = radius.run_until(state, 0x00400830, &[0x00400850]);
 
-    let flag = new_state.evaluate_string(&bv).unwrap();
+    let flag = new_state.unwrap().evaluate_string(&bv).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "CTF{0The1Quick2Brown3Fox4Jumped5Over6The7Lazy8Fox9}");
 }

@@ -6,17 +6,19 @@ use crate::solver::{Solver, BitVec};
 use crate::sims::fs::SimFilesytem;
 
 use std::u8;
-use std::collections::HashMap;
+//use std::collections::HashMap;
+use ahash::AHashMap;
+type HashMap<P, Q> = AHashMap<P, Q>;
 
 // use backtrace::Backtrace;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecMode {
-    If,
-    Else,
-    Exec,
-    NoExec,
-    Uncon,
+    If,     // in a symbolic if clause ?{,...,}
+    Else,   // in a symbolic else clause ?{,---,}{,...,}
+    Exec,   // in a clause that is always executed 1,?{,...,}
+    NoExec, // in a clause that is never executed 0,?{,...,}
+    Uncon,  // not in an if or else, regular parsing
 }
 
 #[derive(Debug, Clone)]
@@ -62,12 +64,13 @@ pub struct State {
     pub taints:    HashMap<String, u64>,
     pub pid:       u64,
     pub backtrace: Vec<u64>,
-    pub blank:     bool
+    pub blank:     bool,
+    pub debug:     bool
 }
 
 impl State {
     /// Create a new state, should generally not be called directly
-    pub fn new(r2api: &mut R2Api, blank: bool, check: bool) -> Self {
+    pub fn new(r2api: &mut R2Api, eval_max: usize, debug: bool, blank: bool, check: bool) -> Self {
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
             previous: Value::Concrete(0, 0),
@@ -79,7 +82,7 @@ impl State {
             pcs: Vec::with_capacity(64)
         };
 
-        let solver = Solver::new();
+        let solver = Solver::new(eval_max);
         let registers = Registers::new(r2api, solver.clone(), blank);
         let memory = Memory::new(r2api, solver.clone(), blank, check);
 
@@ -97,7 +100,8 @@ impl State {
             taints: HashMap::new(),
             backtrace: Vec::with_capacity(128),
             pid: 1337, // sup3rh4x0r
-            blank
+            blank,
+            debug
         }
     }
 
@@ -106,12 +110,8 @@ impl State {
 
         let mut registers = self.registers.clone();
         registers.solver = solver.clone();
-
-        let mut new_regs = vec!();
-        for reg in &registers.values {
-            new_regs.push(solver.translate_value(reg));
-        }
-        registers.values = new_regs;
+        registers.values = registers.values.iter()
+            .map(|r| solver.translate_value(r)).collect();
 
         let mut memory = self.memory.clone();
         memory.solver = solver.clone();
@@ -147,7 +147,8 @@ impl State {
             taints: self.taints.clone(),
             backtrace: self.backtrace.clone(),
             pid: self.pid,
-            blank: self.blank
+            blank: self.blank,
+            debug: self.debug
         }
     }
 
@@ -156,6 +157,11 @@ impl State {
     /// Allocate a block of memory `length` bytes in size
     pub fn memory_alloc(&mut self, length: &Value) -> Value {
         self.memory.alloc_sym(length, &mut self.solver)
+    }
+
+    /// Free a block of memory at `addr`
+    pub fn memory_free(&mut self, addr: &Value) -> Value {
+        self.memory.free_sym(addr, &mut self.solver)
     }
 
     /// Read `length` bytes from `address`
@@ -179,6 +185,7 @@ impl State {
     }
 
     /// Search for `needle` at the address `addr` for a maximum of `length` bytes 
+    /// Returns a `Value` containing the **address** of the needle, not index
     pub fn memory_search(&mut self, addr: &Value, needle: &Value, length: &Value, reverse: bool) -> Value {
         self.memory.search(addr, needle, length, reverse, &mut self.solver)
     }
@@ -197,6 +204,11 @@ impl State {
     /// Move `length` bytes from `src` to `dst`
     pub fn memory_move(&mut self, dst: &Value, src: &Value, length: &Value) {
         self.memory.memmove(dst, src, length, &mut self.solver)
+    }
+
+    /// Read `length` bytes from `address`
+    pub fn memory_read_bytes(&mut self, address: u64, length: usize) -> Vec<u8> {
+        self.memory.read_bytes(address, length, &mut self.solver)
     }
 
     /// Read a string from `address` up to `length` bytes long
@@ -304,9 +316,7 @@ impl State {
         (value.get_taint() & self.get_tainted_identifier(taint)) != 0
     }
 
-    // I generally don't want to expose these since they really shouldnt be used
-    // the Solver struct should be used to abstract away different solvers 
-    // while having the same Btor instance to avoid state merge issues
+    /// BitVectors will need to be translated if run is multithreaded
     #[inline]
     pub fn translate(&mut self, bv: &BitVec) -> Option<BitVec> {
         self.solver.translate(bv)
@@ -370,7 +380,7 @@ impl State {
 
     /// Evaluate a string from bitvector `bv` 
     pub fn evaluate_string(&mut self, bv: &BitVec) -> Option<String> {
-        let new_bv = self.translate(bv).unwrap();
+        let new_bv = bv; //self.translate(bv).unwrap();
         let mut data: Vec<u8> = vec!();
         if self.solver.is_sat() {
             //let one_sol = new_bv.get_a_solution().disambiguate();

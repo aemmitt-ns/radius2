@@ -10,9 +10,9 @@ fn main() {
 
     radius.breakpoint(0x00400843);
     radius.mergepoint(0x004007fd);
-    radius.avoid(vec!(0x00400832));
+    radius.avoid(&[0x00400832]);
 
-    let mut new_state = radius.run(Some(state), 1).unwrap();
+    let mut new_state = radius.run(state, 1).unwrap();
     let flag = new_state.evaluate_string_value(&bv).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "rotors");

@@ -1,5 +1,8 @@
-use std::collections::HashMap;
-use crate::r2_api;
+//use std::collections::HashMap;
+use ahash::AHashMap;
+type HashMap<P, Q> = AHashMap<P, Q>;
+
+use crate::r2_api::{RegisterInfo, AliasInfo, R2Api};
 use crate::value::Value;
 use crate::solver::Solver;
 
@@ -12,7 +15,7 @@ pub struct Bounds {
 
 #[derive(Debug, Clone)]
 pub struct Register {
-    pub reg_info: r2_api::RegisterInfo,
+    pub reg_info: RegisterInfo,
     pub bounds: Bounds,
     pub index: usize,
     pub value_index: usize,
@@ -21,15 +24,16 @@ pub struct Register {
 #[derive(Clone)]
 pub struct Registers {
     pub solver:  Solver,
-    pub r2api:   r2_api::R2Api,
-    pub aliases: HashMap<String, r2_api::AliasInfo>,
+    pub r2api:   R2Api,
+    pub aliases: HashMap<String, AliasInfo>,
     pub regs:    HashMap<String, Register>,
     pub indexes: Vec<Register>,
-    pub values:  Vec<Value>
+    pub values:  Vec<Value>,
+    pub pc:      Option<Register>
 }
 
 impl Registers {
-    pub fn new(r2api: &mut r2_api::R2Api, btor: Solver, blank: bool) -> Self {
+    pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool) -> Self {
         let mut reg_info = r2api.get_registers().unwrap();
         reg_info.reg_info.sort_by(|a, b| b.size.partial_cmp(&a.size).unwrap());
 
@@ -39,12 +43,10 @@ impl Registers {
             aliases: HashMap::new(),
             regs:    HashMap::new(),
             indexes: vec!(),
-            values:  vec!() //HashMap::new(),
+            values:  vec!(), 
+            pc: None
         };
-    
-        for alias in reg_info.alias_info {
-            registers.aliases.insert(alias.role_str.to_owned(), alias);
-        }
+
     
         let mut bounds_map: HashMap<Bounds,usize> = HashMap::new();
         for reg in reg_info.reg_info {
@@ -85,6 +87,14 @@ impl Registers {
             registers.indexes.push(reg_obj.clone());
             registers.regs.insert(reg_obj.reg_info.name.clone(), reg_obj);
         }
+
+        for alias in &reg_info.alias_info {
+            registers.aliases.insert(alias.role_str.to_owned(), alias.clone());
+
+            if alias.role_str == "PC" {
+                registers.pc = Some(registers.get_register(&alias.reg).unwrap().clone());
+            }
+        }
     
         registers
     }
@@ -100,27 +110,36 @@ impl Registers {
     }
 
     #[inline]
-    pub fn get_register(&mut self, reg: &str) -> Option<&Register> {
+    pub fn get_register(&self, reg: &str) -> Option<&Register> {
         self.regs.get(reg)
     }
 
     /// Get register with name OR alias, eg. `PC`, `SP`
-    pub fn get_with_alias(&mut self, alias: &str) -> Value {
-        let mut reg = alias.to_owned();
+    pub fn get_with_alias(&self, alias: &str) -> Value {
+        let mut reg = alias;
         if let Some(r) = self.aliases.get(alias) {
-            reg = r.reg.to_owned();
+            reg = &r.reg;
         }
-        self.get_value(self.regs[reg.as_str()].index)
+        self.get_value(self.regs[reg].index)
     }
 
     /// Set register with name OR alias, eg. `PC`, `SP`
     pub fn set_with_alias(&mut self, alias: &str, value: Value) {
-        let mut reg = alias.to_owned();
         if let Some(r) = self.aliases.get(alias) {
-            reg = r.reg.to_owned();
+            let t = r.reg.to_owned();
+            return self.set_value(self.regs[&t].index, value);
         }
+        self.set_value(self.regs[alias].index, value)
+    }
 
-        self.set_value(self.regs[reg.as_str()].index, value)
+    /// Get the value of `PC`
+    pub fn get_pc(&mut self) -> Value {
+        self.get_value(self.pc.as_ref().unwrap().index)
+    }
+
+    /// Get the value of `PC`
+    pub fn set_pc(&mut self, value: Value) {
+        self.set_value(self.pc.as_ref().unwrap().index, value)
     }
 
     #[inline]
@@ -137,7 +156,7 @@ impl Registers {
     }
 
     #[inline]
-    pub fn get_value(&mut self, index: usize) -> Value {
+    pub fn get_value(&self, index: usize) -> Value {
         let register = &self.indexes[index];
 
         if register.reg_info.offset as i64 == -1 {

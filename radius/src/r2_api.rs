@@ -4,7 +4,14 @@ use serde::{Deserialize, Serialize};
 use std::u64;
 use std::u8;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
+use ahash::AHashMap;
+type HashMap<P, Q> = AHashMap<P, Q>;
+
+//use std::collections::HashMap;
+use std::path::Path;
+
+pub const STACK_START: u64 = 0xff000000;
+pub const STACK_SIZE:  u64 = 0x780000*2;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Endian {
@@ -239,6 +246,20 @@ pub struct Import {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Export {
+    name: String,
+    flagname: String,
+    realname: String,
+    ordinal: usize,
+    bind: String,
+    size: usize,
+    r#type: String,
+    vaddr: u64,
+    paddr: u64,
+    is_imported: bool
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassMethod {
     pub name: String,
     pub addr: u64,
@@ -248,6 +269,38 @@ pub struct ClassMethod {
 pub struct ClassField {
     pub name: String,
     pub addr: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Relocation {
+    #[serde(default="blank")]
+    pub name: String,
+    pub vaddr: u64,
+    pub paddr: u64,
+    pub r#type: String,
+    pub demname: String,
+    pub is_ifunc: bool
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct File {
+    pub raised: bool,
+    pub fd: usize,
+    pub uri: String,
+    pub from: u64,
+    pub writable: bool,
+    pub size: usize
+
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Entrypoint {
+    pub vaddr: u64,
+    pub paddr: u64,
+    pub baddr: u64,
+    pub laddr: u64,
+    pub haddr: u64,
+    pub r#type: String
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -297,11 +350,11 @@ pub struct R2Api {
 }
 
 impl R2Api {
-    pub fn new(filename: Option<String>, opts: Option<Vec<&'static str>>) -> R2Api {
+    pub fn new<T: AsRef<str>>(filename: Option<T>, opts: Option<Vec<&'static str>>) -> R2Api {
         let options = if let Some(o) = &opts {
             Some(R2PipeSpawnOptions { 
                 exepath: "r2".to_owned(), 
-                args: o.clone()
+                args: o.to_owned()
             })
         } else {
             None
@@ -454,7 +507,8 @@ impl R2Api {
     }
 
     pub fn init_vm(&mut self) {
-        let _r = self.cmd("aei; aeim");
+        let _r = self.cmd(format!("aei; aeim {} {}", 
+            STACK_START, STACK_SIZE).as_str());
     }
 
     pub fn init_entry(&mut self, args: &[String], vars: &[String]) {
@@ -464,6 +518,10 @@ impl R2Api {
         self.init_vm();
         // this is very weird but this is how it works
         let _r = self.cmd(format!(".aeis {} {} {} @ SP", argc, argv, env).as_str());
+    }
+
+    pub fn set_option(&mut self, key: &str, value: &str) -> R2Result<String> {
+        self.cmd(format!("e {}={}", key, value).as_str())
     }
 
     pub fn get_symbols(&mut self) -> R2Result<Vec<Symbol>> {
@@ -476,16 +534,23 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn disassemble(&mut self, addr: u64, num: usize) -> R2Result<Vec<Instruction>> {
-        let cmd = format!("pdj {} @ {}", num, addr);
-        let json = self.cmd(cmd.as_str())?;
-        //println!("json: {}", json);
+    pub fn get_exports(&mut self) -> R2Result<Vec<Export>> {
+        let json = self.cmd("iEj")?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn disassemble_bytes(&mut self, data: &[u8]) -> R2Result<String> {
-        let cmd = format!("pad {}", hex_encode(data));
-        self.cmd(cmd.as_str())
+    pub fn disassemble(&mut self, addr: u64, num: usize) -> R2Result<Vec<Instruction>> {
+        let cmd = format!("pdj {} @ {}", num, addr);
+        let json = self.cmd(cmd.as_str())?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    pub fn disassemble_bytes(&mut self, addr: u64, data: &[u8], num: usize) -> R2Result<Vec<Instruction>> {
+        let cmd = format!("wx {} @ {}; pij {} @ {}", 
+            hex_encode(data), addr, num, addr);
+
+        let json = self.cmd(cmd.as_str())?;
+        r2_result(serde_json::from_str(json.as_str()))
     }
 
     pub fn assemble(&mut self, instruction: &str) -> R2Result<Vec<u8>> {
@@ -511,6 +576,107 @@ impl R2Api {
         Ok(u64::from_str_radix(&val[2..val.len()-1], 16).unwrap())
     }
 
+    pub fn get_files(&mut self) -> R2Result<Vec<File>> {
+        let json = self.cmd("oj")?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    pub fn set_file(&mut self, path: &str) {
+        if let Some(file) = self.get_files().unwrap().iter().find(|f| f.uri == path) {
+            self.cmd(format!("op {}", file.fd).as_str()).unwrap();   
+        }
+    }
+
+    pub fn set_file_fd(&mut self, fd: usize) {
+        self.cmd(format!("op {}", fd).as_str()).unwrap();   
+    }
+
+    pub fn get_libraries(&mut self) -> R2Result<Vec<String>> {
+        let json = self.cmd("ilj")?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    pub fn get_relocations(&mut self) -> R2Result<Vec<Relocation>> {
+        let json = self.cmd("irj")?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    pub fn get_entrypoints(&mut self) -> R2Result<Vec<Entrypoint>> {
+        let json = self.cmd("iej")?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    // load libraries, return list of full loaded paths
+    pub fn load_libraries(&mut self, lib_paths: &[String]) -> R2Result<Vec<String>> {
+        let paths = self.load_library_helper(lib_paths, &[])?;
+        self.cmd("op 3")?; // usually the main module is 3 idk
+        Ok(paths)
+    }
+
+    // this got a little nuts
+    pub fn load_library_helper(&mut self, lib_paths: &[String], loaded_paths: &[String]) -> R2Result<Vec<String>> {
+        let bits = self.info.as_ref().unwrap().bin.bits;
+        let mut sections = self.get_segments().unwrap();
+        let relocations = self.get_relocations().unwrap();
+
+        let mut relocation_map = HashMap::new();
+        for reloc in &relocations {
+            relocation_map.insert(reloc.name.clone(), reloc);
+        }
+
+        let mut high_addr = sections.iter().map(|s| s.vaddr).max().unwrap();
+
+        let libs = self.get_libraries()?;
+
+        let mut paths = lib_paths.to_owned();
+        paths.push("".to_owned()); // add cur dir ?
+
+        let mut full_paths = loaded_paths.to_owned();
+
+        for lib in &libs {
+            for path in &paths {
+                let lib_path = path.to_owned() + lib;
+                let loaded = full_paths.iter().any(|x| x == &lib_path);
+
+                //println!("{}", lib_path);
+
+                if !loaded && Path::new(&lib_path).exists() {
+                    let load_addr = (high_addr & 0xfffffffffffff000) + 0x3000; // idk
+                    self.cmd(format!("o {} {}", &lib_path, load_addr).as_str())?;
+                    full_paths.push(lib_path);
+
+                    sections = self.get_segments().unwrap();
+                    high_addr = sections.iter().map(|s| s.vaddr).max().unwrap();
+
+                    for export in &self.get_exports().unwrap() {
+                        if let Some(reloc) = relocation_map.get(&export.name) {
+                            // write the export address into the reloc
+                            self.cmd(format!("wv{} {} @ {}", bits/8, export.vaddr, 
+                                reloc.vaddr).as_str())?;
+                        }
+                    }
+
+                    if let Ok(librs) = self.load_library_helper(lib_paths, &full_paths) {
+                        full_paths = librs;
+                    }
+                    break;
+                } else if loaded {
+                    // if its already loaded we still have to select it and get the exports
+                    self.set_file(&lib_path);
+                    for export in &self.get_exports().unwrap() {
+                        if let Some(reloc) = relocation_map.get(&export.name) {
+                            self.cmd(format!("wv{} {} @ {}", bits/8, export.vaddr, 
+                                reloc.vaddr).as_str())?;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        Ok(full_paths)
+    }
+
     pub fn clear(&mut self) {
         
     }
@@ -519,10 +685,3 @@ impl R2Api {
         self.r2p.lock().unwrap().close();
     }
 }
-/*
-impl Drop for R2Api {
-    fn drop(&mut self) {
-        self.r2p.lock().unwrap().close()
-    }
-}
-*/

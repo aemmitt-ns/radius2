@@ -5,7 +5,7 @@ pub mod libc;
 pub mod fs;
 pub mod syscall;
 
-pub type SimMethod = fn (&mut State, Vec<Value>) -> Value;
+pub type SimMethod = fn (&mut State, &[Value]) -> Value;
 
 pub struct Sim {
     pub symbol: String,
@@ -19,11 +19,11 @@ pub fn make_sim(symbol: &str, function: SimMethod,
     Sim {symbol: String::from(symbol), function, arguments}
 }
 
-pub fn error(_state: &mut State, _args: Vec<Value>) -> Value {
+pub fn error(_state: &mut State, _args: &[Value]) -> Value {
     Value::Concrete(-1i64 as u64, 0)
 }
 
-pub fn zero(_state: &mut State, _args: Vec<Value>) -> Value {
+pub fn zero(_state: &mut State, _args: &[Value]) -> Value {
     Value::Concrete(0, 0)
 }
 
@@ -109,6 +109,10 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("fork",    libc::fork, 0),
         make_sim("ptrace",  libc::zero, 0),
         make_sim("syscall", libc::c_syscall, 0),
+        make_sim("getenv",  libc::getenv, 1),
+
+        make_sim("ioctl",  error, 1),
+        make_sim("sysctl", zero, 1),
 
         make_sim("rand",   libc::rand, 0),
         make_sim("srand",  libc::srand, 1),

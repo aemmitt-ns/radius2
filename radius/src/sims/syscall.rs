@@ -4,7 +4,7 @@ use crate::sims::fs::FileMode;
 
 const MAX_LEN: u64 = 8192;
 
-pub fn syscall(syscall_name: &str, state: &mut State, args: Vec<Value>) -> Value {
+pub fn syscall(syscall_name: &str, state: &mut State, args: &[Value]) -> Value {
     match syscall_name {
         "indirect_syscall" => indirect(state, args),  // fuq
 
@@ -39,13 +39,13 @@ pub fn syscall(syscall_name: &str, state: &mut State, args: Vec<Value>) -> Value
 }
 
 // get actual syscall and recall .. 
-pub fn indirect(state: &mut State, mut args: Vec<Value>) -> Value {
-    let sn = state.solver.evalcon_to_u64(&args.remove(0)).unwrap();
+pub fn indirect(state: &mut State, args: &[Value]) -> Value {
+    let sn = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let sys_str = state.r2api.get_syscall_str(sn).unwrap();
-    syscall(sys_str.as_str(), state, args)
+    syscall(sys_str.as_str(), state, &args[1..])
 }
 
-pub fn open(state: &mut State, args: Vec<Value>) -> Value {
+pub fn open(state: &mut State, args: &[Value]) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let len = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0));
     let length = state.solver.evalcon_to_u64(&len).unwrap();
@@ -58,18 +58,17 @@ pub fn open(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 // ignore dir for now idk
-pub fn openat(state: &mut State, args: Vec<Value>) -> Value {
-    let new_args = args[1..].to_owned();
-    open(state, new_args)
+pub fn openat(state: &mut State, args: &[Value]) -> Value {
+    open(state, &args[1..])
 }
 
-pub fn close(state: &mut State, args: Vec<Value>) -> Value {
+pub fn close(state: &mut State, args: &[Value]) -> Value {
     let fd = state.solver.evalcon_to_u64(&args[0]);
     state.filesystem.close(fd.unwrap() as usize);
     Value::Concrete(0, 0)
 }
 
-pub fn read(state: &mut State, args: Vec<Value>) -> Value {
+pub fn read(state: &mut State, args: &[Value]) -> Value {
     let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let length = state.solver.max_value(&args[2]);
     let data = state.filesystem.read(fd as usize, length as usize);
@@ -78,7 +77,7 @@ pub fn read(state: &mut State, args: Vec<Value>) -> Value {
     Value::Concrete(len as u64, args[2].get_taint())
 }
 
-pub fn write(state: &mut State, args: Vec<Value>) -> Value {
+pub fn write(state: &mut State, args: &[Value]) -> Value {
     let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let data = state.memory_read(&args[1], &args[2]);
     let len = data.len();
@@ -86,7 +85,7 @@ pub fn write(state: &mut State, args: Vec<Value>) -> Value {
     Value::Concrete(len as u64, 0)
 }
 
-pub fn access(state: &mut State, args: Vec<Value>) -> Value {
+pub fn access(state: &mut State, args: &[Value]) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let len = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0));
     let length = state.solver.evalcon_to_u64(&len).unwrap();
@@ -133,7 +132,7 @@ pub fn access(state: &mut State, args: Vec<Value>) -> Value {
 
 */
 
-pub fn stat(state: &mut State, args: Vec<Value>) -> Value {
+pub fn stat(state: &mut State, args: &[Value]) -> Value {
     let path_addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let path_len = state.memory_strlen(&args[0], &Value::Concrete(4096, 0)); // idk
     let path = state.memory_read_string(path_addr, path_len.as_u64().unwrap() as usize);
@@ -169,7 +168,7 @@ pub fn stat(state: &mut State, args: Vec<Value>) -> Value {
     }
 }
 
-pub fn fstat(state: &mut State, args: Vec<Value>) -> Value {
+pub fn fstat(state: &mut State, args: &[Value]) -> Value {
     let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let path = state.filesystem.getpath(fd as usize);
     state.filesystem.stat(path.unwrap().as_str());
@@ -177,40 +176,44 @@ pub fn fstat(state: &mut State, args: Vec<Value>) -> Value {
 }
 
 // TODO handle symbolic links
-pub fn lstat(state: &mut State, args: Vec<Value>) -> Value {
+pub fn lstat(state: &mut State, args: &[Value]) -> Value {
     stat(state, args)
 }
 
-pub fn lseek(state: &mut State, args: Vec<Value>) -> Value {
+pub fn lseek(state: &mut State, args: &[Value]) -> Value {
     let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let pos = state.solver.evalcon_to_u64(&args[1]).unwrap();
     state.filesystem.seek(fd as usize, pos as usize);
     Value::Concrete(pos, 0)
 }
 
-pub fn error(_state: &mut State, _args: Vec<Value>) -> Value {
+pub fn error(_state: &mut State, _args: &[Value]) -> Value {
     Value::Concrete(-1i64 as u64, 0)
 }
 
 // TODO success dummy
-pub fn success(_state: &mut State, _args: Vec<Value>) -> Value {
+pub fn success(_state: &mut State, _args: &[Value]) -> Value {
     Value::Concrete(0, 0)
 }
 
 // TODO fd backed mem
-pub fn mmap(state: &mut State, args: Vec<Value>) -> Value {
+pub fn mmap(state: &mut State, args: &[Value]) -> Value {
     // we can't do symbolic mmaps
     // this is beyond science
-    let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
+    let mut addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let size = state.solver.evalcon_to_u64(&args[1]).unwrap();
     let prot = state.solver.evalcon_to_u64(&args[2]).unwrap();
 
+    if addr == 0 {
+        addr = state.memory_alloc(&args[1]).as_u64().unwrap();
+    }
+
     let perms = state.memory.prot_to_str(prot);
-    state.memory.add_segment("", addr, size, perms.as_str());
+    state.memory.add_segment("mmapped", addr, size, perms.as_str());
     Value::Concrete(addr, 0)
 }
 
-pub fn munmap(state: &mut State, args: Vec<Value>) -> Value {
+pub fn munmap(state: &mut State, args: &[Value]) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
 
     let mut ind = -1i32 as usize;
@@ -229,7 +232,7 @@ pub fn munmap(state: &mut State, args: Vec<Value>) -> Value {
     }
 }
 
-pub fn brk(state: &mut State, args: Vec<Value>) -> Value {
+pub fn brk(state: &mut State, args: &[Value]) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let ret = state.memory.brk(addr);
 
@@ -240,7 +243,7 @@ pub fn brk(state: &mut State, args: Vec<Value>) -> Value {
     }
 }
 
-pub fn sbrk(state: &mut State, args: Vec<Value>) -> Value {
+pub fn sbrk(state: &mut State, args: &[Value]) -> Value {
     let inc = state.solver.evalcon_to_u64(&args[0]).unwrap();
     Value::Concrete(state.memory.sbrk(inc), 0)
 }
@@ -248,7 +251,7 @@ pub fn sbrk(state: &mut State, args: Vec<Value>) -> Value {
 // returning a symbolic pid+1 | 0 | -1
 // will result in a split state when used to branch
 // essentially recreating a fork. pretty cool!
-pub fn fork(state: &mut State, _args: Vec<Value>) -> Value {
+pub fn fork(state: &mut State, _args: &[Value]) -> Value {
     let cpid = state.pid+1;
     state.pid = cpid;
     let pid = state.bv(format!("pid_{}", cpid).as_str(), 64);
@@ -260,15 +263,15 @@ pub fn fork(state: &mut State, _args: Vec<Value>) -> Value {
     Value::Symbolic(pid, 0)
 }
 
-pub fn getpid(state: &mut State, _args: Vec<Value>) -> Value {
+pub fn getpid(state: &mut State, _args: &[Value]) -> Value {
     Value::Concrete(state.pid, 0)
 }
 
-pub fn getuid(_state: &mut State, _args: Vec<Value>) -> Value {
+pub fn getuid(_state: &mut State, _args: &[Value]) -> Value {
     Value::Concrete(0, 0)
 }
 
-pub fn exit(state: &mut State, args: Vec<Value>) -> Value {
+pub fn exit(state: &mut State, args: &[Value]) -> Value {
     state.status = StateStatus::Inactive;
     args[0].to_owned()
 }

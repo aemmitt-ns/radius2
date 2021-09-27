@@ -6,10 +6,11 @@ fn looper() {
     use crate::radius::{Radius, RadiusOption};
 
     let options = vec!(RadiusOption::Sims(false)); // RadiusOption::Debug(true));
-    let mut radius = Radius::new_with_options("../tests/looper", options, None);
-    let state = radius.call_state(0x100003f88);
+    let mut radius = Radius::new_with_options(Some("../tests/looper"), &options);
+    radius.r2api.cmd("e asm.arch=arm.v35").unwrap();
+    let state = radius.call_state(0x100003f4c);
     //let state = radius.entry_state(&vec!("looper".to_owned()), &vec!());
-    let mut new_state = radius.run_until(state, 0x100003fb4, vec!()).unwrap();
+    let mut new_state = radius.run_until(state, 0x100003fb4, &[]).unwrap();
     let x0 = new_state.registers.get("x0");
     println!("{:?}", x0);
     assert_eq!(x0.as_u64(), Some(1837180037));
@@ -17,11 +18,11 @@ fn looper() {
 
 #[test]
 fn hello() {
-    use crate::radius::Radius;
-
-    let mut radius = Radius::new("../tests/hello");
+    use crate::radius::{Radius, RadiusOption};
+    let options = vec!(RadiusOption::Debug(true));
+    let mut radius = Radius::new_with_options(Some("../tests/hello"), &options);
     let state = radius.call_state(0x00001149);
-    let mut new_state = radius.run_until(state, 0x00001163, vec!()).unwrap();
+    let mut new_state = radius.run_until(state, 0x1163, &[]).unwrap();
     println!("{:?}", new_state.registers.get("eax"))
 }
 
@@ -42,8 +43,7 @@ fn strstuff() {
     state.memory.write_value(addr+34, &Value::Concrete(0, 0), 8);
     state.registers.set("rsi", Value::Concrete(addr, 0));
 
-    let mut new_state = radius.run_until(state, 0x00001208, 
-        vec!(0x0000120f)).unwrap();
+    let mut new_state = radius.run_until(state, 0x1208, &[0x120f]).unwrap();
     println!("{:?}", new_state.evaluate_string(&bv))
 }
 
@@ -57,7 +57,7 @@ fn simple() {
 
     let bv = state.bv("num", 32);
     state.registers.set("edi", Value::Symbolic(bv.clone(), 0));
-    let mut new_state = radius.run_until(state, 0x60b, vec!(0x612)).unwrap();
+    let mut new_state = radius.run_until(state, 0x60b, &[0x612]).unwrap();
 
     if let Value::Concrete(val, _t) = new_state.evaluate(&bv).unwrap() {
         assert_eq!(val, 2);
@@ -66,18 +66,15 @@ fn simple() {
 
 #[test]
 fn multi() {
-    use crate::radius::Radius;
-    use crate::value::Value;
+    use crate::radius::{Radius, RadiusOption};
 
-    let mut radius = Radius::new("../tests/multi");
-    let check = radius.r2api.get_address("sym.check").unwrap();
-    let mut state = radius.call_state(check);
+    let options = [RadiusOption::Debug(true)];
+    let mut radius = Radius::new_with_options(Some("../tests/multi"), &options);
+    let state = radius.entry_state(&["multi", "~~~~~"], &[]);
+    let mut new_state = radius.run_until(state, 0x11c2, &[0x11c9]).unwrap();
 
-    let bv = state.bv("num", 64);
-    state.registers.set("rdi", Value::Symbolic(bv.clone(), 0));
-    let new_state = radius.run_until(state, 0x11c2, vec!(0x11c9)).unwrap();
-
-    println!("{:?}", new_state.solver.evaluate(&bv));
+    let arg = new_state.registers.get_with_alias("A0");
+    println!("{:?} {:?}", arg, new_state.eval(&arg));
 }
 
 #[test]
@@ -86,7 +83,7 @@ fn r100() {
     use crate::value::Value;
 
     let options = vec!(RadiusOption::Debug(false));
-    let mut radius = Radius::new_with_options("../tests/r100", options, None);
+    let mut radius = Radius::new_with_options(Some("../tests/r100"), &options);
     let mut state = radius.call_state(0x004006fd);
     let bv = state.bv("flag", 12*8);
     let addr: u64 = 0x100000;
@@ -94,8 +91,8 @@ fn r100() {
     state.registers.set("rdi", Value::Concrete(addr, 0));
 
     radius.breakpoint(0x004007a1);
-    radius.avoid(vec!(0x00400790));
-    let mut new_state = radius.run(Some(state), 1).unwrap();
+    radius.avoid(&[0x00400790]);
+    let mut new_state = radius.run(state, 1).unwrap();
     let flag = new_state.evaluate_string(&bv).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "Code_Talkers");
@@ -107,7 +104,7 @@ fn r200() {
     use crate::value::Value;
 
     let options = vec!(RadiusOption::Debug(false));
-    let mut radius = Radius::new_with_options("../tests/r200", options, None);
+    let mut radius = Radius::new_with_options(Some("../tests/r200"), &options);
     let mut state = radius.call_state(0x00400886);
     let bv = state.bv("flag", 6*8);
 
@@ -116,9 +113,9 @@ fn r200() {
 
     radius.breakpoint(0x00400843);
     radius.mergepoint(0x004007fd);
-    radius.avoid(vec!(0x00400832));
+    radius.avoid(&[0x00400832]);
 
-    let mut new_state = radius.run(Some(state), 1).unwrap();
+    let mut new_state = radius.run(state, 1).unwrap();
     let flag = new_state.evaluate_string(&bv).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "rotors");
@@ -141,7 +138,7 @@ fn unbreakable() {
     let addr: u64 = 0x6042c0;
     state.memory.write_value(addr, &Value::Symbolic(bv.clone(), 0), len);
     let mut new_state = radius.run_until(
-        state, 0x00400830, vec!(0x00400850)).unwrap();
+        state, 0x00400830, &[0x00400850]).unwrap();
 
     let flag = new_state.evaluate_string(&bv).unwrap();
     println!("FLAG: {}", flag);
@@ -159,7 +156,7 @@ fn fileread() {
     use crate::value::Value;
 
     let options = vec!(RadiusOption::Debug(true));
-    let mut radius = Radius::new_with_options("../tests/fileread", options, None);
+    let mut radius = Radius::new_with_options(Some("../tests/fileread"), &options);
     radius.analyze(2); // necessary for sims for some reason
     let mut state = radius.call_state(0x100003e7c);
     let data = vec!(
@@ -170,7 +167,7 @@ fn fileread() {
         Value::Concrete(0x6d, 0)
     );
     state.filesystem.add_file("test.txt", &data);
-    let mut new_state = radius.run_until(state, 0x100003f14, vec!()).unwrap();
+    let mut new_state = radius.run_until(state, 0x100003f14, &[]).unwrap();
 
     // dump stdout
     let data = new_state.filesystem.dump(1);
@@ -190,9 +187,8 @@ fn symmem() {
     use crate::sims::libc::{atoi_helper, itoa_helper};
 
     let mut radius = Radius::new_with_options(
-        "../tests/symmem", 
-        vec!(RadiusOption::Debug(false)), 
-        None
+        Some("../tests/symmem"), 
+        &vec!(RadiusOption::Debug(false))
     );
     
     let main = radius.r2api.get_address("main").unwrap();
@@ -244,7 +240,7 @@ fn symmem() {
     let atoi_addr = Value::Concrete(0x200000, 0);
     let numstr = state.symbolic_value("numstr", 8*len);
     state.memory_write_value(&atoi_addr, &numstr, len as usize);
-    let num = atoi_helper(&mut state, &atoi_addr, &Value::Concrete(2, 0)); //numstr);
+    let num = atoi_helper(&mut state, &atoi_addr, &Value::Concrete(2, 0), 32); //numstr);
     state.assert_value(&num.sgt(&Value::Concrete(110i64 as u64, 0)));
     //println!("num: {:?}", num);
     println!("atoi: {:?}", state.evaluate_string_value(&numstr));
@@ -272,7 +268,7 @@ fn symmem() {
     state.registers.set("rdi", Value::Symbolic(bv.clone(), 0));
 
     let mut new_state = radius.run_until(
-        state, 0x119c, vec!(0x119e)).unwrap();
+        state, 0x119c, &[0x119e]).unwrap();
 
     let eax = new_state.registers.get("rax");
 
@@ -289,7 +285,7 @@ fn ioscrackme() {
     use crate::value::Value;
 
     let mut radius = Radius::new("ipa://../tests/ioscrackme.ipa");
-    //radius.r2api.r2p.cmd("e asm.arch=arm.v35");
+    //radius.r2api.cmd("e asm.arch=arm.v35");
     let len: usize = 16;
 
     let validate = radius.r2api.get_address("sym._validate").unwrap();
@@ -305,12 +301,12 @@ fn ioscrackme() {
         gteca.and(&ltecz).or(&gtea.and(&ltez)).assert();
     }
 
-    let buf_addr: u64 = 0x100000;
+    let buf_addr: u64 = 0xff000000;
     state.registers.set("x0", Value::Concrete(buf_addr, 0));
     state.memory.write_value(buf_addr, &Value::Symbolic(bv.clone(), 0), len);
 
     let mut new_state = radius.run_until(
-        state, 0x10000600c, vec!(0x100006044)).unwrap();
+        state, 0x10000600c, &[0x100006044]).unwrap();
 
     let flag = new_state.evaluate_string(&bv);
     println!("FLAG: {}", flag.unwrap());

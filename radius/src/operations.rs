@@ -2,7 +2,11 @@ use crate::value::Value;
 use crate::state::{State, StackItem};
 use std::f64;
 
-pub const OPS: [&str; 16] = ["+", "-", "++", "--", "*", "/", "<<", ">>", "|", "&", "^", "%", "!", ">>>>", ">>>", "<<<"];
+pub const OPS: [&str; 16] = [
+    "+", "-", "++", "--", "*", "/", "<<", ">>", 
+    "|", "&", "^", "%", "!", ">>>>", ">>>", "<<<"
+];
+
 pub const SIZE: u64 = 64;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -331,8 +335,7 @@ pub fn pop_float(state: &mut State) -> f32 {
 }
 
 #[inline]
-pub fn do_equal(state: &mut State, reg: StackItem, value: Value, 
-    set_esil: bool, _pc_index: usize) {
+pub fn do_equal(state: &mut State, reg: StackItem, value: Value, set_esil: bool) {
 
     if let StackItem::StackRegister(index) = reg {
         let register = state.registers.indexes.get(index).unwrap();
@@ -389,7 +392,7 @@ pub fn genmask(bits: u64) -> u64 {
     }
 }
 
-pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
+pub fn do_operation(state: &mut State, operation: Operations) {
     match operation {
         Operations::Trap => {},
         Operations::Syscall => {},
@@ -548,12 +551,12 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         Operations::Equal => {
             let reg_arg = state.stack.pop().unwrap();
             let value = pop_value(state, false, false);
-            do_equal(state, reg_arg, value, true, pc_index);
+            do_equal(state, reg_arg, value, true);
         },
         Operations::WeakEqual => {
             let reg_arg = state.stack.pop().unwrap();
             let value = pop_value(state, false, false);
-            do_equal(state, reg_arg, value, false, pc_index);
+            do_equal(state, reg_arg, value, false);
         },
         Operations::Peek(n) => {
             // TODO: fix to allow symbolic (sort of done)
@@ -762,7 +765,7 @@ pub fn do_operation(state: &mut State, operation: Operations, pc_index: usize) {
         },
         Operations::Duplicate => {
             let item = state.stack.pop().unwrap();
-            state.stack.push(item.to_owned());
+            state.stack.push(item.clone());
             state.stack.push(item);
         },
         Operations::Number => {
