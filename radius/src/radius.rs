@@ -120,6 +120,10 @@ impl Radius {
             argv.push("-2"); // silence r2 errors
         }
 
+        // need this for sims
+        argv.push("-e io.cache=true");
+        argv.push("-e bin.cache=true");
+
         let args = if argv.len() > 0 {
             Some(argv)
         } else {
