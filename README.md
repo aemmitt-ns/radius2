@@ -2,7 +2,17 @@
 
 radius is a rust rewrite of ESILSolve with some architectural improvements. It uses boolector as the SMT solver rather than z3. It executes about 1000x faster than ESILSolve on average. radius gains additional speed over other rust based symbex tools by using u64 primitives for concrete values instead of constant valued bitvectors which incur significant overhead for all operations. 
 
-As always, r100 as an example:
+### Building
+
+Install radare2 with 
+```
+git clone https://github.com/radareorg/radare2.git
+radare2/sys/install.sh 
+```
+Then clone and build radius with `cargo build --release`
+
+### Example
+
 ```rust
 use radius::radius::Radius;
 
