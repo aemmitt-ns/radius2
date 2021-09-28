@@ -2,9 +2,12 @@
 
 members = [
     "radius",
+    "examples/ais3",
     "examples/r100",
     "examples/r200",
     "examples/unbreakable",
     "examples/dex",
-    "examples/babyre"
+    "examples/babyre",
+    "examples/visualize",
+    "benchmark/looper"
 ]

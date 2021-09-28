@@ -222,6 +222,24 @@ impl State {
         self.memory.write_string(address, string)
     }
 
+    /// pack bytes into a single `Value`
+    pub fn pack(&mut self, data: &[Value]) -> Value {
+        self.memory.pack(data)
+    }
+
+    /// unpack `Value` into vector of bytes 
+    pub fn unpack(&mut self, data: &Value, length: usize) -> Vec<Value> {
+        self.memory.unpack(data, length)
+    }
+
+    pub fn fill_file(&mut self, fd: usize, data: &[Value]) {
+        self.filesystem.fill(fd, data)
+    }
+
+    pub fn dump_file(&mut self, fd: usize) -> Vec<Value> {
+        self.filesystem.dump(fd)
+    }
+
     // TODO do this in a way that isn't a global maximum of stupidity
     /// Apply this state to the radare2 instance. This writes all the values
     /// in the states memory back to the memory in r2 as well as the register
