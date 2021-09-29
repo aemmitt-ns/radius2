@@ -4,11 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::u64;
 use std::u8;
 use std::sync::{Arc, Mutex};
-use ahash::AHashMap;
-type HashMap<P, Q> = AHashMap<P, Q>;
+//use ahash::AHashMap;
+//type HashMap<P, Q> = AHashMap<P, Q>;
 
-//use std::collections::HashMap;
+use std::collections::HashMap;
 use std::path::Path;
+use std::{thread, time};
 
 pub const STACK_START: u64 = 0xff000000;
 pub const STACK_SIZE:  u64 = 0x780000*2;
@@ -19,6 +20,13 @@ pub enum Endian {
     Big,
     Mixed,
     Unknown
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Mode {
+    Default,
+    Debugger,
+    Frida
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,7 +130,9 @@ pub struct RegisterInformation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoreInfo {
     pub file: String,
-    pub size: u64,
+
+    #[serde(default="zero")]
+    pub size: i64,
     pub mode: String,
     pub format: String
 }
@@ -138,9 +148,33 @@ pub struct BinInfo {
     pub nx: bool
 }
 
+fn binfo() -> BinInfo{
+    BinInfo {
+        arch: "".to_string(),
+        bintype: "".to_string(),
+        bits: 64,
+        canary: false,
+        endian: "little".to_string(),
+        os: "".to_string(),
+        nx: false
+    }
+}
+
+fn core() -> CoreInfo {
+    CoreInfo {
+        file: "".to_string(),
+        size: 0,
+        mode: "".to_string(),
+        format: "".to_string()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Information {
+    #[serde(default="core")]
     pub core: CoreInfo,
+
+    #[serde(default="binfo")]
     pub bin: BinInfo
 }
 
@@ -346,7 +380,8 @@ pub struct R2Api {
     pub r2p: Arc<Mutex<R2Pipe>>,
     //pub instructions: HashMap<u64, Instruction>,
     //pub permissions: HashMap<u64, Permission>,
-    pub info: Option<Information>
+    pub info: Option<Information>,
+    pub mode: Mode
 }
 
 impl R2Api {
@@ -368,12 +403,20 @@ impl R2Api {
 
         let mut r2api = R2Api {
             r2p: Arc::new(Mutex::new(r2pipe.unwrap())),
-            //instructions: HashMap::new(),
-            //permissions: HashMap::new(),
-            info: None
+            info: None,
+            mode: Mode::Default
         };
     
-        let _r = r2api.get_info();
+        let info = r2api.get_info().unwrap();
+        r2api.mode = if info.core.file.starts_with("frida:") {
+            let _ = r2api.cmd("s `:il~[0]`"); // seek to first module
+            Mode::Frida
+        } else if info.core.file.starts_with("gdb:") {
+            Mode::Debugger
+        } else {
+            Mode::Default
+        };
+
         r2api
     }
 
@@ -498,12 +541,20 @@ impl R2Api {
         let _r = self.cmd(format!("s {}", addr).as_str());
     }
 
-    pub fn breakpoint(&mut self, addr: u64) {
-        let _r = self.cmd(format!("db {}", addr).as_str());
+    pub fn breakpoint(&mut self, addr: u64) -> R2Result<String> {
+        match self.mode {
+            Mode::Debugger => self.cmd(format!("db {}", addr).as_str()),
+            Mode::Frida => self.cmd(format!(":db {}", addr).as_str()),
+            _ => Ok("idk".to_string())
+        }
     }
 
-    pub fn cont(&mut self) {
-        let _r = self.cmd("dc");
+    pub fn cont(&mut self) -> R2Result<String> {
+        match self.mode {
+            Mode::Debugger => self.cmd("dc"),
+            Mode::Frida => self.cmd(":dc"),
+            _ => Ok("idk".to_string())
+        }
     }
 
     pub fn init_vm(&mut self) {
@@ -518,6 +569,27 @@ impl R2Api {
         self.init_vm();
         // this is very weird but this is how it works
         let _r = self.cmd(format!(".aeis {} {} {} @ SP", argc, argv, env).as_str());
+    }
+
+    pub fn init_frida(&mut self, addr: u64) -> R2Result<HashMap<String, String>> {
+        // we are reaching levels of jankiness previously thought to be impossible
+        let alloc = self.cmd(":dma 4096").unwrap();
+
+        let func = format!("{{ptr('{}').writeUtf8String(JSON.stringify(this.context))}}",
+            alloc.trim());
+
+        let script_data = format!(": Interceptor.attach(ptr('0x{:x}'),function(){});:db {}", 
+            addr, func, addr);
+
+        self.cmd(&script_data).unwrap();
+
+        loop { 
+            thread::sleep(time::Duration::from_millis(100));
+            let out = self.cmd(&format!("psz 4096 @ {}", alloc))?;
+            if out.contains("{") {
+                break r2_result(serde_json::from_str(&out));
+            }
+        }
     }
 
     pub fn set_option(&mut self, key: &str, value: &str) -> R2Result<String> {
@@ -571,9 +643,14 @@ impl R2Api {
     }
 
     pub fn get_address(&mut self, symbol: &str) -> R2Result<u64> {
-        let cmd = format!("?v {}", symbol);
+        let cmd = if self.mode != Mode::Frida {
+            format!("?v {}", symbol)
+        } else {
+            format!(":isa {}", symbol)
+        };
+
         let val = self.cmd(cmd.as_str())?;
-        Ok(u64::from_str_radix(&val[2..val.len()-1], 16).unwrap())
+        r2_result(u64::from_str_radix(&val[2..val.len()-1], 16))
     }
 
     pub fn get_files(&mut self) -> R2Result<Vec<File>> {

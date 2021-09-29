@@ -69,7 +69,7 @@ pub struct InstructionEntry {
 //const OPT:   bool = true;  // optimize by removing unread flag sets
 //const BFS:   bool = true;    // dequeue states instead of popping
 
-const ALLOW_INVALID: bool = true; // Allow invalid instructions (exec as NOP)
+//const ALLOW_INVALID: bool = true; // Allow invalid instructions (exec as NOP)
 
 impl Processor {
     pub fn new(selfmodify: bool, optimized: bool, debug: bool, 
@@ -571,24 +571,9 @@ impl Processor {
 
     // get the instruction, set its status, tokenize if necessary
     // and optimize if enabled. TODO this has become so convoluted, fix it
-    pub fn execute_instruction(&mut self, state: &mut State, pc_val: u64) {
-        
-        let instr_opt = if !self.selfmodify {
-            self.instructions.get(&pc_val)
-        } else {
-            None
-        };
-        
-        if let Some(instr_entry) = instr_opt {
-            self.print_instr(&instr_entry.instruction);
-            if !ALLOW_INVALID && instr_entry.instruction.opcode == "invalid" {
-                panic!("invalid instruction: {:?}", instr_entry);
-            }
-            //let size = instr_entry.instruction.size;
-            let words = &instr_entry.tokens;
-            self.execute(state, &instr_entry.instruction, &instr_entry.status, words);
+    pub fn fetch_instruction(&mut self, state: &mut State, pc_val: u64) {
 
-        } else {
+        if self.selfmodify || !self.instructions.contains_key(&pc_val) {
             let mut pc_tmp = pc_val;
             let instrs = if self.selfmodify {
                 let data =  state.memory_read_bytes(pc_val, 32);
@@ -622,11 +607,6 @@ impl Processor {
                     opt = false;
                 }
 
-                if pc_tmp == pc_val {
-                    self.print_instr(&instr);
-                    self.execute(state, &instr, &status, &words);
-                } 
-
                 let instr_entry = InstructionEntry {
                     instruction: instr,
                     tokens: words,
@@ -645,6 +625,12 @@ impl Processor {
         }
     }
 
+    pub fn execute_instruction(&mut self, state: &mut State, pc_val: u64) {
+        self.fetch_instruction(state, pc_val);
+        let instr = self.instructions.get(&pc_val).unwrap();
+        self.print_instr(&instr.instruction);
+        self.execute(state, &instr.instruction, &instr.status, &instr.tokens);
+    }
 
     /// Take single step with the state provided
     pub fn step(&mut self, mut state: State) -> Vec<State> {

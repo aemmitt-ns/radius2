@@ -196,6 +196,20 @@ impl Radius {
         state
     }
 
+    pub fn frida_state(&mut self, addr: u64) -> State {
+        self.r2api.seek(addr);
+        let mut state = self.init_state();
+        self.processor.fetch_instruction(&mut state, addr); // cache real instrs
+        let context = self.r2api.init_frida(addr).unwrap();
+
+        for reg in context.keys() {
+            let val = u64::from_str_radix(&context[reg][2..], 16).unwrap();
+            state.registers.set(reg, vc(val));
+        }
+
+        state
+    }
+
     /**
      * Initialized state at the program entry point (the first if multiple).
      * Can also be passed concrete args and env variables
@@ -493,9 +507,25 @@ impl Radius {
         self.r2api.write(address, data)
     }
 
+    /// write string to binary / real memory
+    pub fn write_string(&mut self, address: u64, string: &str) {
+        self.r2api.write(address, 
+            string.chars().map(|c| c as u8).collect::<Vec<_>>())
+    }
+
+    /// set option
+    pub fn set_option(&mut self, key: &str, value: &str) {
+        self.r2api.set_option(key, value).unwrap();
+    }
+    
     /// Run any r2 command 
     pub fn cmd(&mut self, cmd: &str) -> R2Result<String> { 
         self.r2api.cmd(cmd)
+    }
+
+    /// close r2
+    pub fn close(&mut self) { 
+        self.r2api.close()
     }
 
     // clear cached data from r2api and processors 

@@ -396,8 +396,8 @@ impl State {
         self.solver.evaluate_many(bv)
     }
 
-    /// Evaluate a string from bitvector `bv` 
-    pub fn evaluate_string(&mut self, bv: &BitVec) -> Option<String> {
+    /// Evaluate bytes from bitvector `bv` 
+    pub fn evaluate_bytes(&mut self, bv: &BitVec) -> Option<Vec<u8>> {
         let new_bv = bv; //self.translate(bv).unwrap();
         let mut data: Vec<u8> = vec!();
         if self.solver.is_sat() {
@@ -411,13 +411,27 @@ impl State {
                 if self.memory.endian == Endian::Little {
                     data.reverse();
                 }
-                String::from_utf8(data).ok()
+                Some(data)
             } else {
                 None
             }
         } else {
             None
         }
+    }
+
+    /// Evaluate bytes from bitvector `bv` 
+    pub fn evaluate_string(&mut self, bv: &BitVec) -> Option<String> {
+        if let Some(bytes) = self.evaluate_bytes(bv) {
+            String::from_utf8(bytes).ok()
+        } else {
+            None
+        }
+    }
+
+    /// Evaluate bytes from value
+    pub fn evaluate_bytes_value(&mut self, value: &Value) -> Option<Vec<u8>> {
+        self.evaluate_bytes(value.as_bv().as_ref().unwrap())
     }
 
     /// Evaluate string from value

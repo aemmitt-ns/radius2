@@ -8,7 +8,7 @@ use crate::solver::Solver;
 use std::mem;
 
 // const CHUNK: u64 = 8;
-const READ_CACHE: usize = 256;
+const READ_CACHE: usize = 64;
 // const LEN_MAX: u64 = 65536;
 
 // one day I will make a reasonable heap impl

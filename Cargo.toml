@@ -7,5 +7,6 @@ members = [
     "examples/r200",
     "examples/unbreakable",
     "examples/dex",
-    "examples/babyre"
+    "examples/babyre",
+    "examples/frida"
 ]
