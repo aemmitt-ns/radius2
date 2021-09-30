@@ -27,6 +27,15 @@ pub fn zero(_state: &mut State, _args: &[Value]) -> Value {
     Value::Concrete(0, 0)
 }
 
+// this isn't great
+pub fn unconstrained(state: &mut State, _args: &[Value]) -> Value {
+    let mut uncon_vec = state.context.entry("uncon".to_owned()).or_insert(vec!()).clone();
+    let uncon = state.symbolic_value(&format!("uncon_{}", uncon_vec.len()), 64);
+    uncon_vec.push(uncon.clone());
+    state.context.insert("uncon".to_owned(), uncon_vec);
+    uncon
+}
+
 // get a vec of all available Sims
 pub fn get_sims() -> Vec<Sim> {
     vec!(
@@ -70,6 +79,9 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("malloc",  libc::malloc, 1),
         make_sim("calloc",  libc::calloc, 2),
         make_sim("free",    libc::strnlen, 1),
+
+        make_sim("brk",     libc::brk, 1),
+        make_sim("sbrk",    libc::sbrk, 1),
 
         make_sim("atoi", libc::atoi, 1),
         make_sim("atol", libc::atoi, 1),

@@ -660,6 +660,21 @@ pub fn fork(state: &mut State, args: &[Value]) -> Value {
     syscall::fork(state, args)
 }
 
+pub fn brk(state: &mut State, args: &[Value]) -> Value {
+    let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
+    let current = syscall::sbrk(state, &[vc(0)]);
+    let new = syscall::brk(state, args);
+    if current.as_u64().unwrap() == addr || new.as_u64().unwrap() != addr {
+        vc(0)
+    } else {
+        vc(-1i64 as u64)
+    }
+}
+
+pub fn sbrk(state: &mut State, args: &[Value]) -> Value {
+    syscall::sbrk(state, args)
+}
+
 pub fn getpagesize(_state: &mut State, _args: &[Value]) -> Value {
     Value::Concrete(0x1000, 0)
 }

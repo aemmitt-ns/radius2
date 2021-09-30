@@ -234,13 +234,7 @@ pub fn munmap(state: &mut State, args: &[Value]) -> Value {
 
 pub fn brk(state: &mut State, args: &[Value]) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
-    let new = state.memory.brk(addr);
-
-    if new == addr {
-        Value::Concrete(0, 0)
-    } else {
-        Value::Concrete(-1i64 as u64, 0)
-    }
+    Value::Concrete(state.memory.brk(addr), 0)
 }
 
 pub fn sbrk(state: &mut State, args: &[Value]) -> Value {
