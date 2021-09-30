@@ -180,21 +180,30 @@ impl Memory {
         }
     }
 
-    pub fn brk(&mut self, address: u64) -> bool {
+    pub fn brk(&mut self, address: u64) -> u64 {
+        // check if this address is already mapped
+        let avail = !self.check_permission(address, 1, 'i');
+
         for seg in &mut self.segs {
             if seg.name == ".data" {
-                seg.size = address-seg.addr;
-                return true;
+                if avail {
+                    // set size and return new break
+                    seg.size = address-seg.addr;
+                    return address;
+                } else {
+                    // return previous break
+                    return seg.addr+seg.size;
+                }
             } 
         }
-        false
+        return 0; // if theres no data segment just 0 i guess
     }
 
     pub fn sbrk(&mut self, inc: u64) -> u64 {
         for seg in &mut self.segs {
             if seg.name == ".data" {
-                seg.size = seg.addr+seg.size+inc;
-                return seg.addr;
+                seg.size += inc;
+                return seg.addr+seg.size-inc; // returns previous
             }
         }
         -1i64 as u64
