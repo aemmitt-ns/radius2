@@ -8,4 +8,4 @@ edition = "2018"
 
 [dependencies]
 
-radius = { path = "../../radius" }
+radius2 = { path = "../../radius" }

@@ -1,5 +1,5 @@
-use radius::radius::{Radius, RadiusOption};
-use radius::value::Value;
+use radius2::radius::{Radius, RadiusOption};
+use radius2::value::Value;
 
 fn main() {
     let options = [RadiusOption::Debug(true), RadiusOption::Sims(false)];

@@ -1,5 +1,5 @@
 [package]
-name = "radius"
+name = "radius2"
 description = "a fast symbolic execution framework using r2"
 version = "1.0.0"
 authors = ["aemmitt-ns <aemmitt@nowsecure.com>"]

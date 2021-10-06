@@ -55,7 +55,7 @@ pub enum RadiusOption {
  * **Example**
  * 
  * ```
- * use radius::radius::Radius;
+ * use radius2::radius::Radius;
  * let mut radius = Radius::new("../tests/r200");
  * ```
  * 
@@ -77,7 +77,7 @@ impl Radius {
      * **Example**
      * 
      * ```
-     * use radius::radius::Radius;
+     * use radius2::radius::Radius;
      * let mut radius = Radius::new("../tests/r100");
      * ```
      */
@@ -92,7 +92,7 @@ impl Radius {
      * **Example**
      * 
      * ```
-     * use radius::radius::{Radius, RadiusOption};
+     * use radius2::radius::{Radius, RadiusOption};
      * let options = [RadiusOption::Optimize(false), RadiusOption::Sims(false)];
      * let mut radius = Radius::new_with_options(Some("../tests/baby-re"), &options);
      * ```
@@ -190,7 +190,7 @@ impl Radius {
      * **Example**
      * 
      * ```
-     * use radius::radius::Radius;
+     * use radius2::radius::Radius;
      * let mut radius = Radius::new("../tests/r100");
      * let mut state = radius.call_state(0x004006fd);
      * ```
@@ -226,7 +226,7 @@ impl Radius {
      * **Example**
      * 
      * ```
-     * use radius::radius::Radius;
+     * use radius2::radius::Radius;
      * let mut radius = Radius::new("../tests/r100");
      * let mut state = radius.entry_state(&["r100"], &[]);
      * ```

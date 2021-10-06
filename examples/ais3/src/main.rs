@@ -1,4 +1,4 @@
-use radius::radius::{Radius, RadiusOption};
+use radius2::radius::{Radius, RadiusOption};
 
 fn main() {
     let options = vec!(RadiusOption::Sims(false));
