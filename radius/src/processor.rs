@@ -13,7 +13,7 @@ use ahash::AHashMap;
 type HashMap<P, Q> = AHashMap<P, Q>;
 
 const INSTR_NUM: usize = 64;
-
+const COLOR: bool = false;
 const CALL_TYPE: i64 = 3;
 const RETN_TYPE: i64 = 5;
 
@@ -97,10 +97,10 @@ impl Processor {
 
     pub fn tokenize(&self, state: &mut State, esil: &str) -> Vec<Word> {
         let mut tokens: Vec<Word> = Vec::with_capacity(128);
-        //let ugh = esil.replace("=}", "=,}");
         let split_esil = esil.split(',');
 
         for s in split_esil {
+            let l = s.len();
 
             // nice, pretty, simple
             if let Some(register) = self.get_register(state, s) {
@@ -111,27 +111,27 @@ impl Processor {
                 tokens.push(operator);
 
             // all this garbage is for the combo ones like ++=[8] ...
-            } else if s.len() > 1 && &s[s.len()-1..] == "="
-                    && OPS.contains(&&s[0..s.len()-1]) {
+            } else if l > 1 && &s[l-1..] == "="
+                    && OPS.contains(&&s[0..l-1]) {
 
                 let reg_word = tokens.pop().unwrap();
                 tokens.push(reg_word.to_owned());
-                let operator = self.get_operator(&s[0..s.len()-1]).unwrap();
+                let operator = self.get_operator(&s[0..l-1]).unwrap();
                 tokens.push(operator);
                 tokens.push(reg_word);
-                tokens.push(Word::Operator(Operations::Equal))
+                tokens.push(Word::Operator(Operations::Equal));
 
-            } else if s.len() > 4 && &s[s.len()-1..] == "]" 
-                    && OPS.contains(&&s[0..s.len()-4]) {
+            } else if l > 4 && &s[l-1..] == "]" 
+                    && OPS.contains(&&s[0..l-4]) {
 
                 tokens.push(Word::Operator(Operations::AddressStore));
-                let peek = self.get_operator(&s[s.len()-3..]).unwrap();
+                let peek = self.get_operator(&s[l-3..]).unwrap();
                 tokens.push(peek);
-                let operator = self.get_operator(&s[0..s.len()-4]).unwrap();
+                let operator = self.get_operator(&s[0..l-4]).unwrap();
                 tokens.push(operator);
-                let poke = self.get_operator(&s[s.len()-4..]).unwrap();
+                let poke = self.get_operator(&s[l-4..]).unwrap();
                 tokens.push(Word::Operator(Operations::AddressRestore));
-                tokens.push(poke)
+                tokens.push(poke);
             } else {
                 tokens.push(Word::Unknown(String::from(s)));
             }
@@ -172,9 +172,11 @@ impl Processor {
 
     /// print instruction if debug output is enabled
     #[inline]
-    pub fn print_instr(&self, instr: &Instruction) {
-        if self.debug {
+    pub fn print_instr(&self, state: &mut State, instr: &Instruction) {
+        if !COLOR {
             println!("{:016x}:  {:<40} |  {}", instr.offset, instr.disasm, instr.esil);
+        } else {
+            print!("{}", state.r2api.cmd(&format!("pd 1 @ {}", instr.offset)).unwrap());
         }
     }
 
@@ -627,8 +629,14 @@ impl Processor {
 
     pub fn execute_instruction(&mut self, state: &mut State, pc_val: u64) {
         self.fetch_instruction(state, pc_val);
+
+        // the hash lookup is done twice, needs fixing
         let instr = self.instructions.get(&pc_val).unwrap();
-        self.print_instr(&instr.instruction);
+        
+        if self.debug {
+            self.print_instr(state, &instr.instruction);
+        }
+
         self.execute(state, &instr.instruction, &instr.status, &instr.tokens);
     }
 

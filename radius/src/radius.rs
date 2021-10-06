@@ -2,7 +2,7 @@ use crate::r2_api::{R2Api, R2Result, FunctionInfo, BasicBlock, Instruction, Info
 use crate::processor::{Processor, HookMethod};
 use crate::state::{State, StateStatus};
 //use crate::value::Value;
-use crate::sims::{get_sims, SimMethod, zero};
+use crate::sims::{get_sims, SimMethod, unconstrained};
 use crate::sims::syscall::{indirect};
 use crate::value::Value;
 
@@ -115,14 +115,23 @@ impl Radius {
         }
 
         let debug = options.contains(&RadiusOption::Debug(true));
+        let use_sims = !options.contains(&RadiusOption::Sims(false));
 
         if !debug {
             argv.push("-2"); // silence r2 errors
+        } else {
+            // pretty print disasm + esil
+            argv.push("-e scr.color=3");
+            argv.push("-e asm.cmt.esil=true");
+            argv.push("-e asm.lines=false");
+            argv.push("-e asm.emu=false");
         }
 
         // need this for sims
-        argv.push("-e io.cache=true");
-        argv.push("-e bin.cache=true");
+        if use_sims {
+            argv.push("-e io.cache=true");
+            argv.push("-e bin.cache=true");
+        }
 
         let args = if argv.len() > 0 {
             Some(argv)
@@ -160,7 +169,7 @@ impl Radius {
         };
 
         // this is weird, idk
-        if !options.contains(&RadiusOption::Sims(false)) {
+        if use_sims {
             Radius::register_sims(&mut r2api, &mut processor, sim_all);
         }
 
@@ -347,7 +356,8 @@ impl Radius {
 
             if sim_all {
                 for addr in symmap.values() {
-                    processor.sims.insert(*addr, zero);
+                    // we are gonna go with unconstrained by default
+                    processor.sims.insert(*addr, unconstrained);
                 }
             }
         }

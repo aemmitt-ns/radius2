@@ -281,11 +281,13 @@ fn symmem() {
 
 #[test]
 fn ioscrackme() {
-    use crate::radius::Radius;
+    use crate::radius::{Radius, RadiusOption};
     use crate::value::Value;
 
-    let mut radius = Radius::new("ipa://../tests/ioscrackme.ipa");
-    //radius.r2api.cmd("e asm.arch=arm.v35");
+    let mut radius = Radius::new_with_options(
+        Some("ipa://../tests/ioscrackme.ipa"), &[RadiusOption::Debug(true)]);
+
+    //radius.r2api.cmd("e asm.arch=arm.v35").unwrap();
     let len: usize = 16;
 
     let validate = radius.r2api.get_address("sym._validate").unwrap();

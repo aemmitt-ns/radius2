@@ -3,12 +3,15 @@ use radius::value::Value;
 
 fn main() {
     let options = [RadiusOption::Debug(true), RadiusOption::Sims(false)];
-    let mut radius = Radius::new_with_options(Some("frida://attach/usb//iOSCrackMe"), &options);
-    radius.set_option("io.cache", "false"); // turn off cache to write value back to mem
-    let len: usize = 16;
+    let mut radius = Radius::new_with_options(
+        Some("frida://attach/usb//iOSCrackMe"), &options);
 
-    let validate = radius.r2api.get_address("validate").unwrap();
-    let mut state = radius.frida_state(validate);
+    // turn off cache to write value back to real mem
+    radius.set_option("io.cache", "false"); 
+    let validate = radius.get_address("validate").unwrap();
+    let mut state = radius.frida_state(validate); // hook addr and suspend when hit
+
+    let len: usize = 16;
     let bv = state.bv("flag", 8*len as u32);
 
     // add "[a-zA-Z]" constraint
@@ -28,9 +31,9 @@ fn main() {
 
     let flag = new_state.evaluate_string(&bv).unwrap();
     println!("FLAG: {}", flag);
-    radius.write_string(buf_addr.as_u64().unwrap(), &flag);
 
-    radius.close(); // closing also lets app continue
-    //radius.r2api.cont().unwrap();
+    // write solution back to app memory
+    radius.write_string(buf_addr.as_u64().unwrap(), &flag);
+    radius.close(); // closing lets app continue
 }
 

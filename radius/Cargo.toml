@@ -1,13 +1,14 @@
 [package]
 name = "radius"
-version = "0.1.0"
+description = "a fast symbolic execution framework using r2"
+version = "1.0.0"
 authors = ["aemmitt-ns <aemmitt@nowsecure.com>"]
+license = "MIT"
 edition = "2018"
+keywords = ["symbolic execution"]
+repository = "https://github.com/aemmitt-ns/radius"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[profile.test]
-opt-level = 3
 
 [dependencies]
 r2pipe = "0.5.0"

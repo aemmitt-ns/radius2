@@ -411,7 +411,7 @@ impl R2Api {
         r2api.mode = if info.core.file.starts_with("frida:") {
             let _ = r2api.cmd("s `:il~[0]`"); // seek to first module
             Mode::Frida
-        } else if info.core.file.starts_with("gdb:") {
+        } else if info.core.file.starts_with("dbg:") {
             Mode::Debugger
         } else {
             Mode::Default
@@ -587,6 +587,7 @@ impl R2Api {
             thread::sleep(time::Duration::from_millis(100));
             let out = self.cmd(&format!("psz 4096 @ {}", alloc))?;
             if out.contains("{") {
+                self.cmd(&format!(":dma- {}", alloc)).unwrap();
                 break r2_result(serde_json::from_str(&out));
             }
         }

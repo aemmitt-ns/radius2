@@ -231,7 +231,8 @@ pub fn pop_value(state: &mut State, set_size: bool, sign_ext: bool) -> Value {
     match &value {
         Value::Concrete(_v, _t) => value,
         Value::Symbolic(ov, t) => {
-            if ov.is_const() {
+            // check const and fits in u64
+            if ov.is_const() && ov.get_width() <= 64 {
                 Value::Concrete(ov.as_u64().unwrap(), *t)
             } else {
                 let v = ov; //state.translate(&ov).unwrap();
