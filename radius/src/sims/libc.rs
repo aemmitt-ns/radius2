@@ -259,6 +259,14 @@ pub fn free(state: &mut State, args: &[Value]) -> Value {
     Value::Concrete(0, 0)
 }
 
+pub fn mmap(state: &mut State, args: &[Value]) -> Value {
+    syscall::mmap(state, args)
+}
+
+pub fn munmap(state: &mut State, args: &[Value]) -> Value {
+    syscall::munmap(state, args)
+}
+
 pub fn c_syscall(state: &mut State, args: &[Value]) -> Value {
     syscall::syscall("indirect_syscall", state, args)
 }

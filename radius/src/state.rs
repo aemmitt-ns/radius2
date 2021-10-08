@@ -223,12 +223,12 @@ impl State {
     }
 
     /// pack bytes into a single `Value`
-    pub fn pack(&mut self, data: &[Value]) -> Value {
+    pub fn pack(&self, data: &[Value]) -> Value {
         self.memory.pack(data)
     }
 
     /// unpack `Value` into vector of bytes 
-    pub fn unpack(&mut self, data: &Value, length: usize) -> Vec<Value> {
+    pub fn unpack(&self, data: &Value, length: usize) -> Vec<Value> {
         self.memory.unpack(data, length)
     }
 
@@ -324,7 +324,9 @@ impl State {
                 self.taints.insert(t.to_owned(), new_taint);
                 new_taint
             } else {
-                panic!("Max of 64 taints allowed!");
+                // no need to panic
+                println!("Max of 64 taints allowed!");
+                0
             }
         }
     }

@@ -127,12 +127,6 @@ impl Radius {
             argv.push("-e asm.emu=false");
         }
 
-        // need this for sims
-        if use_sims {
-            argv.push("-e io.cache=true");
-            argv.push("-e bin.cache=true");
-        }
-
         let args = if argv.len() > 0 {
             Some(argv)
         } else {
@@ -140,6 +134,8 @@ impl Radius {
         };
 
         let mut r2api = R2Api::new(filename, args);
+        r2api.set_option("io.cache", "true").unwrap();
+        r2api.set_option("bin.cache", "true").unwrap();
 
         let opt = !options.contains(&RadiusOption::Optimize(false));
         let lazy = !options.contains(&RadiusOption::Lazy(false));
@@ -330,6 +326,12 @@ impl Radius {
         } else {
             self.processor.hooks.insert(addr, vec!(hook_callback));
         }
+    }
+
+    /// Hook a symbol with a callback that is passed each state that reaches it
+    pub fn hook_symbol(&mut self, sym: &str, hook_callback: HookMethod) {
+        let addr = self.get_address(sym).unwrap();
+        self.hook(addr, hook_callback);
     }
 
     // internal method to register import sims 

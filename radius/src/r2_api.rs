@@ -442,11 +442,41 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn get_syscall_cc(&mut self, pc: u64) -> R2Result<CallingConvention> {
+    /*
+        arch/ABI      arg1  arg2  arg3  arg4  arg5  arg6  arg7  Notes
+    ──────────────────────────────────────────────────────────────
+    alpha         a0    a1    a2    a3    a4    a5    -
+    arc           r0    r1    r2    r3    r4    r5    -
+    arm/OABI      a1    a2    a3    a4    v1    v2    v3
+    arm/EABI      r0    r1    r2    r3    r4    r5    r6
+    arm64         x0    x1    x2    x3    x4    x5    -
+    blackfin      R0    R1    R2    R3    R4    R5    -
+    i386          ebx   ecx   edx   esi   edi   ebp   -
+    ia64          out0  out1  out2  out3  out4  out5  -
+    m68k          d1    d2    d3    d4    d5    a0    -
+    microblaze    r5    r6    r7    r8    r9    r10   -
+    mips/o32      a0    a1    a2    a3    -     -     -     [1]
+    mips/n32,64   a0    a1    a2    a3    a4    a5    -
+    nios2         r4    r5    r6    r7    r8    r9    -
+    parisc        r26   r25   r24   r23   r22   r21   -
+    powerpc       r3    r4    r5    r6    r7    r8    r9
+    riscv         a0    a1    a2    a3    a4    a5    -
+    s390          r2    r3    r4    r5    r6    r7    -
+    s390x         r2    r3    r4    r5    r6    r7    -
+    superh        r4    r5    r6    r7    r0    r1    r2
+    sparc/32      o0    o1    o2    o3    o4    o5    -
+    sparc/64      o0    o1    o2    o3    o4    o5    -
+    tile          R00   R01   R02   R03   R04   R05   -
+    x86-64        rdi   rsi   rdx   r10   r8    r9    -
+    x32           rdi   rsi   rdx   r10   r8    r9    -
+    xtensa        a6    a3    a4    a5    a8    a9    -
+    */
+    
+    pub fn get_syscall_cc(&mut self) -> R2Result<CallingConvention> {
         let bin = self.info.as_ref().unwrap().bin.clone();
         // this sucks, need a central place for arch shit
-        if bin.arch == "x86" && bin.bits == 32 {
-            Ok(CallingConvention {
+        match (bin.arch.as_str(), bin.bits) {
+            ("x86", 32) => Ok(CallingConvention {
                 args: vec!(
                     "ebx".to_string(), 
                     "ecx".to_string(), 
@@ -456,9 +486,80 @@ impl R2Api {
                     "ebp".to_string()
                 ),
                 ret: "eax".to_string()
-            })
-        } else {
-            self.get_cc(pc)
+            }),
+            ("x86", 64) => Ok(CallingConvention {
+                args: vec!(
+                    "rdi".to_string(), 
+                    "rsi".to_string(), 
+                    "rdx".to_string(), 
+                    "r10".to_string(), 
+                    "r8".to_string(), 
+                    "r9".to_string()
+                ),
+                ret: "rax".to_string()
+            }),
+            // 16 is thumb mode, need to handle better
+            ("arm", 16) | ("arm", 32) => Ok(CallingConvention {
+                args: vec!(
+                    "r0".to_string(), 
+                    "r1".to_string(), 
+                    "r2".to_string(), 
+                    "r3".to_string(), 
+                    "r4".to_string(), 
+                    "r5".to_string(),
+                    "r6".to_string()
+                ),
+                ret: "r0".to_string()
+            }),
+            ("arm", 64) => Ok(CallingConvention {
+                args: vec!(
+                    "x0".to_string(), 
+                    "x1".to_string(), 
+                    "x2".to_string(), 
+                    "x3".to_string(), 
+                    "x4".to_string(), 
+                    "x5".to_string(),
+                    "x6".to_string(),
+                    "x7".to_string(),
+                    "x8".to_string() // supposedly xnu/ios can have up 9 args
+                ),
+                ret: "x0".to_string()
+            }),
+            ("riscv", _) | ("mips", _) => Ok(CallingConvention {
+                args: vec!(
+                    "a0".to_string(), 
+                    "a1".to_string(), 
+                    "a2".to_string(), 
+                    "a3".to_string(), 
+                    "a4".to_string(), 
+                    "a5".to_string()
+                ),
+                ret: "a0".to_string()
+            }),
+            ("sparc", _) => Ok(CallingConvention {
+                args: vec!(
+                    "o0".to_string(), 
+                    "o1".to_string(), 
+                    "o2".to_string(), 
+                    "o3".to_string(), 
+                    "o4".to_string(), 
+                    "o5".to_string()
+                ),
+                ret: "o0".to_string()
+            }),
+            ("ppc", _) => Ok(CallingConvention {
+                args: vec!(
+                    "r3".to_string(), 
+                    "r4".to_string(), 
+                    "r5".to_string(),
+                    "r6".to_string(), 
+                    "r7".to_string(), 
+                    "r8".to_string(), 
+                    "r9".to_string()
+                ),
+                ret: "r3".to_string() // TODO errors are in r0
+            }),
+            _ => Err("calling convention not found".to_owned())
         }
     }
 
@@ -574,7 +675,6 @@ impl R2Api {
     pub fn init_frida(&mut self, addr: u64) -> R2Result<HashMap<String, String>> {
         // we are reaching levels of jankiness previously thought to be impossible
         let alloc = self.cmd(":dma 4096").unwrap();
-
         let func = format!("{{ptr('{}').writeUtf8String(JSON.stringify(this.context))}}",
             alloc.trim());
 
@@ -582,11 +682,10 @@ impl R2Api {
             addr, func, addr);
 
         self.cmd(&script_data).unwrap();
-
-        loop { 
+        loop {
             thread::sleep(time::Duration::from_millis(100));
             let out = self.cmd(&format!("psz 4096 @ {}", alloc))?;
-            if out.contains("{") {
+            if out.starts_with("{") {
                 self.cmd(&format!(":dma- {}", alloc)).unwrap();
                 break r2_result(serde_json::from_str(&out));
             }

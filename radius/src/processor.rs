@@ -1,6 +1,6 @@
-use crate::r2_api::{Instruction, Syscall};
+use crate::r2_api::{Instruction, Syscall, hex_decode};
 use crate::value::Value;
-use crate::operations::{Operations, pop_value, 
+use crate::operations::{Operations, pop_value, push_value,
     pop_stack_value, pop_concrete, do_operation, OPS};
 
 use crate::state::{State, StateStatus, StackItem, ExecMode};
@@ -184,10 +184,10 @@ impl Processor {
     pub fn do_syscall(&self, state: &mut State) {
         let sys_val = state.registers.get_with_alias("SN");
         let sys_num = state.solver.evalcon_to_u64(&sys_val).unwrap();
-        let pc = state.registers.get_pc().as_u64().unwrap();
+        //let pc = state.registers.get_pc().as_u64().unwrap();
 
         if let Some(sys) = self.syscalls.get(&sys_num) {
-            let cc = state.r2api.get_syscall_cc(pc).unwrap();
+            let cc = state.r2api.get_syscall_cc().unwrap();
             let mut args = vec!();
             for arg in cc.args {
                 args.push(state.registers.get(arg.as_str()));
@@ -340,12 +340,12 @@ impl Processor {
                         },
                         Operations::Trap => {
                             let trap = pop_concrete(state, false, false);
-                            let pc = state.registers.get_pc().as_u64().unwrap();
+                            //let pc = state.registers.get_pc().as_u64().unwrap();
 
                             let sys_val = state.registers.get_with_alias("SN");                            
                             if let Some(trap_sim) = self.traps.get(&trap) {
                                 // provide syscall args
-                                let cc = state.r2api.get_syscall_cc(pc).unwrap();
+                                let cc = state.r2api.get_syscall_cc().unwrap();
                                 let mut args = vec!(sys_val);
                                 for arg in cc.args {
                                     args.push(state.registers.get(arg.as_str()));
@@ -359,6 +359,7 @@ impl Processor {
                     }
                 },
                 Word::Unknown(s) => {
+                    push_value(state, Value::Concrete(0, 0));
                     println!("Unknown word: {}", s);
                 }
             }
@@ -574,12 +575,23 @@ impl Processor {
     // get the instruction, set its status, tokenize if necessary
     // and optimize if enabled. TODO this has become so convoluted, fix it
     pub fn fetch_instruction(&mut self, state: &mut State, pc_val: u64) {
+        let has_instr = self.instructions.contains_key(&pc_val);
+        if self.selfmodify || !has_instr {
 
-        if self.selfmodify || !self.instructions.contains_key(&pc_val) {
             let mut pc_tmp = pc_val;
             let instrs = if self.selfmodify {
                 let data =  state.memory_read_bytes(pc_val, 32);
                 // 1 at a time for selfmodify
+                // check to see if bytes changed
+                if has_instr {
+                    let instr = &self.instructions[&pc_val];
+                    let bytes = hex_decode(&instr.instruction.bytes);
+                    if data[..bytes.len()] == bytes {
+                        // nothing needs to be done but this is 
+                        // such a weird construction. i hate this code
+                        return; 
+                    }
+                } 
                 state.r2api.disassemble_bytes(pc_val, &data, 1).unwrap()
             } else {
                 state.r2api.disassemble(pc_val, INSTR_NUM).unwrap()
@@ -730,15 +742,7 @@ impl Processor {
 
             match current_state.status {
                 StateStatus::Active | StateStatus::PostMerge => {
-                    let mut new_states = self.step(current_state);
-
-                    // this is a weird compromise, check to for Break states
-                    if let Some((i, _s)) = new_states.iter().enumerate()
-                        .find(|(_i, s)| s.status == StateStatus::Break) {
-                        return VecDeque::from(vec!(new_states.remove(i))); 
-                    }
-
-                    states.extend(new_states);
+                    states.extend(self.step(current_state));
                 },
                 StateStatus::Merge => {
                     self.merge(current_state);

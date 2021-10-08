@@ -80,6 +80,9 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("calloc",  libc::calloc, 2),
         make_sim("free",    libc::strnlen, 1),
 
+        make_sim("mmap",    libc::mmap, 4),
+        make_sim("munmap",  libc::munmap, 2),
+
         make_sim("brk",     libc::brk, 1),
         make_sim("sbrk",    libc::sbrk, 1),
 
