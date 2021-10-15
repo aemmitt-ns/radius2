@@ -137,29 +137,26 @@ impl SimFilesytem {
     }
 
     pub fn getfd(&mut self, path: &str) -> Option<usize> {
-        for file in &self.files {
-            if file.path == path {
-                return Some(file.fd);
-            }
+        if let Some(file) = self.files.iter().find(|f| f.path == path) {
+            Some(file.fd)
+        } else {
+            None
         }
-        None
     }
 
     pub fn getpath(&mut self, fd: usize) -> Option<String> {
-        for file in &self.files {
-            if file.fd == fd {
-                return Some(file.path.to_owned());
-            }
+        if let Some(file) = self.files.iter().find(|f| f.fd == fd) {
+            Some(file.path.clone())
+        } else {
+            None
         }
-        None
     }
 
     pub fn access(&mut self, path: &str) -> Value {
-        for file in &self.files {
-            if file.path == path {
-                return Value::Concrete(0, 0);
-            }
+        if self.files.iter().any(|f| f.path == path) {
+            return Value::Concrete(0, 0);
         }
+
         let metadata = fs::metadata(path);
         if metadata.is_ok() {
             Value::Concrete(0, 0)

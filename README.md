@@ -14,7 +14,7 @@ Then clone and build radius with `cargo build --release`
 ### Example
 
 ```rust
-use radius::radius::Radius;
+use radius2::radius::Radius;
 
 fn main() {
     let mut radius = Radius::new("tests/r100");

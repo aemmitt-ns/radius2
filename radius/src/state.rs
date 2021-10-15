@@ -381,6 +381,21 @@ impl State {
         }
     }
 
+    /// set status of state (active, inactive, merge, unsat...)
+    pub fn set_status(&mut self, status: StateStatus) {
+        self.status = status;
+    }
+
+    /// get status of state (active, inactive, merge, unsat...)
+    pub fn get_status(&mut self) -> StateStatus {
+        self.status.clone()
+    }
+
+    /// convenience method to mark state inactive
+    pub fn set_inactive(&mut self) {
+        self.set_status(StateStatus::Inactive);
+    }
+
     /// Assert the truth of the given bitvector (value != 0)
     #[inline]
     pub fn assert(&mut self, bv: &BitVec) {

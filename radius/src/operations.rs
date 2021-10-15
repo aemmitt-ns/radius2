@@ -299,16 +299,12 @@ pub fn push_value(state: &mut State, value: Value) {
 pub fn pop_concrete(state: &mut State, set_size: bool, sign_ext: bool) -> u64 {
     let value = pop_value(state, set_size, sign_ext);
 
-    match value {
+    match &value {
         Value::Concrete(val, _t) => {
-            val
+            *val
         },
-        Value::Symbolic(val, _t) => {
-            let solution = val.get_a_solution().as_u64().unwrap();
-            let sol_bv = state.bvv(solution, 64);
-            let a = val._eq(&sol_bv);
-            state.solver.assert(&a);
-            solution
+        Value::Symbolic(_val, _t) => {
+            state.solver.evalcon_to_u64(&value).unwrap()
         }
     }
 }
