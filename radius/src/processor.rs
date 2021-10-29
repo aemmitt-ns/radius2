@@ -770,7 +770,7 @@ impl Processor {
         } else {
             let mut merge_state = self.merges.remove(&pc).unwrap();
             let state_asserts = state.solver.assertions.clone();
-            let assertion = state.solver.and_all(&state_asserts).unwrap();
+            let assertion = state.solver.and_all(&state_asserts);
             let asserted = Value::Symbolic(assertion.clone(), 0);
 
             // merge registers 
@@ -800,7 +800,7 @@ impl Processor {
 
             // merge solvers
             let assertions = merge_state.solver.assertions.clone();
-            let current = state.solver.and_all(&assertions).unwrap();
+            let current = state.solver.and_all(&assertions);
             merge_state.solver.reset();
             merge_state.assert(&current.or(&assertion));
             self.merges.insert(pc, merge_state);

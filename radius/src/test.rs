@@ -295,13 +295,7 @@ fn ioscrackme() {
     let bv = state.bv("flag", 8*len as u32);
 
     // add "[a-zA-Z]" constraint
-    for i in 0..len as u32 {
-        let gteca = bv.slice(8*(i+1)-1, 8*i).ugte(&state.bvv(0x41, 8));
-        let ltecz = bv.slice(8*(i+1)-1, 8*i).ulte(&state.bvv(0x5A, 8));
-        let gtea  = bv.slice(8*(i+1)-1, 8*i).ugte(&state.bvv(0x61, 8));
-        let ltez  = bv.slice(8*(i+1)-1, 8*i).ulte(&state.bvv(0x7A, 8));
-        gteca.and(&ltecz).or(&gtea.and(&ltez)).assert();
-    }
+    state.constrain_bytes(&bv, "[a-zA-Z]");
 
     let buf_addr: u64 = 0xff000000;
     state.registers.set("x0", Value::Concrete(buf_addr, 0));

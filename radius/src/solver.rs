@@ -337,20 +337,21 @@ impl Solver {
         sol
     }
 
-    pub fn and_all(&self, bvs: &[BitVec]) -> Option<BitVec> {
+    pub fn and_all(&self, bvs: &[BitVec]) -> BitVec {
         let mut bv = BV::from_bool(self.btor.clone(), true);
         for next_bv in bvs {
             bv = bv.and(next_bv);
         }
-        Some(bv)
+        bv
     }
 
-    pub fn or_all(&self, bvs: &[BitVec]) -> Option<BitVec> {
-        let mut bv = BV::from_bool(self.btor.clone(), true);
+    // this should just be called "any"
+    pub fn or_all(&self, bvs: &[BitVec]) -> BitVec {
+        let mut bv = BV::from_bool(self.btor.clone(), false);
         for next_bv in bvs {
             bv = bv.or(next_bv);
         }
-        Some(bv)
+        bv
     }
 
     // surprisingly fast binary search to max

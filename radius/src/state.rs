@@ -12,6 +12,42 @@ type HashMap<P, Q> = AHashMap<P, Q>;
 
 // use backtrace::Backtrace;
 
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+pub enum EventTrigger {
+    Before, // call hook before event occurs 
+    After   // call hook after
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+pub enum Event {
+    SymbolicRead(EventTrigger),    // read from symbolic address
+    SymbolicWrite(EventTrigger),   // write to symbolic address
+    Allocate(EventTrigger),        // allocate memory
+    SymbolicAlloc(EventTrigger),   // allocate symbolic length
+    Free(EventTrigger),            // free memory
+    SymbolicFree(EventTrigger),    // free symbolic address
+    Search(EventTrigger),          // mem search (strchr, memmem)
+    SymbolicSearch(EventTrigger),  // search with symbolic addr, needle, or length
+    Compare(EventTrigger),         // compare memory (memcmp, strcmp)
+    SymbolicCompare(EventTrigger), // symbolic compare 
+    StringLength(EventTrigger),    // string length check (strlen)
+    SymbolicStrlen(EventTrigger),  // strlen of symbolic address
+    All(EventTrigger)              // gotta hook em all, ra! - di! - us!
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum EventContext {
+    ReadContext(Value, Value),
+    WriteContext(Value, Value),
+    AllocContext(Value),
+    FreeContext(Value),
+    SearchContext(Value, Value, Value),
+    CompareContext(Value, Value),
+    StrlenContext(Value, Value)
+}
+
+pub type EventHook = fn (&mut State, EventContext) -> bool;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecMode {
     If,     // in a symbolic if clause ?{,...,}
@@ -51,21 +87,22 @@ pub enum StateStatus {
 
 #[derive(Clone)]
 pub struct State {
-    pub solver:    Solver,
-    pub r2api:     R2Api,
-    pub stack:     Vec<StackItem>,
-    pub esil:      EsilState,
-    pub condition: Option<BitVec>,
-    pub registers: Registers,
-    pub memory:    Memory,
-    pub filesystem:SimFilesytem,
-    pub status:    StateStatus,
-    pub context:   HashMap<String, Vec<Value>>,
-    pub taints:    HashMap<String, u64>,
-    pub pid:       u64,
-    pub backtrace: Vec<u64>,
-    pub blank:     bool,
-    pub debug:     bool
+    pub solver:     Solver,
+    pub r2api:      R2Api,
+    pub stack:      Vec<StackItem>,
+    pub esil:       EsilState,
+    pub condition:  Option<BitVec>,
+    pub registers:  Registers,
+    pub memory:     Memory,
+    pub filesystem: SimFilesytem,
+    pub status:     StateStatus,
+    pub context:    HashMap<String, Vec<Value>>,
+    pub taints:     HashMap<String, u64>,
+    pub hooks:      HashMap<Event, EventHook>,
+    pub pid:        u64,
+    pub backtrace:  Vec<u64>,
+    pub blank:      bool,
+    pub debug:      bool
 }
 
 impl State {
@@ -98,6 +135,7 @@ impl State {
             status: StateStatus::Active,
             context: HashMap::new(),
             taints: HashMap::new(),
+            hooks: HashMap::new(),
             backtrace: Vec::with_capacity(128),
             pid: 1337, // sup3rh4x0r
             blank,
@@ -145,6 +183,7 @@ impl State {
             status: self.status.clone(),
             context: self.context.clone(),
             taints: self.taints.clone(),
+            hooks: self.hooks.clone(),
             backtrace: self.backtrace.clone(),
             pid: self.pid,
             blank: self.blank,
@@ -152,6 +191,14 @@ impl State {
         }
     }
 
+    pub fn hook_event(&mut self, event: Event, hook: EventHook) {
+        self.hooks.insert(event, hook);
+    }
+    
+    /*pub fn check_hooked(&mut self, event: Event) -> bool {
+        self.hooks.insert(event, hook);
+    }*/
+    
     // yes i hate all of this
 
     /// Allocate a block of memory `length` bytes in size
@@ -365,10 +412,51 @@ impl State {
         self.solver.evalcon(bv)
     }
 
-    // TODO
-    /*pub fn constrain_bytes(&mut self, bv: &BitVec, pattern: &str) {
+    /// constrain bytes of bitvector to be an exact string eg. "ABC" 
+    /// or use "[...]" to match a simple pattern eg. "[XYZa-z0-9]"
+    pub fn constrain_bytes(&mut self, bv: &BitVec, pattern: &str) {
+        if &pattern[..1] != "[" {
+            for (i, c) in pattern.chars().enumerate() {
+                self.assert(&bv
+                    .slice(8*(i as u32 + 1)-1, 8*i as u32)
+                    ._eq(&self.bvv(c as u64, 8)));
+            }
+        } else {
+            let patlen = pattern.len();
+            let newpat = &pattern[1..patlen-1]; 
+            let mut assertions = Vec::with_capacity(256);
 
-    }*/
+            for ind in 0..bv.get_width()/8 {
+                assertions.clear();
+                let s = &bv.slice(8*(ind + 1)-1, 8*ind);
+
+                let mut i = 0;
+                while i < patlen-2 {
+                    let c = newpat.as_bytes()[i] as u64;
+                    if i < patlen-4 && &newpat[i+1..i+2] == "-" {
+                        let n = newpat.as_bytes()[i+2] as u64;
+                        i += 3;
+                        assertions.push(
+                            s.ugte(&self.bvv(c, 8)).and(&
+                            s.ulte(&self.bvv(n, 8))));
+                    } else {
+                        i += 1;
+                        assertions.push(s._eq(&self.bvv(c, 8)));
+                    }
+                }
+
+                self.assert(&self.solver.or_all(&assertions));
+            }
+        }
+    }
+
+    /// constrain bytes of bitvector to be an exact string eg. "ABC" 
+    /// or use "[...]" to match a simple pattern eg. "[XYZa-z0-9]"
+    pub fn constrain_bytes_value(&mut self, bv: &Value, pattern: &str) {
+        if let Value::Symbolic(s, _) = bv { 
+            self.constrain_bytes(&s, pattern)
+        }
+    }
 
     /// Check if this state is satisfiable and mark the state `Unsat` if not
     #[inline]
@@ -394,6 +482,11 @@ impl State {
     /// convenience method to mark state inactive
     pub fn set_inactive(&mut self) {
         self.set_status(StateStatus::Inactive);
+    }
+
+    /// convenience method to break 
+    pub fn set_break(&mut self) {
+        self.set_status(StateStatus::Break);
     }
 
     /// Assert the truth of the given bitvector (value != 0)
