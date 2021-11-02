@@ -325,7 +325,9 @@ impl Processor {
                         Operations::GoTo => {
                             let n = pop_concrete(state, false, false);
                             if let Some(_cond) = &state.condition {
-                                panic!("Hit symbolic GOTO");
+                                println!("Hit symbolic GOTO");
+                                state.set_inactive(); // take the easy way out
+                                break;
                                 //cond.assert();
                             }
                             state.esil.mode = ExecMode::Uncon;
@@ -333,7 +335,9 @@ impl Processor {
                         },
                         Operations::Break => {
                             if let Some(_cond) = &state.condition {
-                                panic!("Hit symbolic BREAK");
+                                println!("Hit symbolic BREAK");
+                                state.set_inactive();
+                                break;
                                 //cond.assert();
                             }
                             break;

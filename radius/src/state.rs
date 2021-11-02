@@ -12,6 +12,10 @@ type HashMap<P, Q> = AHashMap<P, Q>;
 
 // use backtrace::Backtrace;
 
+// event hooks could be a performance issue at some point
+// prolly not now cuz there are 10000 slower things
+const DO_EVENT_HOOKS: bool = true;
+
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum EventTrigger {
     Before, // call hook before event occurs 
@@ -22,7 +26,8 @@ pub enum EventTrigger {
 pub enum Event {
     SymbolicRead(EventTrigger),    // read from symbolic address
     SymbolicWrite(EventTrigger),   // write to symbolic address
-    Allocate(EventTrigger),        // allocate memory
+    SymbolicExec(EventTrigger),    // execute symbolic address
+    Alloc(EventTrigger),           // allocate memory
     SymbolicAlloc(EventTrigger),   // allocate symbolic length
     Free(EventTrigger),            // free memory
     SymbolicFree(EventTrigger),    // free symbolic address
@@ -32,6 +37,8 @@ pub enum Event {
     SymbolicCompare(EventTrigger), // symbolic compare 
     StringLength(EventTrigger),    // string length check (strlen)
     SymbolicStrlen(EventTrigger),  // strlen of symbolic address
+    Move(EventTrigger),            // move bytes from src to dst (memcpy, memmove)
+    SymbolicMove(EventTrigger),    // symbolic move (memcpy, memmove)
     All(EventTrigger)              // gotta hook em all, ra! - di! - us!
 }
 
@@ -39,14 +46,17 @@ pub enum Event {
 pub enum EventContext {
     ReadContext(Value, Value),
     WriteContext(Value, Value),
+    ExecContext(Value),
+    AfterExecContext(Value, Vec<Value>), // eh idk maybe ill do something else
     AllocContext(Value),
     FreeContext(Value),
     SearchContext(Value, Value, Value),
-    CompareContext(Value, Value),
-    StrlenContext(Value, Value)
+    CompareContext(Value, Value, Value),
+    StrlenContext(Value, Value),
+    MoveContext(Value, Value, Value)
 }
 
-pub type EventHook = fn (&mut State, EventContext) -> bool;
+pub type EventHook = fn (&mut State, &EventContext);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecMode {
@@ -102,7 +112,8 @@ pub struct State {
     pub pid:        u64,
     pub backtrace:  Vec<u64>,
     pub blank:      bool,
-    pub debug:      bool
+    pub debug:      bool,
+    pub has_event_hooks: bool
 }
 
 impl State {
@@ -139,7 +150,8 @@ impl State {
             backtrace: Vec::with_capacity(128),
             pid: 1337, // sup3rh4x0r
             blank,
-            debug
+            debug,
+            has_event_hooks: false
         }
     }
 
@@ -187,70 +199,257 @@ impl State {
             backtrace: self.backtrace.clone(),
             pid: self.pid,
             blank: self.blank,
-            debug: self.debug
+            debug: self.debug,
+            has_event_hooks: self.has_event_hooks
         }
     }
 
     pub fn hook_event(&mut self, event: Event, hook: EventHook) {
+        self.has_event_hooks = true;
         self.hooks.insert(event, hook);
     }
     
-    /*pub fn check_hooked(&mut self, event: Event) -> bool {
-        self.hooks.insert(event, hook);
-    }*/
-    
+    pub fn do_hooked(&mut self, event: &Event, event_context: &EventContext) {
+        if let Some(hook) = self.hooks.get(event) {
+            hook(self, event_context)
+        }
+    }
+
     // yes i hate all of this
 
     /// Allocate a block of memory `length` bytes in size
     pub fn memory_alloc(&mut self, length: &Value) -> Value {
-        self.memory.alloc_sym(length, &mut self.solver)
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if length.is_symbolic() {
+                Event::SymbolicAlloc(EventTrigger::Before)
+            } else {
+                Event::Alloc(EventTrigger::Before)
+            };
+            self.do_hooked(&event, 
+                &EventContext::AllocContext(length.to_owned()));
+        }
+
+        let ret = self.memory.alloc_sym(length, &mut self.solver);
+
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if length.is_symbolic() {
+                Event::SymbolicAlloc(EventTrigger::After)
+            } else {
+                Event::Alloc(EventTrigger::After)
+            };
+            self.do_hooked(&event, 
+                &EventContext::AllocContext(length.to_owned()));
+        }
+
+        ret
     }
 
     /// Free a block of memory at `addr`
     pub fn memory_free(&mut self, addr: &Value) -> Value {
-        self.memory.free_sym(addr, &mut self.solver)
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if addr.is_symbolic() {
+                Event::SymbolicFree(EventTrigger::Before)
+            } else {
+                Event::Free(EventTrigger::Before)
+            };
+            self.do_hooked(&event, 
+                &EventContext::FreeContext(addr.to_owned()));
+        }
+
+        let ret = self.memory.free_sym(addr, &mut self.solver);
+
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if addr.is_symbolic() {
+                Event::SymbolicFree(EventTrigger::After)
+            } else {
+                Event::Free(EventTrigger::After)
+            };
+            self.do_hooked(&event, 
+                &EventContext::FreeContext(addr.to_owned()));
+        }
+
+        ret
     }
 
     /// Read `length` bytes from `address`
     pub fn memory_read(&mut self, address: &Value, length: &Value) -> Vec<Value> {
-        self.memory.read_sym_len(address, length, &mut self.solver)
+        if DO_EVENT_HOOKS && self.has_event_hooks && 
+            (address.is_symbolic() || length.is_symbolic()) {
+            self.do_hooked(&Event::SymbolicRead(EventTrigger::Before), 
+                &EventContext::ReadContext(address.to_owned(), length.to_owned()));
+        }
+
+        let ret = self.memory.read_sym_len(address, length, &mut self.solver);
+
+        if DO_EVENT_HOOKS && self.has_event_hooks && 
+            (address.is_symbolic() || length.is_symbolic()) {
+            self.do_hooked(&Event::SymbolicRead(EventTrigger::After), 
+                &EventContext::ReadContext(address.to_owned(), length.to_owned()));
+        }
+    
+        ret
     }
 
     /// Write `length` bytes to `address`
     pub fn memory_write(&mut self, address: &Value, values: &[Value], length: &Value) {
-        self.memory.write_sym_len(address, values, length, &mut self.solver)
+        if DO_EVENT_HOOKS && self.has_event_hooks && 
+            (address.is_symbolic() || length.is_symbolic()) {
+            self.do_hooked(&Event::SymbolicWrite(EventTrigger::Before), 
+                &EventContext::WriteContext(address.to_owned(), length.to_owned()));
+        }
+
+        let ret = self.memory.write_sym_len(address, values, length, &mut self.solver);
+
+        if DO_EVENT_HOOKS && self.has_event_hooks && 
+            (address.is_symbolic() || length.is_symbolic()) {
+            self.do_hooked(&Event::SymbolicWrite(EventTrigger::After), 
+                &EventContext::WriteContext(address.to_owned(), length.to_owned()));
+        }
+        
+        ret
     }
 
     /// Read `length` byte value from `address`
     pub fn memory_read_value(&mut self, address: &Value, length: usize) -> Value {
-        self.memory.read_sym(address, length, &mut self.solver)
+        if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
+            self.do_hooked(&Event::SymbolicRead(EventTrigger::Before), 
+                &EventContext::ReadContext(address.to_owned(), Value::Concrete(length as u64, 0)));
+        }
+
+        let ret = self.memory.read_sym(address, length, &mut self.solver);
+
+        if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
+            self.do_hooked(&Event::SymbolicRead(EventTrigger::After), 
+                &EventContext::ReadContext(address.to_owned(), Value::Concrete(length as u64, 0)));
+        }
+
+        ret
     }
 
     /// Write `length` byte value to `address`
     pub fn memory_write_value(&mut self, address: &Value, value: &Value, length: usize) {
-        self.memory.write_sym(address, value, length, &mut self.solver)
+        if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
+            self.do_hooked(&Event::SymbolicRead(EventTrigger::Before), 
+                &EventContext::ReadContext(address.to_owned(), Value::Concrete(length as u64, 0)));
+        }
+
+        let ret = self.memory.write_sym(address, value, length, &mut self.solver);
+
+        if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
+            self.do_hooked(&Event::SymbolicWrite(EventTrigger::After), 
+                &EventContext::WriteContext(address.to_owned(), Value::Concrete(length as u64, 0)));
+        }
+
+        ret
     }
 
     /// Search for `needle` at the address `addr` for a maximum of `length` bytes 
     /// Returns a `Value` containing the **address** of the needle, not index
     pub fn memory_search(&mut self, addr: &Value, needle: &Value, length: &Value, reverse: bool) -> Value {
-        self.memory.search(addr, needle, length, reverse, &mut self.solver)
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if addr.is_symbolic() || length.is_symbolic() {
+                Event::SymbolicSearch(EventTrigger::Before)
+            } else {
+                Event::Search(EventTrigger::Before)
+            };
+            self.do_hooked(&event, 
+                &EventContext::SearchContext(addr.to_owned(), needle.to_owned(), length.to_owned()));
+        }
+
+        let ret = self.memory.search(addr, needle, length, reverse, &mut self.solver);
+
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if addr.is_symbolic() || length.is_symbolic() {
+                Event::SymbolicSearch(EventTrigger::After)
+            } else {
+                Event::Search(EventTrigger::After)
+            };
+            self.do_hooked(&event, 
+                &EventContext::SearchContext(addr.to_owned(), needle.to_owned(), length.to_owned()));
+        }
+
+        ret
     }
 
     /// Compare memory at `dst` and `src` address up to `length` bytes.
     /// This is akin to memcmp but will handle symbolic addrs and length
     pub fn memory_compare(&mut self, dst: &Value, src: &Value, length: &Value) -> Value {
-        self.memory.compare(dst, src, length, &mut self.solver)
+
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if dst.is_symbolic() || src.is_symbolic() || length.is_symbolic() {
+                Event::SymbolicCompare(EventTrigger::Before)
+            } else {
+                Event::Compare(EventTrigger::Before)
+            };
+            self.do_hooked(&event, 
+                &EventContext::CompareContext(dst.to_owned(), src.to_owned(), length.to_owned()));
+        }
+
+        let ret = self.memory.compare(dst, src, length, &mut self.solver);
+
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if dst.is_symbolic() || src.is_symbolic() || length.is_symbolic() {
+                Event::SymbolicCompare(EventTrigger::After)
+            } else {
+                Event::Compare(EventTrigger::After)
+            };
+            self.do_hooked(&event,
+                &EventContext::CompareContext(dst.to_owned(), src.to_owned(), length.to_owned()));
+        }
+
+        ret
     }
 
     /// Get the length of the null terminated string at `addr`
     pub fn memory_strlen(&mut self, addr: &Value, length: &Value) -> Value {
-        self.memory.strlen(addr, length, &mut self.solver)
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if addr.is_symbolic() || length.is_symbolic() {
+                Event::SymbolicStrlen(EventTrigger::Before)
+            } else {
+                Event::StringLength(EventTrigger::Before)
+            };
+            self.do_hooked(&event, 
+                &EventContext::StrlenContext(addr.to_owned(), length.to_owned()));
+        }
+
+        let ret = self.memory.strlen(addr, length, &mut self.solver);
+
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if addr.is_symbolic() || length.is_symbolic() {
+                Event::SymbolicStrlen(EventTrigger::After)
+            } else {
+                Event::StringLength(EventTrigger::After)
+            };
+            self.do_hooked(&event, 
+                &EventContext::StrlenContext(addr.to_owned(), length.to_owned()));
+        }
+
+        ret
     }
 
     /// Move `length` bytes from `src` to `dst`
     pub fn memory_move(&mut self, dst: &Value, src: &Value, length: &Value) {
-        self.memory.memmove(dst, src, length, &mut self.solver)
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if dst.is_symbolic() || src.is_symbolic() || length.is_symbolic() {
+                Event::SymbolicMove(EventTrigger::Before)
+            } else {
+                Event::Move(EventTrigger::Before)
+            };
+            self.do_hooked(&event, 
+                &EventContext::MoveContext(dst.to_owned(), src.to_owned(), length.to_owned()));
+        }
+
+        self.memory.memmove(dst, src, length, &mut self.solver);
+
+        if DO_EVENT_HOOKS && self.has_event_hooks {
+            let event = if dst.is_symbolic() || src.is_symbolic() || length.is_symbolic() {
+                Event::SymbolicMove(EventTrigger::After)
+            } else {
+                Event::Move(EventTrigger::After)
+            };
+            self.do_hooked(&event, 
+                &EventContext::MoveContext(dst.to_owned(), src.to_owned(), length.to_owned()));
+        }
     }
 
     /// Read `length` bytes from `address`

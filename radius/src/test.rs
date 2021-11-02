@@ -180,11 +180,18 @@ fn fileread() {
     assert_eq!(string, "hmmm\n");
 }   
 
+
+
 #[test]
 fn symmem() {
     use crate::radius::{Radius, RadiusOption};
+    use crate::state::{State, Event, EventTrigger, EventContext};
     use crate::value::Value;
     use crate::sims::libc::{atoi_helper, itoa_helper};
+    
+    fn event_hook(_state: &mut State, _context: &EventContext) {
+        println!("hit event hook");
+    }
 
     let mut radius = Radius::new_with_options(
         Some("../tests/symmem"), 
@@ -193,6 +200,7 @@ fn symmem() {
     
     let main = radius.r2api.get_address("main").unwrap();
     let mut state = radius.call_state(main);
+    state.hook_event(Event::SymbolicRead(EventTrigger::Before), event_hook);
 
     let x = state.bv("x", 64);
     //x.ult(&state.bvv(-1 as i64 as u64, 64)).assert();
