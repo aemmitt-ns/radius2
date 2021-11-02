@@ -3,7 +3,9 @@ use crate::value::Value;
 use crate::operations::{Operations, pop_value, push_value,
     pop_stack_value, pop_concrete, do_operation, OPS};
 
-use crate::state::{State, StateStatus, StackItem, ExecMode};
+use crate::state::{State, StateStatus, StackItem, 
+    ExecMode, Event, EventTrigger, EventContext, DO_EVENT_HOOKS};
+
 use crate::sims::{SimMethod};
 use crate::sims::syscall::syscall;
 
@@ -680,12 +682,22 @@ impl Processor {
             if self.debug {
                 println!("\nsymbolic PC: {:?}\n", pc_val);
             }
+
+            if DO_EVENT_HOOKS && state.has_event_hooks {
+                state.do_hooked(&Event::SymbolicExec(EventTrigger::Before), 
+                    &EventContext::ExecContext(new_pc.clone()));
+            }
             
             if self.lazy && !state.esil.pcs.is_empty() {
                 pcs = state.esil.pcs;
                 state.esil.pcs = Vec::with_capacity(pc_allocs);
             } else {
                 pcs = state.evaluate_many(&pc_val);
+            }
+
+            if DO_EVENT_HOOKS && state.has_event_hooks {
+                state.do_hooked(&Event::SymbolicExec(EventTrigger::After), 
+                    &EventContext::ExecContext(new_pc.clone()));
             }
         }
 

@@ -14,7 +14,7 @@ type HashMap<P, Q> = AHashMap<P, Q>;
 
 // event hooks could be a performance issue at some point
 // prolly not now cuz there are 10000 slower things
-const DO_EVENT_HOOKS: bool = true;
+pub const DO_EVENT_HOOKS: bool = true;
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum EventTrigger {
