@@ -30,6 +30,7 @@ pub fn syscall(syscall_name: &str, state: &mut State, args: &[Value]) -> Value {
         "getegid"  => getuid(state, args),
         "fork"     => fork(state, args),
         "exit"     => exit(state, args),
+        "ptrace"   => ptrace(state, args),
          _         => error(state, args)
 
         // this is literally every syscall
@@ -263,6 +264,10 @@ pub fn getpid(state: &mut State, _args: &[Value]) -> Value {
 
 pub fn getuid(_state: &mut State, _args: &[Value]) -> Value {
     Value::Concrete(0, 0)
+}
+
+pub fn ptrace(_state: &mut State, _args: &[Value]) -> Value {
+    Value::Concrete(-1i64 as u64, 0)
 }
 
 pub fn exit(state: &mut State, args: &[Value]) -> Value {

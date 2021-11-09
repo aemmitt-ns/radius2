@@ -113,12 +113,15 @@ pub struct State {
     pub backtrace:  Vec<u64>,
     pub blank:      bool,
     pub debug:      bool,
+    pub strict:     bool,
     pub has_event_hooks: bool
 }
 
 impl State {
     /// Create a new state, should generally not be called directly
-    pub fn new(r2api: &mut R2Api, eval_max: usize, debug: bool, blank: bool, check: bool) -> Self {
+    pub fn new(r2api: &mut R2Api, eval_max: usize, debug: bool, 
+            blank: bool, check: bool, strict: bool) -> Self {
+
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
             previous: Value::Concrete(0, 0),
@@ -151,6 +154,7 @@ impl State {
             pid: 1337, // sup3rh4x0r
             blank,
             debug,
+            strict,
             has_event_hooks: false
         }
     }
@@ -200,6 +204,7 @@ impl State {
             pid: self.pid,
             blank: self.blank,
             debug: self.debug,
+            strict: self.strict,
             has_event_hooks: self.has_event_hooks
         }
     }

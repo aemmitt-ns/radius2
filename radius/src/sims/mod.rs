@@ -122,7 +122,7 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("sleep",   libc::sleep, 1),
         make_sim("getpid",  libc::getpid, 0),
         make_sim("fork",    libc::fork, 0),
-        make_sim("ptrace",  libc::zero, 0),
+        make_sim("ptrace",  libc::ptrace, 0),
         make_sim("syscall", libc::c_syscall, 0),
         make_sim("getenv",  libc::getenv, 1),
 

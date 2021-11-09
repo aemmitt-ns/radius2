@@ -25,6 +25,8 @@ pub enum RadiusOption {
     Optimize(bool),
     /// Enable debug output
     Debug(bool),
+    /// panic! on unimplemented 
+    Strict(bool),
     /// Don't check sat on symbolic pcs
     Lazy(bool),
     /// Check memory permissions
@@ -66,7 +68,8 @@ pub struct Radius {
     pub processors: Arc<Mutex<Vec<Processor>>>,
     pub eval_max: usize,
     pub check: bool,
-    pub debug: bool
+    pub debug: bool,
+    pub strict: bool
 }
 
 impl Radius {
@@ -148,6 +151,7 @@ impl Radius {
         let check = options.contains(&RadiusOption::Permissions(true));
         let sim_all = options.contains(&RadiusOption::SimAll(true));
         let selfmod = options.contains(&RadiusOption::SelfModify(true));
+        let strict = options.contains(&RadiusOption::Strict(true));
         let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topological);
         let processors = Arc::new(Mutex::new(vec!()));
 
@@ -179,7 +183,8 @@ impl Radius {
             processors,
             eval_max,
             check,
-            debug
+            debug,
+            strict
         }
     }
 
@@ -300,11 +305,11 @@ impl Radius {
     }
 
     pub fn init_state(&mut self) -> State {
-        State::new(&mut self.r2api, self.eval_max, self.debug, false, self.check)
+        State::new(&mut self.r2api, self.eval_max, self.debug, false, self.check, self.strict)
     }
 
     pub fn blank_state(&mut self) -> State {
-        State::new(&mut self.r2api, self.eval_max, self.debug, true, self.check)
+        State::new(&mut self.r2api, self.eval_max, self.debug, true, self.check, self.strict)
     }
 
     /// Blank except for PC and SP

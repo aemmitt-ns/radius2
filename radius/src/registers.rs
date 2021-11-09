@@ -137,7 +137,7 @@ impl Registers {
         self.get_value(self.pc.as_ref().unwrap().index)
     }
 
-    /// Get the value of `PC`
+    /// Set the value of `PC`
     pub fn set_pc(&mut self, value: Value) {
         self.set_value(self.pc.as_ref().unwrap().index, value)
     }

@@ -775,8 +775,13 @@ pub fn do_operation(state: &mut State, operation: Operations) {
         Operations::Break => {},
         Operations::Repeat => {},
         Operations::GoTo => {},
-        Operations::ToDo => {},
         Operations::NoOperation => {},
+
+        Operations::ToDo => {
+            if state.strict {
+                unimplemented!();
+            }
+        },
     
         Operations::Zero => {
             let cur = &state.esil.current;
@@ -850,6 +855,10 @@ pub fn do_operation(state: &mut State, operation: Operations) {
         Operations::R => {
             push_value(state, Value::Concrete(64 >> 3, 0));
         },
-        Operations::Unknown => {}
+        Operations::Unknown => {
+            if state.strict {
+                panic!("Encountered an unknown word!");
+            }
+        }
     }
 }

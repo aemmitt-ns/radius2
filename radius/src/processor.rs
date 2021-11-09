@@ -18,6 +18,7 @@ const INSTR_NUM: usize = 64;
 const COLOR: bool = false;
 const CALL_TYPE: i64 = 3;
 const RETN_TYPE: i64 = 5;
+const NOP_TYPE: i64 = 8;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Word {
@@ -606,6 +607,12 @@ impl Processor {
             let mut prev: Option<u64> = None;
             for instr in instrs {
                 let size = instr.size;
+
+                if state.strict && instr.esil.len() == 0 && 
+                    instr.type_num != NOP_TYPE {
+                    panic!("No ESIL for non-NOP!");
+                }
+
                 let words = self.tokenize(state, &instr.esil);
 
                 let mut status = InstructionStatus::None;
@@ -666,7 +673,9 @@ impl Processor {
         if let Some(pc_val) = pc_value.as_u64() {
             self.execute_instruction(&mut state, pc_val);
         } else {
-            println!("got an unexpected sym PC: {:?}", pc_value);
+            if state.strict {
+                panic!("got an unexpected sym PC: {:?}", pc_value);
+            }
         }
 
         let new_pc = state.registers.get_pc();

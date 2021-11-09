@@ -675,10 +675,12 @@ impl R2Api {
     pub fn init_frida(&mut self, addr: u64) -> R2Result<HashMap<String, String>> {
         // we are reaching levels of jankiness previously thought to be impossible
         let alloc = self.cmd(":dma 4096").unwrap();
-        let func = format!("{{ptr('{}').writeUtf8String(JSON.stringify(this.context))}}",
+        let func = format!(
+            "{{ptr('{}').writeUtf8String(JSON.stringify(this.context))}}",
             alloc.trim());
 
-        let script_data = format!(": Interceptor.attach(ptr('0x{:x}'),function(){});:db {}", 
+        let script_data = format!(
+            ": Interceptor.attach(ptr('0x{:x}'),function(){});:db {}",
             addr, func, addr);
 
         self.cmd(&script_data).unwrap();

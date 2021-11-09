@@ -688,11 +688,17 @@ pub fn getpagesize(_state: &mut State, _args: &[Value]) -> Value {
 }
 
 pub fn gethostname(state: &mut State, args: &[Value]) -> Value {
+    let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
+    state.memory_write_string(addr, "radius");
+    Value::Concrete(0, 0)
+
+    /*
     let len = state.solver.max_value(&args[1]);
     let bv = state.bv("hostname", 8*len as u32);
     let data = state.memory.unpack(&Value::Symbolic(bv, 0), len as usize);
     state.memory_write(&args[0], &data, &args[1]);
     Value::Concrete(0, 0)
+    */
 }
 
 // fully symbolic getenv
@@ -779,6 +785,10 @@ pub fn fstat(state: &mut State, args: &[Value]) -> Value {
 
 pub fn lstat(state: &mut State, args: &[Value]) -> Value {
     syscall::lstat(state, args)
+}
+
+pub fn ptrace(state: &mut State, args: &[Value]) -> Value {
+    syscall::ptrace(state, args)
 }
 
 pub fn exit(state: &mut State, args: &[Value]) -> Value {
