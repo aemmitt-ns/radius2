@@ -79,6 +79,7 @@ pub enum Operations {
     GoTo,
     ToDo,
     NoOperation,
+    Print, // Tool for cli hooks
 
     // flag ops
     Zero,
@@ -176,6 +177,8 @@ impl Operations {
             "GOTO" => Operations::GoTo,
             "TODO" => Operations::ToDo,
             "" => Operations::NoOperation,
+
+            "." => Operations::Print,
         
             "$z" => Operations::Zero,
             "$c" => Operations::Carry,
@@ -271,7 +274,7 @@ pub fn pop_stack_value(state: &mut State, stack: &mut Vec<StackItem>, set_size: 
     match &value {
         Value::Concrete(_v, _t) => value,
         Value::Symbolic(ov, t) => {
-            if ov.is_const() {
+            if ov.is_const() && ov.get_width() <= 64 {
                 Value::Concrete(ov.as_u64().unwrap(), *t)
             } else {
                 let v = ov; //state.translate(&ov).unwrap();
@@ -776,6 +779,10 @@ pub fn do_operation(state: &mut State, operation: Operations) {
         Operations::Repeat => {},
         Operations::GoTo => {},
         Operations::NoOperation => {},
+
+        Operations::Print => {
+            println!("{}", pop_concrete(state, false, false));
+        },
 
         Operations::ToDo => {
             if state.strict {

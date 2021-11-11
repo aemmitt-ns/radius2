@@ -35,6 +35,20 @@ pub struct CallingConvention {
     pub args: Vec<String>
 }
 
+impl Default for CallingConvention {
+    fn default() -> Self {
+        CallingConvention {
+            ret: String::from("A0"),
+            args: vec!(
+                String::from("A0"),
+                String::from("A1"),
+                String::from("A2"),
+                String::from("A3")
+            )
+        }
+    }
+}
+
 impl Endian {
     pub fn from_string(end: &str) -> Endian {
         match end {
@@ -148,33 +162,37 @@ pub struct BinInfo {
     pub nx: bool
 }
 
-fn binfo() -> BinInfo{
-    BinInfo {
-        arch: "".to_string(),
-        bintype: "".to_string(),
-        bits: 64,
-        canary: false,
-        endian: "little".to_string(),
-        os: "".to_string(),
-        nx: false
+impl Default for BinInfo {
+    fn default() -> Self {
+        BinInfo {
+            arch: "".to_string(),
+            bintype: "".to_string(),
+            bits: 64,
+            canary: false,
+            endian: "little".to_string(),
+            os: "".to_string(),
+            nx: false
+        }
     }
 }
 
-fn core() -> CoreInfo {
-    CoreInfo {
-        file: "".to_string(),
-        size: 0,
-        mode: "".to_string(),
-        format: "".to_string()
+impl Default for CoreInfo {
+    fn default() -> Self {
+        CoreInfo {
+            file: "".to_string(),
+            size: 0,
+            mode: "".to_string(),
+            format: "".to_string()
+        }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Information {
-    #[serde(default="core")]
+    #[serde(default)]
     pub core: CoreInfo,
 
-    #[serde(default="binfo")]
+    #[serde(default)]
     pub bin: BinInfo
 }
 
@@ -395,7 +413,7 @@ impl R2Api {
             None
         };
 
-        let r2pipe = match (filename, opts) {
+        let r2pipe = match (&filename, opts) {
             (None, None) => R2Pipe::open(),
             (Some(name), _) => R2Pipe::spawn(name, options),
             _ => Err("cannot have options for non-spawned")

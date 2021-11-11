@@ -26,7 +26,7 @@ impl Solver {
 
     pub fn new(eval_max: usize) -> Self {
         let btor = Arc::new(Btor::new());
-        btor.set_opt(BtorOption::ModelGen(ModelGen::All));
+        btor.set_opt(BtorOption::ModelGen(ModelGen::Disabled));
         btor.set_opt(BtorOption::Incremental(true));
         btor.set_opt(BtorOption::OutputNumberFormat(NumberFormat::Hexadecimal));
         //btor.set_opt(BtorOption::PrettyPrint(false));
@@ -139,8 +139,18 @@ impl Solver {
         }
     }
 
+    pub fn enable_model(&self, b: bool) {
+        if b {
+            self.btor.set_opt(BtorOption::ModelGen(ModelGen::All));
+        } else {
+            self.btor.set_opt(BtorOption::ModelGen(ModelGen::Disabled));
+        }
+    }
+
     #[inline]
     pub fn evaluate(&self, bv: &BitVec) -> Option<Value> {
+        self.enable_model(true);
+
         self.btor.push(1);
         self.apply_assertions();
         //let new_bv = self.translate(bv).unwrap();
@@ -150,17 +160,22 @@ impl Solver {
             None
         };
         self.btor.pop(1);
+
+        self.enable_model(false);
+
         sol
     }
 
-
     #[inline]
     pub fn eval(&self, value: &Value) -> Option<Value> {
+        
         match value {
             Value::Concrete(val, t) => {
                 Some(Value::Concrete(*val, *t))
             },
             Value::Symbolic(bv, t) => {
+                self.enable_model(true);
+
                 self.btor.push(1);
                 self.apply_assertions();
                 //let new_bv = self.translate(bv).unwrap();
@@ -170,6 +185,9 @@ impl Solver {
                     None
                 };
                 self.btor.pop(1);
+                
+                self.enable_model(false);
+
                 sol
             }
         }
@@ -191,6 +209,8 @@ impl Solver {
                 Some(self.bvv(*val, 64))
             },
             Value::Symbolic(bv, _t) => {
+                self.enable_model(true);
+
                 self.btor.push(1);
                 self.apply_assertions();
                 //let new_bv = self.translate(bv).unwrap();
@@ -202,6 +222,8 @@ impl Solver {
                     None
                 };
                 self.btor.pop(1);
+                self.enable_model(false);
+
                 sol_bv
             }
         }
@@ -241,6 +263,7 @@ impl Solver {
     // evaluate and constrain the symbol to the value
     #[inline]
     pub fn evalcon(&mut self, bv: &BitVec) -> Option<u64> {
+        self.enable_model(true);
         self.btor.push(1);
         self.apply_assertions();
         //let new_bv = self.translate(bv).unwrap();
@@ -253,6 +276,7 @@ impl Solver {
             None
         };
         self.btor.pop(1);
+        self.enable_model(false);
         sol
     }
 
@@ -291,11 +315,13 @@ impl Solver {
         self.assert_value(assertion);
         self.apply_assertions();
         let sat = self.btor.sat() == SolverResult::Sat;
+        self.assertions.pop();
         self.btor.pop(1);
         sat
     }
 
     pub fn evaluate_many(&mut self, bv: &BitVec) -> Vec<u64> {
+        self.enable_model(true);
         let mut solutions: Vec<u64> = Vec::with_capacity(self.eval_max);
         //let new_bv = self.translate(bv).unwrap();
         self.btor.push(1);
@@ -319,11 +345,13 @@ impl Solver {
             // constrain it to be in the eval subset
             self.assert_in(bv, &solutions);
         }
-
+        self.enable_model(false);
         solutions 
     }
 
     pub fn solution(&self, bv: &BitVec) -> Option<String> {
+        self.enable_model(true);
+
         self.btor.push(1);
         self.apply_assertions();
         let sol = if self.btor.sat() == SolverResult::Sat {
@@ -334,6 +362,7 @@ impl Solver {
             None
         };
         self.btor.pop(1);
+        self.enable_model(false);
         sol
     }
 

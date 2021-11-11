@@ -103,7 +103,7 @@ impl Radius {
     pub fn new_with_options<T: AsRef<str>>(
         filename: Option<T>, 
         options: &[RadiusOption]) -> Self {
-                
+
         let mut argv = vec!();
         let mut eval_max = 256;
         let mut paths = vec!();
@@ -120,15 +120,15 @@ impl Radius {
         let debug = options.contains(&RadiusOption::Debug(true));
         let use_sims = !options.contains(&RadiusOption::Sims(false));
 
-        if !debug {
-            argv.push("-2"); // silence r2 errors
-        } else {
+        if debug {
             // pretty print disasm + esil
             argv.push("-e scr.color=3");
             argv.push("-e asm.cmt.esil=true");
             argv.push("-e asm.lines=false");
             argv.push("-e asm.emu=false");
         }
+
+        argv.push("-2");
 
         // need this for sims
         if use_sims {

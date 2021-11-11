@@ -699,6 +699,12 @@ impl State {
         self.solver.assert(bv)
     }
 
+    /// Check the truth of the given value
+    #[inline]
+    pub fn check(&mut self, val: &Value) -> bool {
+        self.solver.check_sat(val)
+    }
+
     /// Assert the truth of the given `Value` (lsb of value != 0)
     #[inline]
     pub fn assert_value(&mut self, value: &Value) {

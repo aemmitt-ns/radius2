@@ -161,7 +161,12 @@ impl Processor {
 
     /// attempt to tokenize word as register (eg. rbx)
     pub fn get_register(&self,  state: &mut State, word: &str) -> Option<Word> {
-        state.registers.get_register(word).map(|reg| Word::Register(reg.index))
+        let name = if let Some(alias) = state.registers.aliases.get(word) {
+            alias.reg.as_str()
+        } else {
+            word
+        };
+        state.registers.get_register(name).map(|reg| Word::Register(reg.index))
     }
 
     /// attempt to tokenize word as operation (eg. +)
@@ -340,7 +345,6 @@ impl Processor {
                             if let Some(_cond) = &state.condition {
                                 println!("Hit symbolic BREAK");
                                 state.set_inactive();
-                                break;
                                 //cond.assert();
                             }
                             break;
@@ -673,19 +677,16 @@ impl Processor {
         if let Some(pc_val) = pc_value.as_u64() {
             self.execute_instruction(&mut state, pc_val);
         } else {
-            if state.strict {
-                panic!("got an unexpected sym PC: {:?}", pc_value);
-            }
+            panic!("got an unexpected sym PC: {:?}", pc_value);
         }
 
         let new_pc = state.registers.get_pc();
-        let mut pcs = Vec::with_capacity(pc_allocs);
+        let pcs;
 
         if self.force && !state.esil.pcs.is_empty() {
-            pcs = state.esil.pcs;
-            state.esil.pcs = Vec::with_capacity(pc_allocs);
+            pcs = mem::take(&mut state.esil.pcs);
         } else if let Some(pc) = new_pc.as_u64() {
-                pcs.push(pc);
+            pcs = vec!(pc);
         } else {
             let pc_val = new_pc.as_bv().unwrap();
             if self.debug {
@@ -698,8 +699,12 @@ impl Processor {
             }
             
             if self.lazy && !state.esil.pcs.is_empty() {
-                pcs = state.esil.pcs;
-                state.esil.pcs = Vec::with_capacity(pc_allocs);
+                pcs = mem::take(&mut state.esil.pcs);
+            } else if !state.esil.pcs.is_empty() {
+                // testing sat without modelgen is a bit faster than evaluating
+                pcs = mem::take(&mut state.esil.pcs).into_iter()
+                    .filter(|x| state.check(&new_pc.eq(&Value::Concrete(*x, 0))))
+                    .collect();
             } else {
                 pcs = state.evaluate_many(&pc_val);
             }
