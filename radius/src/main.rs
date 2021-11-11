@@ -24,13 +24,14 @@ pub mod test;
 
 fn main() {
     let matches = App::new("radius2")
-        .version("1.0.0")
+        .version("1.0.2")
         .author("Austin Emmitt <aemmitt@nowsecure.com>")
         .about("Symbolic Execution tool using r2 and boolector")
         .arg(Arg::with_name("path")
             .short("p")
             .long("path")
             .takes_value(true)
+            .required(true)
             .help("Path to the target binary"))
         .arg(Arg::with_name("libs")
             .short("L")
@@ -110,7 +111,18 @@ fn main() {
             .value_names(&["SYMBOL", "EXPR"])
             .multiple(true)
             .help("Constrain symbol values with string or pattern"))
-
+        .arg(Arg::with_name("evaluate")
+            .short("e")
+            .long("eval")
+            .value_names(&["ESIL"])
+            .multiple(true)
+            .help("Evaluate ESIL expression"))
+        .arg(Arg::with_name("evaluate_after")
+            .short("E")
+            .long("eval-after")
+            .value_names(&["ESIL"])
+            .multiple(true)
+            .help("Evaluate ESIL expression after execution"))
         .get_matches();
 
     let libpaths: Vec<&str> = matches.values_of("libs").unwrap_or_default().collect();
@@ -214,8 +226,22 @@ fn main() {
         radius.mergepoint(merge);
     }
 
-    // run the 
+    // collect the ESIL strings to evaluate
+    let evals: Vec<&str> = matches.values_of("evaluate").unwrap_or_default().collect();
+    for eval in evals {
+        radius.processor.parse_expression(&mut state, eval);
+    }
+
+    // run the thing
     if let Some(mut end_state) = radius.run(state, threads) {
+        // collect the ESIL strings to evaluate after running
+        let evals: Vec<&str> = matches.values_of("evaluate_after")
+            .unwrap_or_default().collect();
+
+        for eval in evals {
+            radius.processor.parse_expression(&mut end_state, eval);
+        }
+
         for symbol in symbol_map.keys() {
             let val = Value::Symbolic(symbol_map[symbol].clone(), 0);
             if let Some(bv) = end_state.solver.eval_to_bv(&val) {

@@ -32,3 +32,44 @@ fn main() {
     assert_eq!(flag, "Code_Talkers");
 }
 ```
+
+### radius CLI tool
+
+radius can also be installed from crates.io and easily included in packages. radius also has a CLI tool that can be installed with `cargo install radius2`
+
+```
+radius2 1.0.0
+Austin Emmitt <aemmitt@nowsecure.com>
+Symbolic Execution tool using r2 and boolector
+
+USAGE:
+    radius2 [FLAGS] [OPTIONS]
+
+FLAGS:
+    -h, --help       Prints help information
+    -z, --lazy       Evaluate symbolic PC values lazily
+        --no-sims    Do not simulate imports
+    -V, --version    Prints version information
+    -v, --verbose    Show verbose / debugging output
+
+OPTIONS:
+    -a, --address <address>                Address to begin execution at
+        --arg <arg>...                     Argument for the target program
+    -x, --avoid <avoid>...                 Avoid addresses
+    -b, --break <breakpoint>...            Breakpoint at some target address
+    -c, --constrain <SYMBOL> <EXPR>        Constrain symbol values with string or pattern
+        --env <env>...                     Environment variable for the target program
+    -f, --file <PATH> <SYMBOL>             Add a symbolic file
+    -L, --libs <libs>                      Load libraries from path
+    -m, --merge <merge>...                 Set address as a mergepoint
+    -p, --path <path>                      Path to the target binary
+        --set <REG/ADDR> <VALUE> <BITS>    Set memory or register values
+    -s, --symbol <NAME> <BITS>             Create a symbolic value
+```
+
+This tool can be used to solve the same `r100` crackme as above like 
+
+```
+$ radius2 -p tests/r100 -a 0x4006fd -x 0x400790 -s flag 96 --set A0 0x100000 64 --set 0x100000 flag 96
+flag : #x7372656b6c61545f65646f43 "Code_Talkers"
+```

@@ -92,7 +92,8 @@ pub enum StateStatus {
     Merge,
     PostMerge, // so we dont get caught in merge loop
     Unsat,
-    Inactive
+    Inactive,
+    Crash    
 }
 
 #[derive(Clone)]

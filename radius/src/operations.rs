@@ -80,6 +80,7 @@ pub enum Operations {
     ToDo,
     NoOperation,
     Print, // Tool for cli hooks
+    Constrain,
 
     // flag ops
     Zero,
@@ -178,7 +179,9 @@ impl Operations {
             "TODO" => Operations::ToDo,
             "" => Operations::NoOperation,
 
+            // hax for use in the cli / plugin
             "." => Operations::Print,
+            "_" => Operations::Constrain,
         
             "$z" => Operations::Zero,
             "$c" => Operations::Carry,
@@ -782,6 +785,10 @@ pub fn do_operation(state: &mut State, operation: Operations) {
 
         Operations::Print => {
             println!("{}", pop_concrete(state, false, false));
+        },
+        Operations::Constrain => {
+            let value = pop_value(state, false, false);
+            state.assert_value(&value);
         },
 
         Operations::ToDo => {
