@@ -155,14 +155,16 @@ impl Memory {
         let bits = self.r2api.info.as_ref().unwrap().bin.bits;
         for std in &stds {
             let mut addr = self.r2api.get_address(&("obj.".to_owned() + std)).unwrap();
+            let mut offset = 112; // linux
             if addr == 0 {
                 addr = self.r2api.get_address(&("reloc.__".to_owned() + std + "p")).unwrap();
+                offset = 18; // macos, this is jank af
             }
 
             if addr != 0 {
                 // from libc.rs should be in a common place
                 let file_struct = self.alloc(&Value::Concrete(216, 0));
-                self.write_value(file_struct+112, &Value::Concrete(fd, 0), 4);
+                self.write_value(file_struct+offset, &Value::Concrete(fd, 0), 4);
                 self.write_value(addr, &Value::Concrete(file_struct, 0), (bits/8) as usize); 
                 fd += 1;
             }

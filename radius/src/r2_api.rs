@@ -187,7 +187,7 @@ impl Default for CoreInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Default, Deserialize)]
 pub struct Information {
     #[serde(default)]
     pub core: CoreInfo,
@@ -704,8 +704,8 @@ impl R2Api {
         self.cmd(&script_data).unwrap();
         loop {
             thread::sleep(time::Duration::from_millis(100));
-            let out = self.cmd(&format!("psz 4096 @ {}", alloc))?;
-            if out.starts_with("{") {
+            if self.cmd(&format!("ps 1 @ {}", alloc))?.trim() == "{" {
+                let out = self.cmd(&format!("psz 4096 @ {}", alloc))?;
                 self.cmd(&format!(":dma- {}", alloc)).unwrap();
                 break r2_result(serde_json::from_str(&out));
             }
@@ -834,9 +834,6 @@ impl R2Api {
             for path in &paths {
                 let lib_path = path.to_owned() + lib;
                 let loaded = full_paths.iter().any(|x| x == &lib_path);
-
-                //println!("{}", lib_path);
-
                 if !loaded && Path::new(&lib_path).exists() {
                     let load_addr = (high_addr & 0xfffffffffffff000) + 0x3000; // idk
                     self.cmd(format!("o {} {}", &lib_path, load_addr).as_str())?;
@@ -852,7 +849,6 @@ impl R2Api {
                                 reloc.vaddr).as_str())?;
                         }
                     }
-
                     if let Ok(librs) = self.load_library_helper(lib_paths, &full_paths) {
                         full_paths = librs;
                     }

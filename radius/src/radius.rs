@@ -2,7 +2,7 @@ use crate::r2_api::{R2Api, R2Result, FunctionInfo, BasicBlock, Instruction, Info
 use crate::processor::{Processor, HookMethod};
 use crate::state::{State, StateStatus};
 //use crate::value::Value;
-use crate::sims::{get_sims, SimMethod, unconstrained};
+use crate::sims::{get_sims, SimMethod, zero};
 use crate::sims::syscall::{indirect};
 use crate::value::Value;
 
@@ -65,7 +65,7 @@ pub enum RadiusOption {
 pub struct Radius {
     pub r2api: R2Api,
     pub processor: Processor,
-    pub processors: Arc<Mutex<Vec<Processor>>>,
+    processors: Arc<Mutex<Vec<Processor>>>,
     pub eval_max: usize,
     pub check: bool,
     pub debug: bool,
@@ -244,6 +244,7 @@ impl Radius {
         let mut state = self.init_state();
         state.memory.add_stack();
         state.memory.add_heap();
+        state.memory.add_std_streams();
 
         // we write args to both regs and stack
         // i think this is ok
@@ -322,7 +323,7 @@ impl Radius {
         state.registers.set_with_alias("SP", Value::Concrete(sp, 0));
         state.memory.add_stack();
         state.memory.add_heap();
-        //state.memory.add_std_streams();
+        state.memory.add_std_streams();
         state
     }
 
@@ -368,7 +369,7 @@ impl Radius {
             if sim_all {
                 for addr in symmap.values() {
                     // we are gonna go with unconstrained by default
-                    processor.sims.insert(*addr, unconstrained);
+                    processor.sims.insert(*addr, zero);
                 }
             }
         }
@@ -421,6 +422,10 @@ impl Radius {
      * 
      */
     pub fn run(&mut self, state: State, mut threads: usize) -> Option<State> {
+        if threads == 1 {
+            return self.processor.run(state, false).pop_front();
+        }
+
         let mut handles = Vec::with_capacity(threads);
         let statevector = Arc::new(Mutex::new(VecDeque::with_capacity(self.eval_max)));
         statevector.lock().unwrap().push_back(state);

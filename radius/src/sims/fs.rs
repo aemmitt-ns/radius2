@@ -1,5 +1,6 @@
 use crate::value::Value;
 use std::fs;
+// use std::io;
 use std::time::SystemTime;
 
 #[derive(Debug, Clone)]
@@ -47,7 +48,7 @@ pub struct SimFile {
 
 #[derive(Debug, Clone)]
 pub struct SimFilesytem {
-    pub files: Vec<SimFile>,
+    pub files: Vec<SimFile>
 }
 
 impl Default for SimFilesytem {
@@ -61,7 +62,7 @@ impl SimFilesytem {
     pub fn new() -> Self {
         let files = SimFilesytem::get_stdio();
         SimFilesytem {
-            files
+            files,
         }
     }
 
@@ -229,16 +230,10 @@ impl SimFilesytem {
         });
     }
 
-    // TODO this isnt very rusty
     pub fn remove_file(&mut self, path: &str) {
-        let mut ind = None;
-        for (i, f) in self.files.iter().enumerate() {
-            if f.path == path {
-                ind = Some(i);
-            }
-        }
-        if let Some(index) = ind {
-            self.files.remove(index);
+        let f = self.files.iter().find(|f| f.path == path).map(|f| f.fd);
+        if let Some(fd) = f {
+            self.files.remove(fd);
         } 
     }
 

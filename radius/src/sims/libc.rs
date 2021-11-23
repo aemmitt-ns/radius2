@@ -19,6 +19,21 @@ pub fn puts(state: &mut State, args: &[Value]) -> Value {
     length
 }
 
+pub fn putchar(state: &mut State, args: &[Value]) -> Value {
+    let c = args[0].slice(7, 0);
+    state.filesystem.write(1, vec!(c.clone()));
+    c
+}
+
+pub fn getchar(state: &mut State, _args: &[Value]) -> Value {
+    state.filesystem.read(0, 1).get(0).unwrap_or(&vc(-1i64 as u64)).to_owned()
+}
+
+// TODO you know, all this
+pub fn fprintf(state: &mut State, args: &[Value]) -> Value {
+    puts(state, &[args[1].to_owned()])
+}
+
 // TODO you know, all this
 pub fn printf(state: &mut State, args: &[Value]) -> Value {
     puts(state, args)
@@ -336,10 +351,18 @@ type = struct _IO_FILE {
 // beginning of shitty FILE function support
 
 // _fileno offset from above linux x86_64
-pub const FILENO_OFFSET: u64 = 112;
+pub const LINUX_FILENO_OFFSET: u64 = 112;
+
+// _file offset from macos aarch64
+pub const MACOS_FILENO_OFFSET: u64 = 18;
 
 pub fn fileno(state: &mut State, args: &[Value]) -> Value {
-    let fd_addr = args[0].add(&Value::Concrete(FILENO_OFFSET, 0));
+    let fd_addr = if state.info.bin.os == "darwin" {
+        args[0].add(&Value::Concrete(MACOS_FILENO_OFFSET, 0))
+    } else {
+        args[0].add(&Value::Concrete(LINUX_FILENO_OFFSET, 0))
+    };
+
     state.memory_read_value(&(fd_addr), 4) 
 }
 
@@ -347,7 +370,14 @@ pub fn fopen(state: &mut State, args: &[Value]) -> Value {
     // we are reaching levels of shit code previously undreamt
     let fd = syscall::open(state, args.clone());
     let file_struct = state.memory.alloc(&Value::Concrete(216, 0));
-    state.memory.write_value(file_struct+FILENO_OFFSET, &fd, 4);
+
+    let fd_addr = if state.info.bin.os == "darwin" {
+        vc(file_struct).add(&Value::Concrete(MACOS_FILENO_OFFSET, 0))
+    } else {
+        vc(file_struct).add(&Value::Concrete(LINUX_FILENO_OFFSET, 0))
+    };
+
+    state.memory_write_value(&fd_addr, &fd, 4);
     Value::Concrete(file_struct, 0)
 }
 

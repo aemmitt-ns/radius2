@@ -24,7 +24,7 @@ pub mod test;
 
 fn main() {
     let matches = App::new("radius2")
-        .version("1.0.2")
+        .version("1.0.3")
         .author("Austin Emmitt <aemmitt@nowsecure.com>")
         .about("Symbolic Execution tool using r2 and boolector")
         .arg(Arg::with_name("path")
@@ -52,9 +52,28 @@ fn main() {
             .short("z")
             .long("lazy")
             .help("Evaluate symbolic PC values lazily"))
+        .arg(Arg::with_name("strict")
+            .long("strict")
+            .help("Panic on invalid instructions and ESIL"))
         .arg(Arg::with_name("no_sims")
             .long("no-sims")
             .help("Do not simulate imports"))
+        .arg(Arg::with_name("stdin")
+            .short("0")
+            .long("stdin")
+            .help("Use stdin for target program"))
+        .arg(Arg::with_name("stdout")
+            .short("1")
+            .long("stdout")
+            .help("Show stdout output"))
+        .arg(Arg::with_name("stderr")
+            .short("2")
+            .long("stderr")
+            .help("Show stderr output"))
+        // gonna have it all sim by default if libs not loaded
+        /*.arg(Arg::with_name("all_sims")
+            .long("all-sims")
+            .help("Simulate all imports (nop unimplemented)"))*/
         .arg(Arg::with_name("address")
             .short("a")
             .long("address")
@@ -111,6 +130,12 @@ fn main() {
             .value_names(&["SYMBOL", "EXPR"])
             .multiple(true)
             .help("Constrain symbol values with string or pattern"))
+        .arg(Arg::with_name("r2_command")
+            .short("r")
+            .long("r2-cmd")
+            .value_names(&["CMD"])
+            .multiple(true)
+            .help("Run r2 command on launch"))
         .arg(Arg::with_name("evaluate")
             .short("e")
             .long("eval")
@@ -127,9 +152,15 @@ fn main() {
 
     let libpaths: Vec<&str> = matches.values_of("libs").unwrap_or_default().collect();
 
+    let no_sims = matches.occurrences_of("no_sims") > 0;
+    let all_sims = !no_sims && libpaths.is_empty();
+
     let mut options = vec!(
         RadiusOption::Debug(matches.occurrences_of("verbose") > 0),
         RadiusOption::Lazy(matches.occurrences_of("lazy") > 0),
+        RadiusOption::Strict(matches.occurrences_of("strict") > 0),
+        RadiusOption::Sims(!no_sims),
+        RadiusOption::SimAll(all_sims),
         RadiusOption::LoadLibs(!libpaths.is_empty())
     );
     
@@ -140,6 +171,15 @@ fn main() {
     let mut radius = Radius::new_with_options(matches.value_of("path"), &options);
     let threads: usize = matches.value_of("threads").unwrap_or_default().parse().unwrap();
 
+    // execute provided r2 commands
+    let cmds: Vec<&str> = matches.values_of("r2_command").unwrap_or_default().collect();
+    for cmd in cmds {
+        let r = radius.cmd(cmd);
+        if matches.occurrences_of("verbose") > 0 && r.is_ok() {
+            println!("{}", r.unwrap());
+        }
+    }
+    
     let mut state = if let Some(address) = matches.value_of("address") {
         let addr = radius.get_address(address).unwrap();
         radius.call_state(addr)
@@ -250,7 +290,17 @@ fn main() {
                 } else {
                     println!("{} : {:?}", symbol, bv);
                 }
+            } else {
+                println!("{} : no satisfiable value", symbol);
             }
+        }
+
+        // dump program output 
+        if matches.occurrences_of("stdout") > 0 { 
+            print!("{}", end_state.dump_file_string(1).unwrap_or("".to_string()));
+        }
+        if matches.occurrences_of("stderr") > 0 { 
+            print!("{}", end_state.dump_file_string(2).unwrap_or("".to_string()));
         }
     }
 

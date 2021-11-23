@@ -18,7 +18,7 @@ const INSTR_NUM: usize = 64;
 const COLOR: bool = false;
 const CALL_TYPE: i64 = 3;
 const RETN_TYPE: i64 = 5;
-const NOP_TYPE: i64 = 8;
+// const NOP_TYPE: i64 = 8;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Word {
@@ -146,14 +146,12 @@ impl Processor {
     /// attempt to tokenize word as number literal (eg. 0x8)
     pub fn get_literal(&self, word: &str) -> Option<Word> {        
         if let Ok(i) = word.parse::<u64>() {
-            let val = Value::Concrete(i, 0);
-            Some(Word::Literal(val))
+            Some(Word::Literal(Value::Concrete(i, 0)))
         } else if word.len() > 2 && &word[0..2] == "0x" {
             let val = u64::from_str_radix(&word[2..word.len()], 16).unwrap();
             Some(Word::Literal(Value::Concrete(val, 0)))
         } else if let Ok(i) = word.parse::<i64>() {
-            let val = Value::Concrete(i as u64, 0);
-            Some(Word::Literal(val))
+            Some(Word::Literal(Value::Concrete(i as u64, 0)))
         } else {
             None
         }
@@ -171,10 +169,9 @@ impl Processor {
 
     /// attempt to tokenize word as operation (eg. +)
     pub fn get_operator(&self, word: &str) -> Option<Word> {
-        let op = Operations::from_string(word);
-        match op {
+        match Operations::from_string(word) {
             Operations::Unknown => None,
-            _ => Some(Word::Operator(op))
+            op => Some(Word::Operator(op))
         }
     }
 
@@ -196,7 +193,7 @@ impl Processor {
 
         if let Some(sys) = self.syscalls.get(&sys_num) {
             let cc = state.r2api.get_syscall_cc().unwrap();
-            let mut args = vec!();
+            let mut args = Vec::with_capacity(8);
             for arg in cc.args {
                 args.push(state.registers.get(arg.as_str()));
             }
@@ -611,12 +608,6 @@ impl Processor {
             let mut prev: Option<u64> = None;
             for instr in instrs {
                 let size = instr.size;
-
-                if state.strict && instr.esil.len() == 0 && 
-                    instr.type_num != NOP_TYPE {
-                    panic!("No ESIL for non-NOP!");
-                }
-
                 let words = self.tokenize(state, &instr.esil);
 
                 let mut status = InstructionStatus::None;
@@ -664,6 +655,10 @@ impl Processor {
         
         if self.debug {
             self.print_instr(state, &instr.instruction);
+        }
+
+        if state.strict && instr.instruction.disasm == "invalid" {
+            panic!("Executed invalid instruction");
         }
 
         self.execute(state, &instr.instruction, &instr.status, &instr.tokens);

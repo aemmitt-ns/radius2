@@ -1,4 +1,4 @@
-use crate::r2_api::{R2Api, Endian};
+use crate::r2_api::{R2Api, Endian, Information};
 use crate::registers::Registers;
 use crate::memory::Memory;
 use crate::value::Value;
@@ -100,6 +100,7 @@ pub enum StateStatus {
 pub struct State {
     pub solver:     Solver,
     pub r2api:      R2Api,
+    pub info:       Information,
     pub stack:      Vec<StackItem>,
     pub esil:       EsilState,
     pub condition:  Option<BitVec>,
@@ -141,6 +142,7 @@ impl State {
         State {
             solver,
             r2api: r2api.clone(),
+            info: r2api.info.as_ref().to_owned().unwrap().clone(),
             stack: Vec::with_capacity(128),
             esil: esil_state,
             condition: None,
@@ -191,6 +193,7 @@ impl State {
         State {
             solver,
             r2api: self.r2api.clone(),
+            info: self.info.clone(),
             stack: Vec::with_capacity(128),
             esil: esil_state,
             condition: None,
@@ -220,8 +223,6 @@ impl State {
             hook(self, event_context)
         }
     }
-
-    // yes i hate all of this
 
     /// Allocate a block of memory `length` bytes in size
     pub fn memory_alloc(&mut self, length: &Value) -> Value {
@@ -488,8 +489,24 @@ impl State {
         self.filesystem.fill(fd, data)
     }
 
+    pub fn fill_file_string(&mut self, fd: usize, string: &str) {
+        let data: Vec<Value> = string.chars()
+            .map(|c| Value::Concrete(c as u64, 0)).collect();
+
+        self.filesystem.fill(fd, &data)
+    }
+
     pub fn dump_file(&mut self, fd: usize) -> Vec<Value> {
         self.filesystem.dump(fd)
+    }
+
+    pub fn dump_file_string(&mut self, fd: usize) -> Option<String> {
+        let values = self.filesystem.dump(fd);
+        let bytes = values.iter()
+            .map(|v| self.solver.evalcon_to_u64(v).unwrap_or(0) as u8)
+            .collect();
+
+        String::from_utf8(bytes).ok()
     }
 
     // TODO do this in a way that isn't a global maximum of stupidity

@@ -295,7 +295,7 @@ fn ioscrackme() {
     let mut radius = Radius::new_with_options(
         Some("ipa://../tests/ioscrackme.ipa"), &[RadiusOption::Debug(true)]);
 
-    //radius.r2api.cmd("e asm.arch=arm.v35").unwrap();
+    //radius.set_option("asm.arch", "arm.v35");
     let len: usize = 16;
 
     let validate = radius.r2api.get_address("sym._validate").unwrap();
