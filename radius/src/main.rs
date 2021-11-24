@@ -24,7 +24,7 @@ pub mod test;
 
 fn main() {
     let matches = App::new("radius2")
-        .version("1.0.4")
+        .version("1.0.5")
         .author("Austin Emmitt <aemmitt@nowsecure.com>")
         .about("Symbolic Execution tool using r2 and boolector")
         .arg(Arg::with_name("path")
@@ -341,7 +341,7 @@ fn main() {
     // get code references to strings and add them to the avoid list
     if matches.occurrences_of("avoid_strings") > 0 {
         // need to analyze to get string refs
-        radius.cmd("afr").unwrap_or_default();
+        radius.analyze(3);
         for string in matches.values_of("avoid_strings").unwrap_or_default() {
             for location in radius.r2api.search_strings(string).unwrap() {
                 avoid.extend(radius.r2api.get_references(location)
@@ -353,7 +353,7 @@ fn main() {
     // get code references to strings and add them to the breakpoints
     if matches.occurrences_of("break_strings") > 0 {
         // need to analyze to get string refs
-        radius.cmd("afr").unwrap_or_default();
+        radius.analyze(3);
         for string in matches.values_of("break_strings").unwrap_or_default() {
             for location in radius.r2api.search_strings(string).unwrap() {
                 bps.extend(radius.r2api.get_references(location)
