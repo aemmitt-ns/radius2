@@ -34,6 +34,7 @@ pub type HookMethod = fn (&mut State) -> bool;
 pub struct Processor {
     pub instructions: HashMap<u64, InstructionEntry>,
     pub hooks: HashMap<u64, Vec<HookMethod>>,
+    pub esil_hooks: HashMap<u64, Vec<String>>,
     pub sims: HashMap<u64, SimMethod>,
     pub traps: HashMap<u64, SimMethod>, 
     pub syscalls: HashMap<u64, Syscall>,
@@ -53,6 +54,7 @@ pub struct Processor {
 pub enum InstructionStatus {
     None,
     Hook,
+    ESILHook,
     Sim,
     Merge,
     Avoid,
@@ -81,6 +83,7 @@ impl Processor {
         Processor {
             instructions: HashMap::new(),
             hooks:        HashMap::new(),
+            esil_hooks:   HashMap::new(),
             sims:         HashMap::new(),
             traps:        HashMap::new(),
             syscalls:     HashMap::new(),
@@ -135,6 +138,9 @@ impl Processor {
                 let poke = self.get_operator(&s[l-4..]).unwrap();
                 tokens.push(Word::Operator(Operations::AddressRestore));
                 tokens.push(poke);
+            
+            } else if let Some(values) = state.context.get(s) {
+                tokens.extend(values.iter().map(|x| Word::Literal(x.to_owned())));
             } else {
                 tokens.push(Word::Unknown(String::from(s)));
             }
@@ -545,6 +551,22 @@ impl Processor {
                     self.parse(state, words);
                 }
             },
+            InstructionStatus::ESILHook => {
+                let mut skip = false;
+                let pc_val = Value::Concrete(new_pc, 0);
+                state.registers.set_pc(pc_val);
+
+                let esils = &self.esil_hooks[&pc];
+                for esil in esils {
+                    self.parse_expression(state, esil);
+                    let val = pop_concrete(state, false, false);
+                    skip = (val != 0) || skip;
+                }
+
+                if !skip {
+                    self.parse(state, words);
+                }
+            },
             InstructionStatus::Sim => {
                 let sim = &self.sims[&pc];
                 let pc_val = Value::Concrete(new_pc, 0);
@@ -614,6 +636,8 @@ impl Processor {
                 let mut opt = self.optimized && !self.selfmodify;
                 if self.hooks.contains_key(&pc_tmp) {
                     status = InstructionStatus::Hook;
+                } else if self.esil_hooks.contains_key(&pc_tmp) {
+                    status = InstructionStatus::ESILHook;
                 } else if self.breakpoints.contains_key(&pc_tmp) {
                     status = InstructionStatus::Break;
                 } else if self.mergepoints.contains_key(&pc_tmp) {
@@ -656,7 +680,6 @@ impl Processor {
         if self.debug {
             self.print_instr(state, &instr.instruction);
         }
-
         if state.strict && instr.instruction.disasm == "invalid" {
             panic!("Executed invalid instruction");
         }
@@ -719,7 +742,6 @@ impl Processor {
             for new_pc_val in &pcs[..last] {
                 let mut new_state = state.clone();
                 if let Some(pc_val) = new_pc.as_bv() {
-                    //let pc_bv = new_state.translate(&pc_val).unwrap(); 
                     let a = pc_val._eq(&new_state.bvv(*new_pc_val, pc_val.get_width()));
                     new_state.solver.assert(&a);
                 }

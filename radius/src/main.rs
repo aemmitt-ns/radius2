@@ -24,7 +24,7 @@ pub mod test;
 
 fn main() {
     let matches = App::new("radius2")
-        .version("1.0.3")
+        .version("1.0.4")
         .author("Austin Emmitt <aemmitt@nowsecure.com>")
         .about("Symbolic Execution tool using r2 and boolector")
         .arg(Arg::with_name("path")
@@ -58,6 +58,10 @@ fn main() {
         .arg(Arg::with_name("no_sims")
             .long("no-sims")
             .help("Do not simulate imports"))
+        .arg(Arg::with_name("frida")
+            .short("F")
+            .long("frida")
+            .help("Create initial state from frida hook"))
         .arg(Arg::with_name("stdin")
             .short("0")
             .long("stdin")
@@ -91,12 +95,24 @@ fn main() {
             .takes_value(true)
             .multiple(true)
             .help("Breakpoint at some target address"))
+        .arg(Arg::with_name("break_strings")
+            .short("B")
+            .long("break-strings")
+            .takes_value(true)
+            .multiple(true)
+            .help("Breakpoint code xrefs to strings"))
         .arg(Arg::with_name("avoid")
             .short("x")
             .long("avoid")
             .takes_value(true)
             .multiple(true)
             .help("Avoid addresses"))
+        .arg(Arg::with_name("avoid_strings")
+            .short("X")
+            .long("avoid-strings")
+            .takes_value(true)
+            .multiple(true)
+            .help("Avoid code xrefs to strings"))
         .arg(Arg::with_name("merge")
             .short("m")
             .long("merge")
@@ -120,6 +136,7 @@ fn main() {
             .multiple(true)
             .help("Create a symbolic value"))
         .arg(Arg::with_name("set")
+            .short("S")
             .long("set")
             .value_names(&["REG/ADDR", "VALUE", "BITS"])
             .multiple(true)
@@ -130,6 +147,12 @@ fn main() {
             .value_names(&["SYMBOL", "EXPR"])
             .multiple(true)
             .help("Constrain symbol values with string or pattern"))
+        .arg(Arg::with_name("hook")
+            .short("H")
+            .long("hook")
+            .value_names(&["ADDR", "EXPR"])
+            .multiple(true)
+            .help("Hook the provided address with an ESIL expression"))
         .arg(Arg::with_name("r2_command")
             .short("r")
             .long("r2-cmd")
@@ -182,19 +205,57 @@ fn main() {
     
     let mut state = if let Some(address) = matches.value_of("address") {
         let addr = radius.get_address(address).unwrap();
-        radius.call_state(addr)
+        if matches.occurrences_of("frida") > 0 {
+            radius.frida_state(addr)
+        } else {
+            radius.call_state(addr)
+        }
     } else {
-        let args: Vec<&str> = matches.values_of("arg").unwrap_or_default().collect();
-        let env: Vec<&str> = matches.values_of("env").unwrap_or_default().collect();
-        radius.entry_state(&args, &env)
+        radius.entry_state()
     };
 
     // collect the symbol declarations
+    let mut files: Vec<&str> = matches.values_of("file").unwrap_or_default().collect();
     let mut symbol_map = HashMap::new();
     let symbols: Vec<&str> = matches.values_of("symbol").unwrap_or_default().collect();
     for i in 0..matches.occurrences_of("symbol") as usize {
         let length: u32 = symbols[2*i+1].parse().unwrap();
-        symbol_map.insert(symbols[2*i], state.bv(symbols[2*i], length));
+        let sym_value = state.symbolic_value(symbols[2*i], length);
+        let sym_name = symbols[2*i];
+        symbol_map.insert(sym_name, sym_value.as_bv().unwrap());
+        state.context.insert(sym_name.to_owned(), vec!(sym_value));
+
+        if sym_name.to_lowercase() == "stdin" {
+            files.extend(vec!("0", sym_name));
+        }
+    }
+
+    if matches.occurrences_of("arg") > 0 || matches.occurrences_of("env") > 0{
+        let argvs: Vec<&str> = matches.values_of("arg").unwrap_or_default().collect();
+        let envs: Vec<&str> = matches.values_of("env").unwrap_or_default().collect();
+        let mut argv = vec!();
+        let mut envv = vec!();
+
+        for (t, args) in [argvs, envs].iter().enumerate() {
+            for i in 0..args.len() as usize {
+                let value = if let Some(sym) = symbol_map.get(args[i]) {
+                    Value::Symbolic(sym.clone(), 0)
+                } else {
+                    let bytes: Vec<Value> = args[i].as_bytes().iter()
+                        .map(|b| Value::Concrete(*b as u64, 0)).collect();
+
+                    state.memory.pack(&bytes)
+                };
+
+                if t == 0 {
+                    argv.push(value);
+                } else {
+                    envv.push(value);
+                }
+            }
+        }
+
+        radius.set_argv_env(&mut state, &argv, &envv);
     }
 
     // collect the symbol constraints
@@ -204,16 +265,37 @@ fn main() {
         state.constrain_bytes(bv, cons[2*i+1]);
     }
 
-    // collect the added symbolic files
-    let files: Vec<&str> = matches.values_of("file").unwrap_or_default().collect();
-    for i in 0..matches.occurrences_of("file") as usize {
-        let length = symbol_map[files[2*i+1]].get_width() as usize;
-        let value = Value::Symbolic(symbol_map[files[2*i+1]].clone(), 0);
-        let bytes = state.memory.unpack(&value, length/8);
-        if let Ok(fd) = files[2*i].parse() {
-            state.filesystem.fill(fd, &bytes);
+    // collect the ESIL hooks
+    let hooks: Vec<&str> = matches.values_of("hook").unwrap_or_default().collect();
+    for i in 0..matches.occurrences_of("hook") as usize {
+        if let Ok(addr) = radius.get_address(hooks[2*i]) {
+            radius.esil_hook(addr, hooks[2*i+1]);
+        }
+    }
+
+    // collect the added files
+    for i in 0..files.len()/2 as usize {
+        let file = files[2*i];
+        let name = files[2*i+1];
+        if let Some(sym) = symbol_map.get(name) {
+            let length = symbol_map[name].get_width() as usize;
+            let value = Value::Symbolic(sym.clone(), 0);
+            let bytes = state.memory.unpack(&value, length/8);
+            if let Ok(fd) = files[2*i].parse() {
+                state.filesystem.fill(fd, &bytes);
+            } else {
+                state.filesystem.add_file(files[2*i], &bytes);
+            }
         } else {
-            state.filesystem.add_file(files[2*i], &bytes);
+            let content = files[2*i+1];
+            if let Ok(fd) = file.parse() {
+                state.fill_file_string(fd, content)
+            } else {
+                let bytes: Vec<Value> = content.as_bytes().iter()
+                    .map(|b| Value::Concrete(*b as u64, 0)).collect();
+
+                state.filesystem.add_file(file, &bytes);
+            }
         }
     }
 
@@ -249,12 +331,36 @@ fn main() {
     }
 
     // set breakpoints, avoids, and merges
-    let bps: Vec<u64> = matches.values_of("bp").unwrap_or_default()
+    let mut bps: Vec<u64> = matches.values_of("bp").unwrap_or_default()
         .map(|x| radius.get_address(x).unwrap()).collect();
-    let avoid: Vec<u64> = matches.values_of("avoid").unwrap_or_default()
+    let mut avoid: Vec<u64> = matches.values_of("avoid").unwrap_or_default()
         .map(|x| radius.get_address(x).unwrap()).collect();
     let merges: Vec<u64> = matches.values_of("merge").unwrap_or_default()
         .map(|x| radius.get_address(x).unwrap()).collect();
+
+    // get code references to strings and add them to the avoid list
+    if matches.occurrences_of("avoid_strings") > 0 {
+        // need to analyze to get string refs
+        radius.cmd("afr").unwrap_or_default();
+        for string in matches.values_of("avoid_strings").unwrap_or_default() {
+            for location in radius.r2api.search_strings(string).unwrap() {
+                avoid.extend(radius.r2api.get_references(location)
+                    .unwrap_or_default().iter().map(|x| x.from));
+            }
+        }
+    }
+    
+    // get code references to strings and add them to the breakpoints
+    if matches.occurrences_of("break_strings") > 0 {
+        // need to analyze to get string refs
+        radius.cmd("afr").unwrap_or_default();
+        for string in matches.values_of("break_strings").unwrap_or_default() {
+            for location in radius.r2api.search_strings(string).unwrap() {
+                bps.extend(radius.r2api.get_references(location)
+                    .unwrap_or_default().iter().map(|x| x.from));
+            }
+        }
+    }
 
     for bp in bps {
         radius.breakpoint(bp);

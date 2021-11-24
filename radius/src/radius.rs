@@ -236,7 +236,7 @@ impl Radius {
      * let mut state = radius.entry_state(&["r100"], &[]);
      * ```
      */
-    pub fn entry_state<T: AsRef<str>>(&mut self, args: &[T], env: &[T]) -> State {
+    pub fn entry_state(&mut self) -> State {
         // get the entrypoint
         let entry = self.r2api.get_entrypoints().unwrap()[0].vaddr;
         self.r2api.seek(entry);
@@ -248,7 +248,7 @@ impl Radius {
 
         // we write args to both regs and stack
         // i think this is ok
-        let sp = state.registers.get_with_alias("SP");
+        /*let sp = state.registers.get_with_alias("SP");
         let ptrlen = (state.memory.bits/8) as usize;
         let argc = Value::Concrete(args.len() as u64, 0);
         state.memory_write_value(
@@ -294,7 +294,7 @@ impl Radius {
                 &current, &Value::Concrete(0, 0), ptrlen); // write a long null
                 
             current = current + Value::Concrete(ptrlen as u64, 0); 
-        }
+        }*/
 
         let start_main_reloc = self.r2api.get_address(
             "reloc.__libc_start_main").unwrap();
@@ -303,6 +303,43 @@ impl Radius {
 
         //state.memory.add_std_streams();
         state
+    }
+
+    /// Set argv and env with values instead of the dumb string way
+    pub fn set_argv_env(&mut self, state: &mut State, args: &[Value], env: &[Value]) {
+
+        // we write args to both regs and stack
+        // i think this is ok
+        let sp = state.registers.get_with_alias("SP");
+        let ptrlen = (state.memory.bits/8) as usize;
+        let argc = Value::Concrete(args.len() as u64, 0);
+        state.memory_write_value(&sp, &argc, ptrlen);
+        state.registers.set_with_alias("A0", argc);
+
+        let types = ["argv", "env"];
+        let mut current = sp+Value::Concrete(ptrlen as u64, 0);
+        for (i, strings) in [args, env].iter().enumerate() {
+            state.context.insert(types[i].to_owned(), vec!(current.clone()));
+            let alias = format!("A{}", i+1);
+            state.registers.set_with_alias(&alias, current.clone());
+            for string in strings.iter() {
+                let addr = state.memory.alloc(
+                    &Value::Concrete((string.size()/8) as u64 +1, 0));
+
+                state.memory_write_value(
+                    &Value::Concrete(addr, 0), string, string.size() as usize/8);
+
+                state.memory.write_value(
+                    addr+(string.size()/8) as u64, &Value::Concrete(0,0), 1);
+
+                state.memory_write_value(
+                    &current, &Value::Concrete(addr, 0), ptrlen);
+
+                current = current + Value::Concrete(ptrlen as u64, 0); 
+            }
+            state.memory_write_value(&current, &Value::Concrete(0, 0), ptrlen); 
+            current = current + Value::Concrete(ptrlen as u64, 0); 
+        }
     }
 
     pub fn init_state(&mut self) -> State {
@@ -329,15 +366,19 @@ impl Radius {
 
     /// Hook an address with a callback that is passed the `State`
     pub fn hook(&mut self, addr: u64, hook_callback: HookMethod) {
-        let hooks = self.processor.hooks.remove(&addr);
-        if let Some(mut hook_vec) = hooks {
-            hook_vec.push(hook_callback);
-            self.processor.hooks.insert(addr, hook_vec);
-        } else {
-            self.processor.hooks.insert(addr, vec!(hook_callback));
-        }
+        let mut hooks = self.processor.hooks.remove(&addr).unwrap_or_default();
+        hooks.push(hook_callback);
+        self.processor.hooks.insert(addr, hooks);
     }
 
+    /// Hook an address with an esil expression
+    pub fn esil_hook(&mut self, addr: u64, esil: &str) {
+        let mut esils = self.processor.esil_hooks.remove(&addr).unwrap_or_default();
+        esils.push(esil.to_owned());
+        self.processor.esil_hooks.insert(addr, esils);
+    }
+
+        
     /// Hook a symbol with a callback that is passed each state that reaches it
     pub fn hook_symbol(&mut self, sym: &str, hook_callback: HookMethod) {
         let addr = self.get_address(sym).unwrap();

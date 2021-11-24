@@ -689,4 +689,11 @@ impl Value {
         binary_ops!(self, rhs, xor, ^)
     }
     
+    #[inline]
+    pub fn size(&self) -> u32 {
+        match self {
+            Value::Concrete(_a, _t) => 64,
+            Value::Symbolic(a, _t) => a.get_width()
+        }
+    }
 }

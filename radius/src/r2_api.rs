@@ -368,6 +368,20 @@ pub struct ClassInfo {
     pub superclass: String
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Reference {
+    pub from: u64,
+    pub r#type: String,
+    pub opcode: String,
+
+    #[serde(default)]
+    pub fcn_addr: u64,
+    pub fcn_name: String,
+
+    #[serde(default)]
+    pub refname: String
+}
+
 pub type R2Result<T> = Result<T, String>;
 pub fn r2_result<T, E>(result: Result<T, E>) -> R2Result<T> {
     if let Ok(res) = result {
@@ -613,6 +627,22 @@ impl R2Api {
     pub fn get_functions(&mut self) -> R2Result<Vec<FunctionInfo>> {
         let json = self.cmd("aflj")?;
         r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    pub fn get_references(&mut self, addr: u64) -> R2Result<Vec<Reference>> {
+        let json = self.cmd(&format!("axtj {}", addr))?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    /*pub fn get_strings(&mut self) -> R2Result<Vec<Reference>> {
+        let json = self.cmd("izzj")?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }*/
+
+    pub fn search_strings(&mut self, string: &str) -> R2Result<Vec<u64>> {
+        let result = self.cmd(&format!("izz~[2]~{}", string))?;
+        Ok(result.trim().split("\n").map(|x| u64::from_str_radix(&x[2..], 16)
+            .unwrap_or_default()).filter(|x| *x != 0).collect())
     }
 
     pub fn get_blocks(&mut self, addr: u64) -> R2Result<Vec<BasicBlock>> {

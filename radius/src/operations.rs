@@ -46,6 +46,7 @@ pub enum Operations {
     WeakEqual,
     Peek(usize),
     Poke(usize),
+    PeekSize,
     PokeSize,
     PopCount,
     Ceiling,
@@ -136,6 +137,7 @@ impl Operations {
             "--" => Operations::Decrement,
             "=" => Operations::Equal,
             ":=" => Operations::WeakEqual,
+            "[]" => Operations::PeekSize,
             "[1]" => Operations::Peek(1),
             "[2]" => Operations::Peek(2),
             "[4]" => Operations::Peek(4),
@@ -201,7 +203,7 @@ impl Operations {
 
 #[inline]
 pub fn get_size(state: &mut State) -> u32 {
-    let item = state.stack.pop().unwrap();
+    let item = state.stack.pop().unwrap_or_default();
 
     let sz = match &item {
         StackItem::StackValue(_val) => {
@@ -219,7 +221,7 @@ pub fn get_size(state: &mut State) -> u32 {
 
 #[inline]
 pub fn pop_value(state: &mut State, set_size: bool, sign_ext: bool) -> Value {
-    let item = state.stack.pop().unwrap();
+    let item = state.stack.pop().unwrap_or_default();
 
     let value = match item {
         StackItem::StackValue(val) => {
@@ -259,7 +261,7 @@ pub fn pop_value(state: &mut State, set_size: bool, sign_ext: bool) -> Value {
 
 #[inline]
 pub fn pop_stack_value(state: &mut State, stack: &mut Vec<StackItem>, set_size: bool, sign_ext: bool) -> Value {
-    let item = stack.pop().unwrap();
+    let item = stack.pop().unwrap_or_default();
 
     let value = match item {
         StackItem::StackValue(val) => {
@@ -588,9 +590,20 @@ pub fn do_operation(state: &mut State, operation: Operations) {
             state.esil.previous = addr;
             state.esil.last_sz = 8*n;
         },
-        Operations::PokeSize => {
+        Operations::PeekSize => {
+            let n = pop_concrete(state, false, false) as usize;
             let addr = pop_value(state, false, false);
-            let n = (get_size(state)/8) as usize;
+
+            let val = state.memory_read_value(&addr, n);
+            state.esil.current = val.to_owned();
+            push_value(state, val);
+
+            state.esil.previous = addr;
+            state.esil.last_sz = 8*n;
+        },
+        Operations::PokeSize => {
+            let n = pop_concrete(state, false, false) as usize;
+            let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
 
             if let Some(cond) = &state.condition.to_owned() {
@@ -771,7 +784,15 @@ pub fn do_operation(state: &mut State, operation: Operations) {
         Operations::NoOperation => {},
 
         Operations::Print => {
-            println!("{}", pop_concrete(state, false, false));
+            let value = pop_value(state, false, false);
+            if let Some(bv) = state.solver.eval_to_bv(&value) {
+                let ip = state.registers.get_pc().as_u64().unwrap_or_default();
+                if let Some(string) = state.evaluate_string(&bv) {
+                    println!("{:016x}: {:?} {:?}", ip, bv, string);
+                } else {
+                    println!("{:016x}: {:?}", ip, bv);
+                }
+            }
         },
         Operations::Constrain => {
             let value = pop_value(state, false, false);

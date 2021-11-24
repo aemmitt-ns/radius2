@@ -85,6 +85,12 @@ pub enum StackItem {
     StackValue(Value)
 }
 
+impl Default for StackItem {
+    fn default() -> Self {
+        StackItem::StackValue(Value::Concrete(0, 0))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateStatus {
     Active,
