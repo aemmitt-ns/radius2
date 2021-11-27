@@ -1,5 +1,6 @@
 use clap::{Arg, App};
 use boolector::BV;
+use std::time::Instant;
 use crate::radius::{Radius, RadiusOption};
 use crate::processor::Word;
 use crate::r2_api::hex_encode;
@@ -62,6 +63,10 @@ fn main() {
             .short("F")
             .long("frida")
             .help("Create initial state from frida hook"))
+        .arg(Arg::with_name("profile")
+            .short("P")
+            .long("profile")
+            .help("Get performance and runtime information"))
         .arg(Arg::with_name("stdin")
             .short("0")
             .long("stdin")
@@ -74,10 +79,6 @@ fn main() {
             .short("2")
             .long("stderr")
             .help("Show stderr output"))
-        // gonna have it all sim by default if libs not loaded
-        /*.arg(Arg::with_name("all_sims")
-            .long("all-sims")
-            .help("Simulate all imports (nop unimplemented)"))*/
         .arg(Arg::with_name("address")
             .short("a")
             .long("address")
@@ -132,7 +133,7 @@ fn main() {
         .arg(Arg::with_name("symbol")
             .short("s")
             .long("symbol")
-            .value_names(&["NAME", "BITS"])
+            .value_names(&["NAME", "BITS", "num|str"])
             .multiple(true)
             .help("Create a symbolic value"))
         .arg(Arg::with_name("set")
@@ -176,6 +177,7 @@ fn main() {
     let libpaths: Vec<&str> = matches.values_of("libs").unwrap_or_default().collect();
 
     let no_sims = matches.occurrences_of("no_sims") > 0;
+    let profile = matches.occurrences_of("profile") > 0;
     let all_sims = !no_sims && libpaths.is_empty();
 
     let mut options = vec!(
@@ -191,8 +193,14 @@ fn main() {
         options.push(RadiusOption::LibPath(lib.to_owned()));
     }
 
-    let mut radius = Radius::new_with_options(matches.value_of("path"), &options);
     let threads: usize = matches.value_of("threads").unwrap_or_default().parse().unwrap();
+    let start = Instant::now();
+
+    let mut radius = Radius::new_with_options(matches.value_of("path"), &options);
+
+    if profile {
+        println!("init time: {}", start.elapsed().as_micros());
+    }
 
     // execute provided r2 commands
     let cmds: Vec<&str> = matches.values_of("r2_command").unwrap_or_default().collect();
@@ -217,11 +225,14 @@ fn main() {
     // collect the symbol declarations
     let mut files: Vec<&str> = matches.values_of("file").unwrap_or_default().collect();
     let mut symbol_map = HashMap::new();
+    let mut symbol_types = HashMap::new();
     let symbols: Vec<&str> = matches.values_of("symbol").unwrap_or_default().collect();
     for i in 0..matches.occurrences_of("symbol") as usize {
-        let length: u32 = symbols[2*i+1].parse().unwrap();
-        let sym_value = state.symbolic_value(symbols[2*i], length);
-        let sym_name = symbols[2*i];
+        // use get_address so hex / simple ops can be used
+        let length = radius.get_address(symbols[3*i+1]).unwrap_or(8) as u32;
+        let sym_value = state.symbolic_value(symbols[3*i], length);
+        let sym_name = symbols[3*i];
+        symbol_types.insert(sym_name, symbols[3*i+2]);
         symbol_map.insert(sym_name, sym_value.as_bv().unwrap());
         state.context.insert(sym_name.to_owned(), vec!(sym_value));
 
@@ -331,7 +342,7 @@ fn main() {
     }
 
     // set breakpoints, avoids, and merges
-    let mut bps: Vec<u64> = matches.values_of("bp").unwrap_or_default()
+    let mut bps: Vec<u64> = matches.values_of("breakpoint").unwrap_or_default()
         .map(|x| radius.get_address(x).unwrap()).collect();
     let mut avoid: Vec<u64> = matches.values_of("avoid").unwrap_or_default()
         .map(|x| radius.get_address(x).unwrap()).collect();
@@ -357,7 +368,7 @@ fn main() {
         for string in matches.values_of("break_strings").unwrap_or_default() {
             for location in radius.r2api.search_strings(string).unwrap() {
                 bps.extend(radius.r2api.get_references(location)
-                    .unwrap_or_default().iter().map(|x| x.from));
+                    .unwrap().iter().map(|x| x.from));
             }
         }
     }
@@ -379,7 +390,18 @@ fn main() {
     }
 
     // run the thing
-    if let Some(mut end_state) = radius.run(state, threads) {
+    let run_start = Instant::now();
+
+    let result = radius.run(state, threads);
+
+    if profile {
+        let usecs = run_start.elapsed().as_micros();
+        let steps = radius.processor.steps;
+        println!("run time: {} ins: {} ins/usec: {}", 
+            usecs, steps, (steps as f64 / usecs as f64));
+    }
+
+    if let Some(mut end_state) = result {
         // collect the ESIL strings to evaluate after running
         let evals: Vec<&str> = matches.values_of("evaluate_after")
             .unwrap_or_default().collect();
@@ -388,17 +410,26 @@ fn main() {
             radius.processor.parse_expression(&mut end_state, eval);
         }
 
+        let solve_start = Instant::now();
+
         for symbol in symbol_map.keys() {
             let val = Value::Symbolic(symbol_map[symbol].clone(), 0);
             if let Some(bv) = end_state.solver.eval_to_bv(&val) {
-                if let Some(string) = end_state.evaluate_string(&bv) {
-                    println!("{} : {:?} {:?}", symbol, bv, string);
+                let str_opt = end_state.evaluate_string(&bv);
+                let sym_type = symbol_types[symbol];
+                if sym_type == "str" && str_opt.is_some() {
+                    println!("{} : {:?}", symbol, str_opt.unwrap());
                 } else {
-                    println!("{} : {:?}", symbol, bv);
+                    let hex = &format!("{:?}", bv)[2..];
+                    println!("{} : {}", symbol, hex);
                 }
             } else {
                 println!("{} : no satisfiable value", symbol);
             }
+        }
+
+        if profile {
+            println!("solve time: {}", solve_start.elapsed().as_micros());
         }
 
         // dump program output 
@@ -408,6 +439,10 @@ fn main() {
         if matches.occurrences_of("stderr") > 0 { 
             print!("{}", end_state.dump_file_string(2).unwrap_or("".to_string()));
         }
+    }
+
+    if profile {
+        println!("total time: {}", start.elapsed().as_micros());
     }
 
     radius.close();

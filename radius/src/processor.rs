@@ -1,4 +1,4 @@
-use crate::r2_api::{Instruction, Syscall, hex_decode};
+use crate::r2_api::{Instruction, Syscall, CallingConvention, hex_decode};
 use crate::value::Value;
 use crate::operations::{Operations, pop_value, push_value,
     pop_stack_value, pop_concrete, do_operation, OPS};
@@ -47,7 +47,8 @@ pub struct Processor {
     pub debug: bool,
     pub lazy: bool,
     pub force: bool,
-    pub topological: bool // execute blocks in topological sort order
+    pub topological: bool, // execute blocks in topological sort order
+    pub steps: u64         // number of state steps
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -96,7 +97,8 @@ impl Processor {
             debug,
             lazy,
             force,
-            topological
+            topological,
+            steps: 0
             //states: vec!()
         }
     }
@@ -350,6 +352,7 @@ impl Processor {
                                 state.set_inactive();
                                 //cond.assert();
                             }
+                            state.esil.mode = ExecMode::Uncon;
                             break;
                         },
                         Operations::Trap => {
@@ -419,31 +422,10 @@ impl Processor {
                     remove.push(i); // remove nops
                 } else if let Operations::WeakEqual = op {
                     let reg = &prev_instr.tokens[i-1];
-                    
                     if let Word::Register(index) = reg {
-                        // if its written but not read
-                        let mut written = false;
-                        let mut read = false;
+                        if !regs_read.iter().any(|r| state.registers.is_sub(*r, *index)) &&
+                            regs_written.iter().any(|r| state.registers.is_sub(*r, *index)) {
 
-                        for regr in &regs_read {
-                            if state.registers.is_sub(*regr, *index) {
-                                read = true;
-                                break;
-                            }
-                        }
-
-                        if read {
-                            continue
-                        }
-
-                        for regw in &regs_written {
-                            if state.registers.is_sub(*regw, *index) {
-                                written = true;
-                                break;
-                            }
-                        }
-
-                        if written {
                             let val = &prev_instr.tokens[i-2];
                             if let Word::Operator(op) = val {
                                 match op {
@@ -471,12 +453,30 @@ impl Processor {
                     new_tokens.push(word.to_owned());
                 }
             }
-
-            //println!("before {:?}", mut_prev_instr.tokens);
             mut_prev_instr.tokens = new_tokens;
-            //println!("after {:?}", mut_prev_instr.tokens);
             self.instructions.insert(prev_pc, mut_prev_instr);
         }
+    }
+
+    pub fn get_args(&self, state: &mut State, cc: &CallingConvention) -> Vec<Value> {
+        let mut args = Vec::with_capacity(16); 
+
+        if cc.args.len() > 0 {
+            for arg in &cc.args {
+                args.push(state.registers.get_with_alias(arg));
+            }
+        } else { // read args from stack?
+            let mut sp = state.registers.get_with_alias("SP");
+            let length = state.memory.bits as usize/8; 
+
+            for _ in 0..8 { // do 8 idk?
+                sp = sp + Value::Concrete(length as u64, 0);
+                let value = state.memory_read_value(&sp, length);
+                args.push(value);
+            }
+        }
+
+        args
     }
 
     /**
@@ -569,16 +569,14 @@ impl Processor {
             },
             InstructionStatus::Sim => {
                 let sim = &self.sims[&pc];
+                let cc = state.r2api.get_cc(pc).unwrap_or_default();
+                let args = self.get_args(state, &cc);
+
                 let pc_val = Value::Concrete(new_pc, 0);
                 state.registers.set_pc(pc_val);
 
-                let cc = state.r2api.get_cc(pc).unwrap();
-                let mut args = vec!();
-                for arg in cc.args {
-                    args.push(state.registers.get(arg.as_str()));
-                }
                 let ret = sim(state, &args);
-                state.registers.set(cc.ret.as_str(), ret);
+                state.registers.set_with_alias(cc.ret.as_str(), ret);
                 state.backtrace.pop();
 
                 // don't ret if sim changes the PC value
@@ -616,7 +614,7 @@ impl Processor {
                 if has_instr {
                     let instr = &self.instructions[&pc_val];
                     let bytes = hex_decode(&instr.instruction.bytes);
-                    if data[..bytes.len()] == bytes {
+                    if bytes == data[..bytes.len()].to_vec() {
                         // nothing needs to be done but this is 
                         // such a weird construction. i hate this code
                         return; 
@@ -688,12 +686,14 @@ impl Processor {
     }
 
     /// Take single step with the state provided
-    pub fn step(&mut self, mut state: State) -> Vec<State> {
+    pub fn step(&mut self, state: &mut State) -> Vec<State> {
+        self.steps += 1;
+
         let pc_allocs = 32;
         let pc_value = state.registers.get_pc();
 
         if let Some(pc_val) = pc_value.as_u64() {
-            self.execute_instruction(&mut state, pc_val);
+            self.execute_instruction(state, pc_val);
         } else {
             panic!("got an unexpected sym PC: {:?}", pc_value);
         }
@@ -733,9 +733,7 @@ impl Processor {
             }
         }
 
-        if pcs.len() == 1 && new_pc.as_u64().is_some() {
-            vec!(state)
-        } else if !pcs.is_empty() {
+        if pcs.len() > 1 || new_pc.as_u64().is_none() {
             let mut states: Vec<State> = Vec::with_capacity(pc_allocs);
 
             let last = pcs.len()-1;
@@ -756,8 +754,7 @@ impl Processor {
                 state.solver.assert(&a);
             }
             state.registers.set_pc(Value::Concrete(new_pc_val, 0));
-            states.push(state);
-
+            //states.push(state);
             states
         } else {
             vec!()
@@ -770,10 +767,9 @@ impl Processor {
         states.push_back(state);
 
         // run until empty for single threaded, until split for multi
+        let mut index = 0;
         while !split || (states.len() == 1) {
-            let current_state;
-
-            if states.len() == 0 {
+            if states.is_empty() {
                 if self.merges.is_empty() {
                     return VecDeque::new();
                 } else {
@@ -781,33 +777,34 @@ impl Processor {
                     let key = *self.merges.keys().next().unwrap();
                     let mut merge = self.merges.remove(&key).unwrap();
                     merge.status = StateStatus::PostMerge;
-                    current_state = merge;
+                    states.push_back(merge)
                 }
-            } else {
-                current_state = states.pop_front().unwrap();
-            }
+            } 
+            
+            let current_state = &mut states[index];
 
             match current_state.status {
                 StateStatus::Active | StateStatus::PostMerge => {
-                    states.extend(self.step(current_state));
+                    let new_states = self.step(current_state);
+                    states.extend(new_states);
+                    index += 1;
                 },
                 StateStatus::Merge => {
-                    self.merge(current_state);
+                    self.merge(states.remove(index).unwrap());
                 },
                 StateStatus::Break => {
-                    return VecDeque::from(vec!(current_state)); 
+                    return VecDeque::from(vec!(current_state.to_owned())); 
                 },
-                _ => {}
+                _ => {
+                    states.remove(index).unwrap();
+                }
             }
+            index = if states.len() == 0 { 0 } else { index%states.len() };
         }
 
         states
     }
 
-    // TODO do not merge if backtraces are different
-    // really i guess it should be a vector of states with
-    // unique backtraces for every merge address
-    // but thats complicated and i dont wanna do it right now
     pub fn merge(&mut self, mut state: State) {
         let pc = state.registers.get_with_alias("PC").as_u64().unwrap();
         

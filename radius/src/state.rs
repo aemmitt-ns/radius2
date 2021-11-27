@@ -717,6 +717,50 @@ impl State {
         self.set_status(StateStatus::Break);
     }
 
+    /// Get the argument values for the current function
+    pub fn get_args(&mut self) -> Vec<Value> {
+        let pc = self.registers.get_pc().as_u64().unwrap();
+        let cc = self.r2api.get_cc(pc).unwrap_or_default();
+        let mut args = Vec::with_capacity(16); 
+
+        if cc.args.len() > 0 {
+            for arg in &cc.args {
+                args.push(self.registers.get_with_alias(arg));
+            }
+        } else { // read args from stack?
+            let mut sp = self.registers.get_with_alias("SP");
+            let length = self.memory.bits as usize/8; 
+
+            for _ in 0..8 { // do 8 idk?
+                sp = sp + Value::Concrete(length as u64, 0);
+                let value = self.memory_read_value(&sp, length);
+                args.push(value);
+            }
+        }
+
+        args
+    }
+
+    /// Set the argument values for the current function
+    pub fn set_args(&mut self, mut values: Vec<Value>) {
+        let pc = self.registers.get_pc().as_u64().unwrap();
+        let cc = self.r2api.get_cc(pc).unwrap_or_default();
+
+        if cc.args.len() > 0 {
+            for arg in &cc.args {
+                self.registers.set_with_alias(arg, values.remove(0));
+            }
+        } else { // read args from stack?
+            let mut sp = self.registers.get_with_alias("SP");
+            let length = self.memory.bits as usize/8; 
+
+            for _ in 0..8 { // do 8 idk?
+                sp = sp + Value::Concrete(length as u64, 0);
+                self.memory_write_value(&sp, &values.remove(0), length);
+            }
+        }
+    }
+
     /// Assert the truth of the given bitvector (value != 0)
     #[inline]
     pub fn assert(&mut self, bv: &BitVec) {

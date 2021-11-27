@@ -63,6 +63,7 @@ impl Solver {
 
     #[inline]
     pub fn bv(&self, s: &str, n: u32) -> BitVec {
+        // check if it already exists
         BV::new(self.btor.clone(), n, Some(s))
     }
 
@@ -73,8 +74,6 @@ impl Solver {
 
     #[inline]
     pub fn translate(&self, bv: &BitVec) -> Option<BitVec> {
-        //Some(bv.to_owned())
-        //println!("{:?}", bv);
         Btor::get_matching_bv(self.btor.clone(), bv)
     }
 

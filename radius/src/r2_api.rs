@@ -376,6 +376,8 @@ pub struct Reference {
 
     #[serde(default)]
     pub fcn_addr: u64,
+    
+    #[serde(default)]
     pub fcn_name: String,
 
     #[serde(default)]

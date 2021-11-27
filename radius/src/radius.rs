@@ -233,7 +233,7 @@ impl Radius {
      * ```
      * use radius2::radius::Radius;
      * let mut radius = Radius::new("../tests/r100");
-     * let mut state = radius.entry_state(&["r100"], &[]);
+     * let mut state = radius.entry_state();
      * ```
      */
     pub fn entry_state(&mut self) -> State {
@@ -246,62 +246,10 @@ impl Radius {
         state.memory.add_heap();
         state.memory.add_std_streams();
 
-        // we write args to both regs and stack
-        // i think this is ok
-        /*let sp = state.registers.get_with_alias("SP");
-        let ptrlen = (state.memory.bits/8) as usize;
-        let argc = Value::Concrete(args.len() as u64, 0);
-        state.memory_write_value(
-            &sp, &argc, ptrlen);
-
-        state.registers.set_with_alias("A0", argc);
-
-        let types = ["argv", "env"];
-        let mut current = sp+Value::Concrete(ptrlen as u64, 0);
-        for (i, strings) in [args, env].iter().enumerate() {
-            state.context.insert(types[i].to_owned(), vec!(current.clone()));
-            let alias = format!("A{}", i+1);
-            state.registers.set_with_alias(&alias, current.clone());
-            for (j, string) in strings.iter().enumerate() {
-                let addr = state.memory.alloc(
-                    &Value::Concrete(string.as_ref().len() as u64 +1, 0));
-
-                let mut esc = false;
-                for (k, c) in string.as_ref().chars().enumerate() {
-                    if c == '\\' {
-                        esc = true;
-                    } else {
-                        let v;
-                        if !esc && c == '~' { // ~ become symbolic bytes
-                            let sym = format!("{}[{}][{}]", types[i], j, k);
-                            v = state.symbolic_value(&sym, 8);
-                        } else {
-                            v = state.concrete_value(c as u64, 8);
-                        }
-                        state.memory.write_value(addr+k as u64, &v, 1);
-                        esc = false
-                    }
-                }
-                state.memory.write_value(
-                    addr+string.as_ref().len() as u64, &Value::Concrete(0,0), 1);
-
-                state.memory_write_value(
-                    &current, &Value::Concrete(addr, 0), ptrlen);
-
-                current = current + Value::Concrete(ptrlen as u64, 0); 
-            }
-            state.memory_write_value(
-                &current, &Value::Concrete(0, 0), ptrlen); // write a long null
-                
-            current = current + Value::Concrete(ptrlen as u64, 0); 
-        }*/
-
         let start_main_reloc = self.r2api.get_address(
             "reloc.__libc_start_main").unwrap();
 
         self.hook(start_main_reloc, __libc_start_main);
-
-        //state.memory.add_std_streams();
         state
     }
 
@@ -599,27 +547,20 @@ impl Radius {
     pub fn clear(&mut self) {
         self.r2api.clear();
         self.processors.lock().unwrap().clear();
-        //self.processor = Processor::new();
     }
 }
 
 pub fn __libc_start_main(state: &mut State) -> bool {
-    let main = state.registers.get_with_alias("A0");
-    let argc = state.registers.get_with_alias("A1");
-    let argv = state.registers.get_with_alias("A2");
-    let env  = state.registers.get_with_alias("A3");
+    let mut args = state.get_args();
+    let main = args.remove(0);
 
-    // TODO go to init then main 
+    // TODO go to init then main    
     // but we need a nice arch neutral way to push ret 
     // so until then 
 
     // go to main 
     state.registers.set_with_alias("PC", main);
-    state.registers.set_with_alias("A0", argc);
-    state.registers.set_with_alias("A1", argv);
-
-    // TODO set env
-    state.registers.set_with_alias("A2", env);
+    state.set_args(args);
 
     false
 }

@@ -1,6 +1,6 @@
 use crate::value::Value;
 use crate::state::State;
-// use crate::sims::fs::FileMode;
+use rand::Rng;
 use crate::sims::syscall;
 
 const MAX_LEN: u64 = 8192;
@@ -10,10 +10,14 @@ const MAX_LEN: u64 = 8192;
 
 // now using sim fs
 pub fn puts(state: &mut State, args: &[Value]) -> Value {
+    put_help(state, args, true)
+}
+
+pub fn put_help(state: &mut State, args: &[Value], nl: bool) -> Value {
     let addr = &args[0];
     let length = strlen(state, &args[0..1]);
     let mut data = state.memory_read(addr, &length);
-    data.push(Value::Concrete('\n' as u64, 0)); // add newline
+    if nl { data.push(Value::Concrete('\n' as u64, 0)); } // add newline
     //println!("{}", value);
     state.filesystem.write(1, data);
     length
@@ -31,12 +35,53 @@ pub fn getchar(state: &mut State, _args: &[Value]) -> Value {
 
 // TODO you know, all this
 pub fn fprintf(state: &mut State, args: &[Value]) -> Value {
-    puts(state, &[args[1].to_owned()])
+    printf(state, &args[1..])
 }
 
 // TODO you know, all this
 pub fn printf(state: &mut State, args: &[Value]) -> Value {
-    puts(state, args)
+    let length_val = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0));
+    let length = state.solver.eval_to_u64(&length_val).unwrap();
+    let addr = state.solver.eval_to_u64(&args[0]).unwrap();
+    let format = state.memory_read_string(addr, length as usize);
+    if &format == "%s" || &format == "%s\n" {
+        put_help(state, &args[1..2], &format != "%s")
+    } else if &format == "%d" || &format == "%d\n" {
+        let addr = state.memory_alloc(&vc(64));
+        itoa_helper(state, &args[1], &addr, &vc(10), true, 32);
+        put_help(state, &[addr], &format != "%d")
+    } else if &format == "%x" || &format == "%x\n" {
+        let addr = state.memory_alloc(&vc(64));
+        itoa_helper(state, &args[1], &addr, &vc(16), true, 32);
+        put_help(state, &[addr], &format != "%x")
+    } else {
+        put_help(state, &args[0..1], false)
+    }
+}
+
+// TODO you know, all this
+pub fn scanf(state: &mut State, args: &[Value]) -> Value {
+    let length_val = state.memory_strlen(&args[0], &Value::Concrete(MAX_LEN, 0));
+    let length = state.solver.eval_to_u64(&length_val).unwrap();
+    let addr = state.solver.eval_to_u64(&args[0]).unwrap();
+    let format = state.memory_read_string(addr, length as usize);
+    if &format == "%s" {
+        gets(state, &args[1..])
+    } else if format.starts_with("%") && format.ends_with("s") {
+        if let Ok(n) = &format[1..format.len()-1].parse::<u64>() {
+            read(state, &[vc(0), args[1].to_owned(), vc(*n)])
+        } else { // uh idk
+            vc(0)
+        }
+    } else if &format == "%d" {
+        gets(state, &args[1..]);
+        atoi_helper(state, &args[1], &vc(10), 32)
+    } else if &format == "%x" {
+        gets(state, &args[1..]);
+        atoi_helper(state, &args[1], &vc(16), 32)
+    } else {
+        vc(0) // you're on your own 
+    }
 }
 
 pub fn memmove(state: &mut State, args: &[Value]) -> Value {
@@ -72,8 +117,6 @@ pub fn memccpy(state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn memfrob(state: &mut State, args: &[Value]) -> Value {
-    //state.proc.parse_expression( // this is the fun way to do it
-    //"0,A1,-,DUP,DUP,?{,A1,-,A0,+,DUP,[1],0x2a,^,SWAP,=[1],1,+,1,GOTO,}", state)
     let addr = &args[0];
     let num = &args[1];
 
@@ -97,7 +140,6 @@ pub fn strnlen(state: &mut State, args: &[Value]) -> Value {
     state.memory_strlen(&args[0], &args[1])
 }
 
-// TODO implement this with sim fs
 pub fn gets(state: &mut State, args: &[Value]) -> Value {
     syscall::read(state, &[Value::Concrete(0,0), 
         args[0].to_owned(), 
@@ -106,7 +148,6 @@ pub fn gets(state: &mut State, args: &[Value]) -> Value {
     args[0].to_owned()
 }
 
-// TODO this idk why don't you do it? huh?
 pub fn fgets(state: &mut State, args: &[Value]) -> Value {
     let fd = fileno(state, &args[2..3]);
     syscall::read(state, &[fd, args[0].to_owned(), 
@@ -155,11 +196,7 @@ pub fn strndupa(state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn strfry(_state: &mut State, args: &[Value]) -> Value {
-    /*length, last = state.mem_search(addr, [BZERO])
-    data = state.mem_read(addr, length)
-    // random.shuffle(data) // i dont actually want to do this?
-    state.mem_copy(addr, data, length)*/
-    args[0].to_owned()
+    args[0].to_owned() // don't shuffle anything
 }
 
 pub fn strncpy(state: &mut State, args: &[Value]) -> Value {
@@ -663,7 +700,15 @@ pub fn zero(_state: &mut State, _args: &[Value]) -> Value {
 }
 
 pub fn rand(state: &mut State, _args: &[Value]) -> Value {
-    state.symbolic_value("rand", 32)
+    let mut rand_vec = state.context.entry("rand"
+        .to_owned()).or_insert(vec!()).clone();
+
+    let rand = state.symbolic_value(&format!("rand_{}", 
+        rand::thread_rng().gen::<u64>()), 64);
+
+    rand_vec.push(rand.clone());
+    state.context.insert("rand".to_owned(), rand_vec);
+    rand
 }
 
 pub fn srand(_state: &mut State, _args: &[Value]) -> Value {

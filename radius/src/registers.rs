@@ -218,9 +218,8 @@ impl Registers {
                     let new_mask: u64 = (1 << size) - 1; 
                     let mask: u64 = !(new_mask << offset);
 
-                    taint = t1; // | t2;
                     let new_value = (old & mask) + ((new & new_mask) << offset);
-                    self.values[register.value_index] = Value::Concrete(new_value, taint);
+                    self.values[register.value_index] = Value::Concrete(new_value, t1);
                     return;
                 },
                 (Value::Concrete(new, t1), Value::Symbolic(old, _t2)) => {

@@ -267,7 +267,7 @@ pub fn getuid(_state: &mut State, _args: &[Value]) -> Value {
 }
 
 pub fn ptrace(_state: &mut State, _args: &[Value]) -> Value {
-    Value::Concrete(-1i64 as u64, 0)
+    Value::Concrete(0, 0) // antidebug checks for -1
 }
 
 pub fn exit(state: &mut State, args: &[Value]) -> Value {

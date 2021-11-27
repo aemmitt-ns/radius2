@@ -48,6 +48,8 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("printf",  libc::printf, 1), // fix
         make_sim("fflush",  libc::fflush, 0),
 
+        make_sim("__isoc99_scanf",   libc::scanf, 1), // fix
+
         make_sim("fopen",   libc::fopen, 2),
         make_sim("fread",   libc::fread, 4),
         make_sim("fwrite",  libc::fwrite, 4),
@@ -58,6 +60,7 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("strnlen", libc::strnlen, 2),
         make_sim("strstr",  libc::strstr, 2),
         make_sim("strcpy",  libc::strcpy, 2),
+        make_sim("stpcpy",  libc::stpcpy, 2),
         make_sim("strncpy", libc::strncpy, 3),
         make_sim("strcat",  libc::strcat, 2),
         make_sim("strncat", libc::strncat, 3),
@@ -135,10 +138,12 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("ptrace",  libc::ptrace, 0),
         make_sim("syscall", libc::c_syscall, 0),
         make_sim("getenv",  libc::getenv, 1),
+        make_sim("abort",   libc::exit, 1),
         make_sim("exit",    libc::exit, 1),
 
         make_sim("ioctl",  error, 1),
         make_sim("sysctl", zero, 1),
+        make_sim("setbuf", zero, 2),
 
         make_sim("rand",   libc::rand, 0),
         make_sim("srand",  libc::srand, 1),
