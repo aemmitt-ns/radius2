@@ -317,6 +317,7 @@ pub fn pop_concrete(state: &mut State, set_size: bool, sign_ext: bool) -> u64 {
     }
 }
 
+#[inline]
 pub fn get_stack_taint(state: &mut State, n: usize) -> u64 {
     let mut taint = 0;
     for _ in 0..n {
@@ -388,7 +389,7 @@ macro_rules! binary_method {
     };
 }
 
-#[inline]
+#[inline] 
 pub fn genmask(bits: u64) -> u64 {
     if bits > 0 && bits < 63 {
         (2u64 << bits) - 1
@@ -397,7 +398,7 @@ pub fn genmask(bits: u64) -> u64 {
     }
 }
 
-pub fn do_operation(state: &mut State, operation: Operations) {
+pub fn do_operation(state: &mut State, operation: &Operations) {
     match operation {
         Operations::Trap => {},
         Operations::Syscall => {},
@@ -565,30 +566,30 @@ pub fn do_operation(state: &mut State, operation: Operations) {
             // TODO: fix to allow symbolic (sort of done)
             let addr = pop_value(state, false, false);
 
-            let val = state.memory_read_value(&addr, n);
+            let val = state.memory_read_value(&addr, *n);
             state.esil.current = val.to_owned();
             push_value(state, val);
 
             state.esil.previous = addr;
-            state.esil.last_sz = 8*n;
+            state.esil.last_sz = 8*(*n);
         },
         Operations::Poke(n) => {
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
 
             if let Some(cond) = &state.condition.to_owned() {
-                let prev = state.memory_read_value(&addr, n);
+                let prev = state.memory_read_value(&addr, *n);
                 //prev = state.translate_value(&prev);
                 
                 state.memory_write_value(&addr, &state.solver.conditional(
-                    &Value::Symbolic(cond.to_owned(), 0), &value, &prev), n);
+                    &Value::Symbolic(cond.to_owned(), 0), &value, &prev), *n);
             } else {
-                state.memory_write_value(&addr, &value, n);
+                state.memory_write_value(&addr, &value, *n);
             }
 
             //state.memory.write_value(addr, value, n);
             state.esil.previous = addr;
-            state.esil.last_sz = 8*n;
+            state.esil.last_sz = 8*(*n);
         },
         Operations::PeekSize => {
             let n = pop_concrete(state, false, false) as usize;

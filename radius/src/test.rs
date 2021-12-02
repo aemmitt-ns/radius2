@@ -10,7 +10,7 @@ fn looper() {
     radius.r2api.cmd("e asm.arch=arm.v35").unwrap();
     let state = radius.call_state(0x100003f4c);
     //let state = radius.entry_state(&vec!("looper".to_owned()), &vec!());
-    let mut new_state = radius.run_until(state, 0x100003fb4, &[]).unwrap();
+    let new_state = radius.run_until(state, 0x100003fb4, &[]).unwrap();
     let x0 = new_state.registers.get("x0");
     println!("{:?}", x0);
     assert_eq!(x0.as_u64(), Some(1837180037));
@@ -22,7 +22,7 @@ fn hello() {
     let options = vec!(RadiusOption::Debug(true));
     let mut radius = Radius::new_with_options(Some("../tests/hello"), &options);
     let state = radius.call_state(0x00001149);
-    let mut new_state = radius.run_until(state, 0x1163, &[]).unwrap();
+    let new_state = radius.run_until(state, 0x1163, &[]).unwrap();
     println!("{:?}", new_state.registers.get("eax"))
 }
 

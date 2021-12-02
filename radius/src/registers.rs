@@ -100,11 +100,13 @@ impl Registers {
     }
 
     /// Get the value of the register `reg`
-    pub fn get(&mut self, reg: &str) -> Value {
+    #[inline]
+    pub fn get(&self, reg: &str) -> Value {
         self.get_value(self.regs[reg].index)
     }
 
     /// Set the value of the register `reg`
+    #[inline]
     pub fn set(&mut self, reg: &str, value: Value) {
         self.set_value(self.regs[reg].index, value)
     }
@@ -115,6 +117,7 @@ impl Registers {
     }
 
     /// Get register with name OR alias, eg. `PC`, `SP`
+    #[inline]
     pub fn get_with_alias(&self, alias: &str) -> Value {
         let mut reg = alias;
         if let Some(r) = self.aliases.get(alias) {
@@ -124,6 +127,7 @@ impl Registers {
     }
 
     /// Set register with name OR alias, eg. `PC`, `SP`
+    #[inline]
     pub fn set_with_alias(&mut self, alias: &str, value: Value) {
         if let Some(r) = self.aliases.get(alias) {
             let t = r.reg.to_owned();
@@ -133,11 +137,13 @@ impl Registers {
     }
 
     /// Get the value of `PC`
-    pub fn get_pc(&mut self) -> Value {
+    #[inline]
+    pub fn get_pc(&self) -> Value {
         self.get_value(self.pc.as_ref().unwrap().index)
     }
 
     /// Set the value of `PC`
+    #[inline]
     pub fn set_pc(&mut self, value: Value) {
         self.set_value(self.pc.as_ref().unwrap().index, value)
     }

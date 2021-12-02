@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::ops;
 use std::cmp::Ordering;
 
-#[inline]
+#[inline] 
 pub fn log2(x: u32) -> u32 {
     31 - x.leading_zeros()
 }
@@ -20,12 +20,12 @@ impl Default for Value {
     fn default() -> Self { Value::Concrete(0, 0) }
 }
 
-#[inline]
+#[inline] 
 pub fn make_bv(bv: &BitVec, val: u64, n: u32) -> BitVec {
     BV::from_u64(bv.get_btor(), val, n)
 }
 
-#[inline]
+#[inline] 
 pub fn value_to_bv(btor: Arc<Btor>, value: Value) -> BitVec {
     match value {
         Value::Concrete(val, _t) => {
@@ -35,7 +35,7 @@ pub fn value_to_bv(btor: Arc<Btor>, value: Value) -> BitVec {
     }
 }
 
-#[inline]
+#[inline] 
 pub fn cond_value(cond: &BitVec, v1: Value, v2: Value) -> BitVec {
     cond.cond_bv(
         &value_to_bv(cond.get_btor(), v1), 
@@ -98,7 +98,7 @@ macro_rules! wrapping_binary_ops {
 impl ops::Add<Value> for Value {
     type Output = Value;
 
-    #[inline]
+    #[inline] 
     fn add(self, rhs: Value) -> Value {
         wrapping_binary_ops!(&self, &rhs, add, wrapping_add)
     }
@@ -107,7 +107,7 @@ impl ops::Add<Value> for Value {
 impl ops::Sub<Value> for Value {
     type Output = Value;
 
-    #[inline]
+    #[inline] 
     fn sub(self, rhs: Value) -> Value {
         wrapping_binary_ops!(&self, &rhs, sub, wrapping_sub)
     }
@@ -116,7 +116,7 @@ impl ops::Sub<Value> for Value {
 impl ops::Mul<Value> for Value {
     type Output = Value;
 
-    #[inline]
+    #[inline] 
     fn mul(self, rhs: Value) -> Value {
         wrapping_binary_ops!(&self, &rhs, mul, wrapping_mul)
     }
@@ -125,7 +125,7 @@ impl ops::Mul<Value> for Value {
 impl ops::Div<Value> for Value {
     type Output = Value;
 
-    #[inline]
+    #[inline] 
     fn div(self, rhs: Value) -> Value {
         wrapping_binary_ops!(&self, &rhs, udiv, wrapping_div)
     }
@@ -134,7 +134,7 @@ impl ops::Div<Value> for Value {
 impl ops::Rem<Value> for Value {
     type Output = Value;
 
-    #[inline]
+    #[inline] 
     fn rem(self, rhs: Value) -> Value {
         wrapping_binary_ops!(&self, &rhs, urem, wrapping_rem)
     }
@@ -143,7 +143,7 @@ impl ops::Rem<Value> for Value {
 impl ops::BitAnd<Value> for Value {
     type Output = Value;
 
-    #[inline]
+    #[inline] 
     fn bitand(self, rhs: Value) -> Value {
         binary_ops!(&self, &rhs, and, &)
     }
@@ -152,7 +152,7 @@ impl ops::BitAnd<Value> for Value {
 impl ops::BitOr<Value> for Value {
     type Output = Value;
 
-    #[inline]
+    #[inline] 
     fn bitor(self, rhs: Value) -> Value {
         binary_ops!(&self, &rhs, or, |)
     }
@@ -164,7 +164,7 @@ impl ops::BitXor<Value> for Value {
     // ok here we could clear taint if a == b since this is used to zero regs
     // idk if this is actually a good idea or not. but something needs to be done
     // to stop wild overtainting
-    #[inline]
+    #[inline] 
     fn bitxor(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -193,7 +193,7 @@ impl ops::BitXor<Value> for Value {
 impl ops::Not for Value {
     type Output = Value;
 
-    #[inline]
+    #[inline] 
     fn not(self) -> Value {
         match self {
             Value::Concrete(a, t) => {
@@ -210,7 +210,7 @@ impl ops::Not for Value {
 impl ops::Neg for Value {
     type Output = Value;
 
-    #[inline]
+    #[inline] 
     fn neg(self) -> Value {
         match self {
             Value::Concrete(a, t) => {
@@ -226,7 +226,7 @@ impl ops::Neg for Value {
 impl ops::Shl<Value> for Value {
     type Output = Value;
 
-    #[inline]
+    #[inline] 
     fn shl(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -250,7 +250,7 @@ impl ops::Shl<Value> for Value {
 impl ops::Shr<Value> for Value {
     type Output = Value;
 
-    #[inline]
+    #[inline] 
     fn shr(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -274,7 +274,7 @@ impl ops::Shr<Value> for Value {
 
 impl Value {
 
-    #[inline]
+    #[inline] 
     pub fn sdiv(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -299,7 +299,7 @@ impl Value {
         }
     }
 
-    #[inline]
+    #[inline] 
     pub fn srem(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -324,7 +324,7 @@ impl Value {
         }
     }
 
-    #[inline]
+    #[inline] 
     pub fn asr(self, rhs: Value, sz: u32) -> Value {
         //println!("{:?}, {:?}, {:?}", self, rhs, sz);
         match (self, rhs) {
@@ -347,7 +347,7 @@ impl Value {
         }
     }
 
-    #[inline]
+    #[inline] 
     pub fn ror(self, rhs: Value, sz: u32) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -371,7 +371,7 @@ impl Value {
         }
     }
 
-    #[inline]
+    #[inline] 
     pub fn rol(self, rhs: Value, sz: u32) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -397,7 +397,7 @@ impl Value {
     }
 
     // get whether values are equivalent
-    #[inline]
+    #[inline] 
     pub fn eq(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -423,7 +423,7 @@ impl Value {
     }
 
     // check if values are *identical*
-    #[inline]
+    #[inline] 
     pub fn id(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -449,7 +449,7 @@ impl Value {
         }
     }
 
-    #[inline]
+    #[inline] 
     pub fn slt(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -474,22 +474,22 @@ impl Value {
         }
     }
 
-    #[inline]
+    #[inline] 
     pub fn slte(&self, rhs: &Value) -> Value {
         self.slt(rhs) | self.eq(rhs)
     }
 
-    #[inline]
+    #[inline] 
     pub fn sgt(&self, rhs: &Value) -> Value {
         !self.slt(rhs) & !self.eq(rhs)
     }
 
-    #[inline]
+    #[inline] 
     pub fn sgte(self, rhs: &Value) -> Value {
         !self.slt(rhs)
     }
     
-    #[inline]
+    #[inline] 
     pub fn ult(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -514,22 +514,22 @@ impl Value {
         }
     }
 
-    #[inline]
+    #[inline] 
     pub fn ulte(&self, rhs: &Value) -> Value {
         self.ult(rhs) | self.eq(rhs)
     }
 
-    #[inline]
+    #[inline] 
     pub fn ugt(&self, rhs: &Value) -> Value {
         !self.ult(rhs) & !self.eq(rhs)
     }
 
-    #[inline]
+    #[inline] 
     pub fn ugte(&self, rhs: &Value) -> Value {
         !self.ult(rhs)
     }
 
-    #[inline]
+    #[inline] 
     pub fn uext(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -551,7 +551,7 @@ impl Value {
         }
     }
 
-    #[inline]
+    #[inline] 
     pub fn sext(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
@@ -631,7 +631,7 @@ impl Value {
         }
     }
 
-    #[inline]
+    #[inline] 
     pub fn is_concrete(&self) -> bool {
         if let Value::Concrete(_, _) = self {
             true
@@ -640,7 +640,7 @@ impl Value {
         }
     }
 
-    #[inline]
+    #[inline] 
     pub fn is_symbolic(&self) -> bool {
         if let Value::Symbolic(_, _) = self {
             true
@@ -649,47 +649,47 @@ impl Value {
         }
     }
 
-    #[inline]
+    #[inline] 
     pub fn add(&self, rhs: &Value) -> Value {
         wrapping_binary_ops!(self, rhs, add, wrapping_add)
     }
 
-    #[inline]
+    #[inline] 
     pub fn sub(&self, rhs: &Value) -> Value {
         wrapping_binary_ops!(self, rhs, sub, wrapping_sub)
     }
 
-    #[inline]
+    #[inline] 
     pub fn mul(&self, rhs: &Value) -> Value {
         wrapping_binary_ops!(self, rhs, mul, wrapping_mul)
     }
 
-    #[inline]
+    #[inline] 
     pub fn div(&self, rhs: &Value) -> Value {
         wrapping_binary_ops!(self, rhs, udiv, wrapping_div)
     }
 
-    #[inline]
+    #[inline] 
     pub fn rem(&self, rhs: &Value) -> Value {
         wrapping_binary_ops!(self, rhs, urem, wrapping_rem)
     }
 
-    #[inline]
+    #[inline] 
     pub fn and(&self, rhs: &Value) -> Value {
         binary_ops!(self, rhs, and, &)
     }
 
-    #[inline]
+    #[inline] 
     pub fn or(&self, rhs: &Value) -> Value {
         binary_ops!(self, rhs, or, |)
     }
 
-    #[inline]
+    #[inline] 
     pub fn xor(&self, rhs: &Value) -> Value {
         binary_ops!(self, rhs, xor, ^)
     }
     
-    #[inline]
+    #[inline] 
     pub fn size(&self) -> u32 {
         match self {
             Value::Concrete(_a, _t) => 64,

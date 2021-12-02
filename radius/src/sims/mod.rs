@@ -140,6 +140,7 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("getenv",  libc::getenv, 1),
         make_sim("abort",   libc::exit, 1),
         make_sim("exit",    libc::exit, 1),
+        make_sim("xexit",   libc::exit, 1),
 
         make_sim("ioctl",  error, 1),
         make_sim("sysctl", zero, 1),

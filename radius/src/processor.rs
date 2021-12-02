@@ -11,7 +11,7 @@ use crate::sims::syscall::syscall;
 
 use std::collections::VecDeque;
 use std::mem;
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 type HashMap<P, Q> = AHashMap<P, Q>;
 
 const INSTR_NUM: usize = 64;
@@ -38,9 +38,10 @@ pub struct Processor {
     pub sims: HashMap<u64, SimMethod>,
     pub traps: HashMap<u64, SimMethod>, 
     pub syscalls: HashMap<u64, Syscall>,
-    pub breakpoints: HashMap<u64, bool>,
-    pub mergepoints: HashMap<u64, bool>,
-    pub avoidpoints: HashMap<u64, bool>,
+    pub breakpoints: AHashSet<u64>,
+    pub mergepoints: AHashSet<u64>,
+    pub avoidpoints: AHashSet<u64>,
+    //pub visited: AHashSet<u64>,
     pub merges: HashMap<u64, State>,
     pub selfmodify: bool,
     pub optimized: bool,
@@ -88,9 +89,10 @@ impl Processor {
             sims:         HashMap::new(),
             traps:        HashMap::new(),
             syscalls:     HashMap::new(),
-            breakpoints:  HashMap::new(),
-            mergepoints:  HashMap::new(),
-            avoidpoints:  HashMap::new(),
+            breakpoints:  AHashSet::new(),
+            mergepoints:  AHashSet::new(),
+            avoidpoints:  AHashSet::new(),
+            //visited:      AHashSet::new(),
             merges:       HashMap::new(),
             selfmodify,
             optimized,
@@ -142,7 +144,9 @@ impl Processor {
                 tokens.push(poke);
             
             } else if let Some(values) = state.context.get(s) {
-                tokens.extend(values.iter().map(|x| Word::Literal(x.to_owned())));
+                tokens.extend(values.iter()
+                    .map(|x| Word::Literal(state.translate_value(x))));
+
             } else {
                 tokens.push(Word::Unknown(String::from(s)));
             }
@@ -184,7 +188,6 @@ impl Processor {
     }
 
     /// print instruction if debug output is enabled
-    #[inline]
     pub fn print_instr(&self, state: &mut State, instr: &Instruction) {
         if !COLOR {
             println!("{:016x}:  {:<40} |  {}", instr.offset, instr.disasm, instr.esil);
@@ -235,18 +238,14 @@ impl Processor {
             word_index += 1;
 
             // this is weird... 
-            if let ExecMode::NoExec = state.esil.mode {
-                if let Word::Operator(oper) = &word {
-                    match &oper {
-                        Operations::Else | Operations::EndIf => {},
-                        _ => continue
-                    }
-                } else {
-                    continue
+            if state.esil.mode == ExecMode::NoExec {
+                match &word {
+                    Word::Operator(Operations::Else) | 
+                    Word::Operator(Operations::EndIf) => {},
+                    _ => continue
                 }
             }
 
-            //println!("word: {:?} {:?}", &word, &state.stack);
             match word {
                 Word::Literal(val) => {
                     state.stack.push(StackItem::StackValue(val.to_owned()));
@@ -261,11 +260,11 @@ impl Processor {
                 
                             match (arg1, &state.esil.mode) {
                                 (Value::Concrete(val1, _t), ExecMode::Uncon) => {
-                                    if val1 == 0 {
-                                        state.esil.mode = ExecMode::NoExec;
+                                    state.esil.mode = if val1 == 0 {
+                                        ExecMode::NoExec
                                     } else {
-                                        state.esil.mode = ExecMode::Exec;
-                                    }
+                                        ExecMode::Exec
+                                    };
                                 },
                                 (Value::Symbolic(val1, _t), ExecMode::Uncon) => {
                                     //println!("if {:?}", val1);
@@ -372,7 +371,7 @@ impl Processor {
                             }
                         },
                         Operations::Syscall => self.do_syscall(state),
-                        _ => do_operation(state, op.to_owned())
+                        _ => do_operation(state, op)
                     }
                 },
                 Word::Unknown(s) => {
@@ -415,7 +414,7 @@ impl Processor {
             }
         }
 
-        let mut remove: Vec<usize> = Vec::with_capacity(16);
+        let mut remove: Vec<usize> = Vec::with_capacity(32);
         for (i, word) in prev_instr.tokens.iter().enumerate() {
             if let Word::Operator(op) = word {
                 if let Operations::NoOperation = op {
@@ -484,7 +483,6 @@ impl Processor {
      * If the instruction is hooked or the method is simulated perform the
      * respective callback. Hooks returning false will skip the instruction
      */
-    #[inline]
     pub fn execute(&self, state: &mut State, instr: &Instruction, 
         status: &InstructionStatus, words: &[Word]) {
 
@@ -514,7 +512,7 @@ impl Processor {
         }
 
         match instr.type_num {
-            CALL_TYPE => { state.backtrace.push(new_pc); },
+            CALL_TYPE => state.backtrace.push((instr.jump as u64, new_pc)),
             RETN_TYPE => { 
                 if state.backtrace.is_empty() && 
                     new_status == &InstructionStatus::None {
@@ -636,11 +634,11 @@ impl Processor {
                     status = InstructionStatus::Hook;
                 } else if self.esil_hooks.contains_key(&pc_tmp) {
                     status = InstructionStatus::ESILHook;
-                } else if self.breakpoints.contains_key(&pc_tmp) {
+                } else if self.breakpoints.contains(&pc_tmp) {
                     status = InstructionStatus::Break;
-                } else if self.mergepoints.contains_key(&pc_tmp) {
+                } else if self.mergepoints.contains(&pc_tmp) {
                     status = InstructionStatus::Merge;
-                } else if self.avoidpoints.contains_key(&pc_tmp) {
+                } else if self.avoidpoints.contains(&pc_tmp) {
                     status = InstructionStatus::Avoid;
                 } else if self.sims.contains_key(&pc_tmp) {
                     status = InstructionStatus::Sim;
@@ -699,12 +697,13 @@ impl Processor {
         }
 
         let new_pc = state.registers.get_pc();
-        let pcs;
+        //let pcs;
 
         if self.force && !state.esil.pcs.is_empty() {
-            pcs = mem::take(&mut state.esil.pcs);
+            // we just use the pcs in state.esil.pcs
         } else if let Some(pc) = new_pc.as_u64() {
-            pcs = vec!(pc);
+            state.esil.pcs.clear();
+            state.esil.pcs.push(pc);
         } else {
             let pc_val = new_pc.as_bv().unwrap();
             if self.debug {
@@ -716,15 +715,13 @@ impl Processor {
                     &EventContext::ExecContext(new_pc.clone()));
             }
             
-            if self.lazy && !state.esil.pcs.is_empty() {
-                pcs = mem::take(&mut state.esil.pcs);
-            } else if !state.esil.pcs.is_empty() {
+            if !self.lazy && !state.esil.pcs.is_empty() {
                 // testing sat without modelgen is a bit faster than evaluating
-                pcs = mem::take(&mut state.esil.pcs).into_iter()
+                state.esil.pcs = state.esil.pcs.clone().into_iter()
                     .filter(|x| state.check(&new_pc.eq(&Value::Concrete(*x, 0))))
                     .collect();
-            } else {
-                pcs = state.evaluate_many(&pc_val);
+            } else if state.esil.pcs.is_empty() {
+                state.esil.pcs = state.evaluate_many(&pc_val);
             }
 
             if DO_EVENT_HOOKS && state.has_event_hooks {
@@ -733,11 +730,11 @@ impl Processor {
             }
         }
 
-        if pcs.len() > 1 || new_pc.as_u64().is_none() {
+        if state.esil.pcs.len() > 1 || new_pc.as_u64().is_none() {
             let mut states: Vec<State> = Vec::with_capacity(pc_allocs);
 
-            let last = pcs.len()-1;
-            for new_pc_val in &pcs[..last] {
+            let last = state.esil.pcs.len()-1;
+            for new_pc_val in &state.esil.pcs[..last] {
                 let mut new_state = state.clone();
                 if let Some(pc_val) = new_pc.as_bv() {
                     let a = pc_val._eq(&new_state.bvv(*new_pc_val, pc_val.get_width()));
@@ -747,14 +744,13 @@ impl Processor {
                 states.push(new_state);
             }
             
-            let new_pc_val = pcs[last];
+            let new_pc_val = state.esil.pcs[last];
             if let Some(pc_val) = new_pc.as_bv() {
                 let pc_bv = pc_val; 
                 let a = pc_bv._eq(&state.bvv(new_pc_val, pc_bv.get_width()));
                 state.solver.assert(&a);
             }
             state.registers.set_pc(Value::Concrete(new_pc_val, 0));
-            //states.push(state);
             states
         } else {
             vec!()
@@ -786,14 +782,21 @@ impl Processor {
             match current_state.status {
                 StateStatus::Active | StateStatus::PostMerge => {
                     let new_states = self.step(current_state);
-                    states.extend(new_states);
+                    for s in new_states {
+                        states.push_front(s);
+                        index += 1;
+                    }
                     index += 1;
                 },
                 StateStatus::Merge => {
                     self.merge(states.remove(index).unwrap());
                 },
                 StateStatus::Break => {
-                    return VecDeque::from(vec!(current_state.to_owned())); 
+                    if current_state.is_sat() {
+                        return VecDeque::from(vec!(states.remove(index).unwrap())); 
+                    } else {
+                        states.remove(index).unwrap();
+                    }
                 },
                 _ => {
                     states.remove(index).unwrap();
@@ -818,7 +821,7 @@ impl Processor {
             let asserted = Value::Symbolic(assertion.clone(), 0);
 
             // merge registers 
-            let mut new_regs = vec!();
+            let mut new_regs = Vec::with_capacity(256);
             let reg_count = state.registers.values.len();
             for index in 0..reg_count {
                 let reg = &merge_state.registers.values[index];
@@ -832,7 +835,7 @@ impl Processor {
             let merge_addrs = merge_state.memory.addresses();
             let state_addrs = state.memory.addresses();
 
-            let mut addrs = vec!();
+            let mut addrs = Vec::with_capacity(state.solver.eval_max);
             addrs.extend(merge_addrs);
             addrs.extend(state_addrs);
             for addr in addrs {

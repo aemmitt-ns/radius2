@@ -93,6 +93,7 @@ impl Memory {
         self.heap.alloc(len)
     }
 
+    #[inline]
     pub fn alloc_sym(&mut self, length: &Value, solver: &mut Solver) -> Value {
         let len = solver.max_value(length);
         Value::Concrete(self.heap.alloc(len), 0)
@@ -107,6 +108,7 @@ impl Memory {
         }
     }
 
+    #[inline]
     pub fn free_sym(&mut self, addr: &Value, solver: &mut Solver) -> Value {
         let address = solver.evalcon_to_u64(addr).unwrap();
         self.free(&Value::Concrete(address, 0))
@@ -211,6 +213,7 @@ impl Memory {
         -1i64 as u64
     }
 
+    #[inline]
     pub fn read_sym(&mut self, address: &Value, len: usize, solver: &mut Solver) -> Value {
         match address {
             Value::Concrete(addr, _t) => {
@@ -231,6 +234,7 @@ impl Memory {
         }
     }
 
+    #[inline]
     pub fn write_sym(&mut self, address: &Value, value: &Value, len: usize, solver: &mut Solver) {
         match address {
             Value::Concrete(addr, _t) => {
@@ -410,11 +414,13 @@ impl Memory {
         result
     }
 
+    #[inline]
     pub fn read_value(&mut self, addr: u64, length: usize) -> Value {
         let data = self.read(addr, length);
         self.pack(&data)
     }
 
+    #[inline]
     pub fn write_value(&mut self, addr: u64, value: &Value, length: usize) {
         let mut data = self.unpack(value, length);
         self.write(addr, &mut data)
@@ -589,7 +595,7 @@ impl Memory {
     }
 
     pub fn unpack(&self, value: &Value, length: usize) -> Vec<Value> {
-        let mut data: Vec<Value> = Vec::with_capacity(length);
+        let mut data: Vec<Value> = Vec::with_capacity(length+1);
 
         match value {
             Value::Concrete(val, t) => {

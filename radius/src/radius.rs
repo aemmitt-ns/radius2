@@ -226,7 +226,6 @@ impl Radius {
 
     /**
      * Initialized state at the program entry point (the first if multiple).
-     * Can also be passed concrete args and env variables
      * 
      * **Example**
      * 
@@ -380,21 +379,27 @@ impl Radius {
     /// Add a breakpoint at the provided address. 
     /// This is where execution will stop after `run` is called
     pub fn breakpoint(&mut self, addr: u64) {
-        self.processor.breakpoints.insert(addr, true);
+        self.processor.breakpoints.insert(addr);
     }
 
     /// Add a mergepoint, an address where many states will be combined
     /// into a single state with the proper constraints
     pub fn mergepoint(&mut self, addr: u64) {
-        self.processor.mergepoints.insert(addr, true);
+        self.processor.mergepoints.insert(addr);
     }
 
     /// Add addresses that will be avoided during execution. Any
     /// `State` that reaches these addresses will be marked inactive
     pub fn avoid(&mut self, addrs: &[u64]) {
         for addr in addrs {
-            self.processor.avoidpoints.insert(*addr, true);
+            self.processor.avoidpoints.insert(*addr);
         }
+    }
+
+    pub fn get_steps(&self) -> u64 {
+        let mut steps = self.processor.steps;
+        steps += self.processors.lock().unwrap().iter().map(|p| p.steps).sum::<u64>();
+        return steps
     }
 
     /// Simple way to execute until a given target address while avoiding a vec of other addrs
@@ -410,8 +415,12 @@ impl Radius {
      * More words 
      * 
      */
-    pub fn run(&mut self, state: State, mut threads: usize) -> Option<State> {
-        if threads == 1 {
+    pub fn run(&mut self, state: State, threads: usize) -> Option<State> {
+
+        // if there are multiple threads we need to duplicate solvers
+        // else there will be race conditions. Unfortunately this 
+        // will prevent mergers from happening. this sucks 
+        if threads == 1 || !self.processor.mergepoints.is_empty() {
             return self.processor.run(state, false).pop_front();
         }
 
@@ -419,24 +428,13 @@ impl Radius {
         let statevector = Arc::new(Mutex::new(VecDeque::with_capacity(self.eval_max)));
         statevector.lock().unwrap().push_back(state);
 
-        // if there are multiple threads we need to duplicate solvers
-        // else there will be race conditions. Unfortunately this 
-        // will prevent mergers from happening. this sucks 
-        if !self.processor.mergepoints.is_empty() {
-            threads = 1;
-        }
-
         loop {
             let mut count = 0;
             while count < threads && !statevector.lock().unwrap().is_empty() {
                 //println!("on thread {}!", thread_count);
                 let procs = self.processors.clone();
                 let states = statevector.clone();
-                let state = if threads > 1 {
-                    states.lock().unwrap().pop_front().unwrap().duplicate()
-                } else {
-                    states.lock().unwrap().pop_front().unwrap()
-                };
+                let state = states.lock().unwrap().pop_front().unwrap().duplicate();
 
                 let mut processor = if !procs.lock().unwrap().is_empty() {
                     procs.lock().unwrap().pop().unwrap()
@@ -444,12 +442,8 @@ impl Radius {
                     self.processor.clone()
                 };
 
-                if state.status == StateStatus::Break {
-                    return Some(state);
-                }
-
                 let handle = thread::spawn(move || {
-                    let new_states = processor.run(state, threads > 1);
+                    let new_states = processor.run(state, true);
                     states.lock().unwrap().extend(new_states);
                     procs.lock().unwrap().push(processor);
                 });

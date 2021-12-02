@@ -451,6 +451,11 @@ impl R2Api {
             Mode::Default
         };
 
+        // if we are on arm64 default to v35 plugin 
+        if info.bin.arch == "arm" && info.bin.bits == 64 {
+            r2api.set_option("asm.arch", "arm.v35").unwrap_or_default();
+        }
+
         r2api
     }
 

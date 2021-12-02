@@ -118,7 +118,7 @@ pub struct State {
     pub taints:     HashMap<String, u64>,
     pub hooks:      HashMap<Event, EventHook>,
     pub pid:        u64,
-    pub backtrace:  Vec<u64>,
+    pub backtrace:  Vec<(u64, u64)>,
     pub blank:      bool,
     pub debug:      bool,
     pub strict:     bool,
@@ -185,6 +185,22 @@ impl State {
             memory.mem.insert(addr, solver.translate_value(&value));
         }
 
+        let mut context = HashMap::new();
+        for key in self.context.keys() {
+            let values = self.context.get(key).unwrap();
+            let new_values = values.iter()
+                .map(|v| solver.translate_value(v)).collect();
+
+            context.insert(key.to_owned(), new_values);
+        }
+
+        let mut filesystem = self.filesystem.clone();
+        for f in &mut filesystem.files {
+            let content = f.content.clone();
+            f.content = content.iter()
+                .map(|v| solver.translate_value(v)).collect();
+        }
+
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
             previous: Value::Concrete(0, 0),
@@ -205,9 +221,9 @@ impl State {
             condition: None,
             registers,
             memory,
-            filesystem: self.filesystem.clone(),
+            filesystem,
             status: self.status.clone(),
-            context: self.context.clone(),
+            context,
             taints: self.taints.clone(),
             hooks: self.hooks.clone(),
             backtrace: self.backtrace.clone(),
@@ -323,6 +339,7 @@ impl State {
     }
 
     /// Read `length` byte value from `address`
+    #[inline]
     pub fn memory_read_value(&mut self, address: &Value, length: usize) -> Value {
         if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
             self.do_hooked(&Event::SymbolicRead(EventTrigger::Before), 
@@ -340,6 +357,7 @@ impl State {
     }
 
     /// Write `length` byte value to `address`
+    #[inline]
     pub fn memory_write_value(&mut self, address: &Value, value: &Value, length: usize) {
         if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
             self.do_hooked(&Event::SymbolicRead(EventTrigger::Before), 
@@ -545,18 +563,17 @@ impl State {
     }
 
     /// Create a bitvector from this states solver
-    #[inline]
     pub fn bv(&self, s: &str, n: u32) -> BitVec {
         self.solver.bv(s, n)
     }
 
     /// Create a bitvector value from this states solver
-    #[inline]
     pub fn bvv(&self, v: u64, n: u32) -> BitVec {
         self.solver.bvv(v, n)
     }
 
     /// Create a `Value::Concrete` from a value `v` and bit width `n`
+    #[inline]
     pub fn concrete_value(&self, v: u64, n: u32) -> Value {
         let mask = if n < 64 { 
             (1 << n) - 1
@@ -567,6 +584,7 @@ impl State {
     }
 
     /// Create a `Value::Symbolic` from a name `s` and bit width `n` 
+    #[inline]
     pub fn symbolic_value(&self, s: &str, n: u32) -> Value {
         Value::Symbolic(self.bv(s, n), 0)
     }
@@ -612,30 +630,25 @@ impl State {
     }
 
     /// BitVectors will need to be translated if run is multithreaded
-    #[inline]
-    pub fn translate(&mut self, bv: &BitVec) -> Option<BitVec> {
+    pub fn translate(&self, bv: &BitVec) -> Option<BitVec> {
         self.solver.translate(bv)
     }
 
-    #[inline]
-    pub fn translate_value(&mut self, value: &Value) -> Value {
+    pub fn translate_value(&self, value: &Value) -> Value {
         self.solver.translate_value(value)
     }
 
     /// Evaluate a `Value` `val`
-    #[inline]
     pub fn eval(&mut self, val: &Value) -> Option<Value> {
         self.solver.eval(val)
     }
 
     /// Evaluate a bitvector `bv`
-    #[inline]
     pub fn evaluate(&mut self, bv: &BitVec) -> Option<Value> {
         self.solver.evaluate(bv)
     }
 
     /// Evaluate and constrain the symbol to the u64
-    #[inline]
     pub fn evalcon(&mut self, bv: &BitVec) -> Option<u64> {
         self.solver.evalcon(bv)
     }
@@ -687,7 +700,6 @@ impl State {
     }
 
     /// Check if this state is satisfiable and mark the state `Unsat` if not
-    #[inline]
     pub fn is_sat(&mut self) -> bool {
         if self.solver.is_sat() {
             true
@@ -748,7 +760,9 @@ impl State {
 
         if cc.args.len() > 0 {
             for arg in &cc.args {
-                self.registers.set_with_alias(arg, values.remove(0));
+                if !values.is_empty() {
+                    self.registers.set_with_alias(arg, values.remove(0));
+                }
             }
         } else { // read args from stack?
             let mut sp = self.registers.get_with_alias("SP");
@@ -756,25 +770,24 @@ impl State {
 
             for _ in 0..8 { // do 8 idk?
                 sp = sp + Value::Concrete(length as u64, 0);
-                self.memory_write_value(&sp, &values.remove(0), length);
+                if !values.is_empty() {
+                    self.memory_write_value(&sp, &values.remove(0), length);
+                }
             }
         }
     }
 
     /// Assert the truth of the given bitvector (value != 0)
-    #[inline]
     pub fn assert(&mut self, bv: &BitVec) {
         self.solver.assert(bv)
     }
 
     /// Check the truth of the given value
-    #[inline]
     pub fn check(&mut self, val: &Value) -> bool {
         self.solver.check_sat(val)
     }
 
     /// Assert the truth of the given `Value` (lsb of value != 0)
-    #[inline]
     pub fn assert_value(&mut self, value: &Value) {
         self.solver.assert_value(value)
     }

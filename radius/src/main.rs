@@ -25,8 +25,8 @@ pub mod test;
 
 fn main() {
     let matches = App::new("radius2")
-        .version("1.0.5")
-        .author("Austin Emmitt <aemmitt@nowsecure.com>")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author("Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>")
         .about("Symbolic Execution tool using r2 and boolector")
         .arg(Arg::with_name("path")
             .short("p")
@@ -53,6 +53,10 @@ fn main() {
             .short("z")
             .long("lazy")
             .help("Evaluate symbolic PC values lazily"))
+        .arg(Arg::with_name("selfmodify")
+            .short("M")
+            .long("selfmodify")
+            .help("Allow selfmodifying code (slower)"))
         .arg(Arg::with_name("strict")
             .long("strict")
             .help("Panic on invalid instructions and ESIL"))
@@ -121,6 +125,7 @@ fn main() {
             .multiple(true)
             .help("Set address as a mergepoint"))
         .arg(Arg::with_name("arg")
+            .short("A")
             .long("arg")
             .takes_value(true)
             .multiple(true)
@@ -184,6 +189,7 @@ fn main() {
         RadiusOption::Debug(matches.occurrences_of("verbose") > 0),
         RadiusOption::Lazy(matches.occurrences_of("lazy") > 0),
         RadiusOption::Strict(matches.occurrences_of("strict") > 0),
+        RadiusOption::SelfModify(matches.occurrences_of("selfmodify") > 0),
         RadiusOption::Sims(!no_sims),
         RadiusOption::SimAll(all_sims),
         RadiusOption::LoadLibs(!libpaths.is_empty())
@@ -197,10 +203,6 @@ fn main() {
     let start = Instant::now();
 
     let mut radius = Radius::new_with_options(matches.value_of("path"), &options);
-
-    if profile {
-        println!("init time: {}", start.elapsed().as_micros());
-    }
 
     // execute provided r2 commands
     let cmds: Vec<&str> = matches.values_of("r2_command").unwrap_or_default().collect();
@@ -389,6 +391,9 @@ fn main() {
         radius.processor.parse_expression(&mut state, eval);
     }
 
+    if profile {
+        println!("init time: {}", start.elapsed().as_micros());
+    }
     // run the thing
     let run_start = Instant::now();
 
@@ -396,7 +401,7 @@ fn main() {
 
     if profile {
         let usecs = run_start.elapsed().as_micros();
-        let steps = radius.processor.steps;
+        let steps = radius.get_steps();
         println!("run time: {} ins: {} ins/usec: {}", 
             usecs, steps, (steps as f64 / usecs as f64));
     }
@@ -413,7 +418,7 @@ fn main() {
         let solve_start = Instant::now();
 
         for symbol in symbol_map.keys() {
-            let val = Value::Symbolic(symbol_map[symbol].clone(), 0);
+            let val = Value::Symbolic(end_state.translate(&symbol_map[symbol]).unwrap(), 0);
             if let Some(bv) = end_state.solver.eval_to_bv(&val) {
                 let str_opt = end_state.evaluate_string(&bv);
                 let sym_type = symbol_types[symbol];

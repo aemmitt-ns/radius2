@@ -38,28 +38,30 @@ fn main() {
 radius can also be installed from crates.io and easily included in packages. radius also has a CLI tool that can be installed with `cargo install radius2`
 
 ```
-radius2 1.0.6
-Austin Emmitt <aemmitt@nowsecure.com>
+radius2 1.0.7
+Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>
 Symbolic Execution tool using r2 and boolector
 
 USAGE:
     radius2 [FLAGS] [OPTIONS] --path <path>
 
 FLAGS:
-    -F, --frida      Create initial state from frida hook
-    -h, --help       Prints help information
-    -z, --lazy       Evaluate symbolic PC values lazily
-        --no-sims    Do not simulate imports
-    -2, --stderr     Show stderr output
-    -0, --stdin      Use stdin for target program
-    -1, --stdout     Show stdout output
-        --strict     Panic on invalid instructions and ESIL
-    -V, --version    Prints version information
-    -v, --verbose    Show verbose / debugging output
+    -F, --frida         Create initial state from frida hook
+    -h, --help          Prints help information
+    -z, --lazy          Evaluate symbolic PC values lazily
+        --no-sims       Do not simulate imports
+    -P, --profile       Get performance and runtime information
+    -M, --selfmodify    Allow selfmodifying code (slower)
+    -2, --stderr        Show stderr output
+    -0, --stdin         Use stdin for target program
+    -1, --stdout        Show stdout output
+        --strict        Panic on invalid instructions and ESIL
+    -V, --version       Prints version information
+    -v, --verbose       Show verbose / debugging output
 
 OPTIONS:
     -a, --address <address>                   Address to begin execution at
-        --arg <arg>...                        Argument for the target program
+    -A, --arg <arg>...                        Argument for the target program
     -x, --avoid <avoid>...                    Avoid addresses
     -X, --avoid-strings <avoid_strings>...    Avoid code xrefs to strings
     -B, --break-strings <break_strings>...    Breakpoint code xrefs to strings
@@ -74,8 +76,8 @@ OPTIONS:
     -m, --merge <merge>...                    Set address as a mergepoint
     -p, --path <path>                         Path to the target binary
     -r, --r2-cmd <CMD>...                     Run r2 command on launch
-        --set <REG/ADDR> <VALUE> <BITS>       Set memory or register values
-    -s, --symbol <NAME> <BITS>                Create a symbolic value
+    -S, --set <REG/ADDR> <VALUE> <BITS>       Set memory or register values
+    -s, --symbol <NAME> <BITS> <num|str>      Create a symbolic value
     -t, --threads <threads>                   Number of threads to execute [default: 1]
 ```
 

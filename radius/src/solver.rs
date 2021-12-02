@@ -72,12 +72,10 @@ impl Solver {
         BV::from_u64(self.btor.clone(), v, n)
     }
 
-    #[inline]
     pub fn translate(&self, bv: &BitVec) -> Option<BitVec> {
         Btor::get_matching_bv(self.btor.clone(), bv)
     }
 
-    #[inline]
     pub fn translate_value(&self, value: &Value) -> Value {
         match value {
             Value::Concrete(val, t) => Value::Concrete(*val, *t),
@@ -86,7 +84,6 @@ impl Solver {
         }
     }
 
-    #[inline]
     pub fn to_bv(&self, value: &Value, length: u32) -> BitVec {
         match value {
             Value::Concrete(val, _t) => {
@@ -104,7 +101,6 @@ impl Solver {
         }
     }
 
-    #[inline]
     pub fn conditional(&self, cond: &Value, if_val: &Value, else_val: &Value) -> Value {
         let mut max_bit = 1;
         if if_val.is_symbolic() || else_val.is_symbolic() {
@@ -146,7 +142,6 @@ impl Solver {
         }
     }
 
-    #[inline]
     pub fn evaluate(&self, bv: &BitVec) -> Option<Value> {
         self.enable_model(true);
 
@@ -165,7 +160,6 @@ impl Solver {
         sol
     }
 
-    #[inline]
     pub fn eval(&self, value: &Value) -> Option<Value> {
         
         match value {
@@ -192,7 +186,6 @@ impl Solver {
         }
     }
 
-    #[inline]
     pub fn eval_to_u64(&self, value: &Value) -> Option<u64> {
         if let Some(Value::Concrete(val, _t)) = self.eval(value) {
             Some(val)
@@ -201,7 +194,6 @@ impl Solver {
         }
     }
 
-    #[inline]
     pub fn eval_to_bv(&mut self, value: &Value) -> Option<BitVec> {
         match value {
             Value::Concrete(val, _t) => {
@@ -228,7 +220,6 @@ impl Solver {
         }
     }
 
-    #[inline]
     pub fn evalcon_to_u64(&mut self, value: &Value) -> Option<u64> {
         match value {
             Value::Concrete(val, _t) => {
@@ -260,7 +251,6 @@ impl Solver {
     }
 
     // evaluate and constrain the symbol to the value
-    #[inline]
     pub fn evalcon(&mut self, bv: &BitVec) -> Option<u64> {
         self.enable_model(true);
         self.btor.push(1);
@@ -279,7 +269,6 @@ impl Solver {
         sol
     }
 
-    #[inline]
     pub fn assert_in(&mut self, bv: &BitVec, values: &[u64]) {
         let mut cond = self.bvv(1, 1);
         for val in values {
@@ -301,14 +290,19 @@ impl Solver {
 
     #[inline]
     pub fn is_sat(&self) -> bool {
-        self.btor.push(1);
-        self.apply_assertions();
-        let sat = self.btor.sat() == SolverResult::Sat;
-        self.btor.pop(1);
-        sat
+        if self.assertions.is_empty() {
+            true
+        } else {
+            self.btor.push(1);
+            self.apply_assertions();
+            let sat = self.btor.sat() == SolverResult::Sat;
+            self.btor.pop(1);
+            sat
+        }
     }
 
     /// check the satisfiability of the assertion
+    #[inline]
     pub fn check_sat(&mut self, assertion: &Value) -> bool {
         self.btor.push(1);
         self.assert_value(assertion);
