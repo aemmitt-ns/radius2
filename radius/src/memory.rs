@@ -72,15 +72,14 @@ impl Memory {
             });
         }
 
-        let info = r2api.info.as_ref().unwrap();
-        let endian = info.bin.endian.as_str();
+        let endian = r2api.info.bin.endian.as_str();
     
         Memory {
             solver: btor,
             r2api: r2api.clone(),
             mem: HashMap::new(),
             heap: Heap::new(HEAP_START, HEAP_SIZE),
-            bits: info.bin.bits,
+            bits: r2api.info.bin.bits,
             endian: Endian::from_string(endian),
             segs,
             blank,
@@ -154,7 +153,6 @@ impl Memory {
     pub fn add_std_streams(&mut self) {
         let mut fd = 0;
         let stds = ["stdin", "stdout", "stderr"];
-        let bits = self.r2api.info.as_ref().unwrap().bin.bits;
         for std in &stds {
             let mut addr = self.r2api.get_address(&("obj.".to_owned() + std)).unwrap();
             let mut offset = 112; // linux
@@ -167,7 +165,7 @@ impl Memory {
                 // from libc.rs should be in a common place
                 let file_struct = self.alloc(&Value::Concrete(216, 0));
                 self.write_value(file_struct+offset, &Value::Concrete(fd, 0), 4);
-                self.write_value(addr, &Value::Concrete(file_struct, 0), (bits/8) as usize); 
+                self.write_value(addr, &Value::Concrete(file_struct, 0), (self.bits/8) as usize); 
                 fd += 1;
             }
         }
@@ -179,7 +177,7 @@ impl Memory {
             self.write_value(
                 chk_value_addr, 
                 &(Value::Symbolic(self.solver.bv("radius_canary", 64), 0)), 
-                (bits/8) as usize
+                (self.bits/8) as usize
             );
         }
     }
@@ -200,7 +198,7 @@ impl Memory {
                 }
             } 
         }
-        return 0; // if theres no data segment just 0 i guess
+        0
     }
 
     pub fn sbrk(&mut self, inc: u64) -> u64 {
@@ -583,8 +581,7 @@ impl Memory {
             Value::Symbolic(sym_val, taint)
         } else {
             let mut con_val: u64 = 0;
-            for count in 0..length {
-                let datum = new_data.get(count).unwrap();
+            for (count, datum) in new_data.iter().enumerate() {
                 if let Value::Concrete(val, t) = datum {
                     con_val += val << (8*count);
                     taint |= t;
@@ -595,7 +592,7 @@ impl Memory {
     }
 
     pub fn unpack(&self, value: &Value, length: usize) -> Vec<Value> {
-        let mut data: Vec<Value> = Vec::with_capacity(length+1);
+        let mut data: Vec<Value> = Vec::with_capacity(length);
 
         match value {
             Value::Concrete(val, t) => {

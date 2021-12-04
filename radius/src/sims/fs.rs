@@ -102,18 +102,19 @@ impl SimFilesytem {
     }
 
     pub fn read(&mut self, fd: usize, length: usize) -> Vec<Value> {
-        let mut file = self.files.remove(fd);
-        let start = file.position;
-        let end = if file.content.len() - start < length {
-            file.content.len() - start
-        } else {
-            length
-        };
+        if let Some(file) = &mut self.files.get_mut(fd) {
+            let start = file.position;
+            let end = if file.content.len() - start < length {
+                file.content.len() - start
+            } else {
+                length
+            };
 
-        file.position = end;
-        let data = file.content[start..end].to_vec();
-        self.files.insert(fd, file);
-        data
+            file.position = end;
+            file.content[start..end].to_vec()
+        } else {
+            vec![]
+        }
     }
 
     pub fn fill(&mut self, fd: usize, data: &[Value]) {
@@ -125,32 +126,24 @@ impl SimFilesytem {
     }
 
     pub fn write(&mut self, fd: usize, data: Vec<Value>) {
-        let mut file = self.files.remove(fd);
-        file.position += data.len();
-        file.content.extend(data);
-        self.files.insert(fd, file);
+        if let Some(file) = &mut self.files.get_mut(fd) {
+            file.position += data.len();
+            file.content.extend(data);
+        }
     }
 
     pub fn seek(&mut self, fd: usize, pos: usize) {
-        let mut file = self.files.remove(fd);
-        file.position = pos;
-        self.files.insert(fd, file);
+        if let Some(file) = &mut self.files.get_mut(fd) {
+            file.position = pos;
+        }
     }
 
     pub fn getfd(&mut self, path: &str) -> Option<usize> {
-        if let Some(file) = self.files.iter().find(|f| f.path == path) {
-            Some(file.fd)
-        } else {
-            None
-        }
+        self.files.iter().find(|f| f.path == path).map(|f| f.fd)
     }
 
     pub fn getpath(&mut self, fd: usize) -> Option<String> {
-        if let Some(file) = self.files.iter().find(|f| f.fd == fd) {
-            Some(file.path.clone())
-        } else {
-            None
-        }
+        self.files.iter().find(|f| f.fd == fd).map(|f| f.path.clone())
     }
 
     pub fn access(&mut self, path: &str) -> Value {

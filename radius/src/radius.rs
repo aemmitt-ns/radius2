@@ -136,7 +136,7 @@ impl Radius {
             argv.push("-e bin.cache=true");
         }
 
-        let args = if argv.len() > 0 {
+        let args = if !argv.is_empty() {
             Some(argv)
         } else {
             None
@@ -144,7 +144,10 @@ impl Radius {
 
         let mut r2api = R2Api::new(filename, args);
 
-        let opt = !options.contains(&RadiusOption::Optimize(false));
+        let arch = &r2api.info.bin.arch;
+        let opt = !options.contains(&RadiusOption::Optimize(false)) 
+            && arch.as_str() != "arm"; // don't optimize arm, does little
+
         let lazy = !options.contains(&RadiusOption::Lazy(false));
         let force = options.contains(&RadiusOption::Force(true));
         let topological = options.contains(&RadiusOption::Topological(true));
@@ -152,6 +155,7 @@ impl Radius {
         let sim_all = options.contains(&RadiusOption::SimAll(true));
         let selfmod = options.contains(&RadiusOption::SelfModify(true));
         let strict = options.contains(&RadiusOption::Strict(true));
+
         let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topological);
         let processors = Arc::new(Mutex::new(vec!()));
 
@@ -160,7 +164,6 @@ impl Radius {
             if let Some(sys) = syscalls.get(0) {
                 processor.traps.insert(sys.swi, indirect);
             }
-
             for sys in &syscalls {
                 processor.syscalls.insert(sys.num, sys.to_owned());
             }
@@ -397,9 +400,8 @@ impl Radius {
     }
 
     pub fn get_steps(&self) -> u64 {
-        let mut steps = self.processor.steps;
-        steps += self.processors.lock().unwrap().iter().map(|p| p.steps).sum::<u64>();
-        return steps
+        let steps = self.processor.steps;
+        steps + self.processors.lock().unwrap().iter().map(|p| p.steps).sum::<u64>()
     }
 
     /// Simple way to execute until a given target address while avoiding a vec of other addrs

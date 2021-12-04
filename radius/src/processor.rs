@@ -460,7 +460,7 @@ impl Processor {
     pub fn get_args(&self, state: &mut State, cc: &CallingConvention) -> Vec<Value> {
         let mut args = Vec::with_capacity(16); 
 
-        if cc.args.len() > 0 {
+        if !cc.args.is_empty() {
             for arg in &cc.args {
                 args.push(state.registers.get_with_alias(arg));
             }
@@ -802,7 +802,7 @@ impl Processor {
                     states.remove(index).unwrap();
                 }
             }
-            index = if states.len() == 0 { 0 } else { index%states.len() };
+            index = if states.is_empty() { 0 } else { index%states.len() };
         }
 
         states

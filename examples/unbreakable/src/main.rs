@@ -8,8 +8,7 @@ fn main() {
     let bv = state.bv("flag", 8*len as u32);
 
     // add "CTF{" constraint
-    let assertion = bv.slice(31, 0)._eq(&state.bvv(0x7b465443, 32));
-    state.assert(&assertion);
+    state.constrain_bytes(&bv, "CTF{");
 
     let addr: u64 = 0x6042c0;
     state.memory.write_value(addr, &Value::Symbolic(bv.clone(), 0), len);

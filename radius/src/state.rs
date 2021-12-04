@@ -148,7 +148,7 @@ impl State {
         State {
             solver,
             r2api: r2api.clone(),
-            info: r2api.info.as_ref().to_owned().unwrap().clone(),
+            info: r2api.info.clone(),
             stack: Vec::with_capacity(128),
             esil: esil_state,
             condition: None,
@@ -735,7 +735,7 @@ impl State {
         let cc = self.r2api.get_cc(pc).unwrap_or_default();
         let mut args = Vec::with_capacity(16); 
 
-        if cc.args.len() > 0 {
+        if !cc.args.is_empty() {
             for arg in &cc.args {
                 args.push(self.registers.get_with_alias(arg));
             }
@@ -758,7 +758,7 @@ impl State {
         let pc = self.registers.get_pc().as_u64().unwrap();
         let cc = self.r2api.get_cc(pc).unwrap_or_default();
 
-        if cc.args.len() > 0 {
+        if !cc.args.is_empty() {
             for arg in &cc.args {
                 if !values.is_empty() {
                     self.registers.set_with_alias(arg, values.remove(0));

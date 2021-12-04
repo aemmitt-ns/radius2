@@ -28,13 +28,13 @@ pub fn zero(_state: &mut State, _args: &[Value]) -> Value {
 }
 
 // this isn't great
-pub fn unconstrained(state: &mut State, _args: &[Value]) -> Value {
+/*pub fn unconstrained(state: &mut State, _args: &[Value]) -> Value {
     let mut uncon_vec = state.context.entry("uncon".to_owned()).or_insert(vec!()).clone();
     let uncon = state.symbolic_value(&format!("uncon_{}", uncon_vec.len()), 64);
     uncon_vec.push(uncon.clone());
     state.context.insert("uncon".to_owned(), uncon_vec);
     uncon
-}
+}*/
 
 // get a vec of all available Sims
 pub fn get_sims() -> Vec<Sim> {

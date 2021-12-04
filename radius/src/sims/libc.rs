@@ -1,7 +1,7 @@
 use crate::value::Value;
 use crate::state::State;
-use rand::Rng;
 use crate::sims::syscall;
+use rand::Rng;
 
 const MAX_LEN: u64 = 8192;
 
@@ -18,7 +18,6 @@ pub fn put_help(state: &mut State, args: &[Value], nl: bool) -> Value {
     let length = strlen(state, &args[0..1]);
     let mut data = state.memory_read(addr, &length);
     if nl { data.push(Value::Concrete('\n' as u64, 0)); } // add newline
-    //println!("{}", value);
     state.filesystem.write(1, data);
     length
 }
@@ -67,7 +66,7 @@ pub fn scanf(state: &mut State, args: &[Value]) -> Value {
     let format = state.memory_read_string(addr, length as usize);
     if &format == "%s" {
         gets(state, &args[1..])
-    } else if format.starts_with("%") && format.ends_with("s") {
+    } else if format.starts_with('%') && format.ends_with('s') {
         if let Ok(n) = &format[1..format.len()-1].parse::<u64>() {
             read(state, &[vc(0), args[1].to_owned(), vc(*n)])
         } else { // uh idk
@@ -405,7 +404,7 @@ pub fn fileno(state: &mut State, args: &[Value]) -> Value {
 
 pub fn fopen(state: &mut State, args: &[Value]) -> Value {
     // we are reaching levels of shit code previously undreamt
-    let fd = syscall::open(state, args.clone());
+    let fd = syscall::open(state, args);
     let file_struct = state.memory.alloc(&Value::Concrete(216, 0));
 
     let fd_addr = if state.info.bin.os == "darwin" {
@@ -445,12 +444,13 @@ pub fn fseek(state: &mut State, args: &[Value]) -> Value {
  * or a '+' or a '-' before it has seen any digits (which it uses to select the 
  * appropriate sign for the result). It returns 0 if it saw no digits.
  */
+#[inline]
+fn vc(n: u64) -> Value {
+Value::Concrete(n, 0)
+}
 
- fn vc(n: u64) -> Value {
-    Value::Concrete(n, 0)
- }
-
- // is digit
+// is digit
+#[inline]
 fn isdig(c: &Value) -> Value {
     c.ult(&Value::Concrete(0x3a, 0)) & !c.ult(&Value::Concrete(0x30, 0))
 }
@@ -504,7 +504,7 @@ fn atoi_concrete(state: &mut State, addr: &Value, base: &Value, len: usize) -> V
         state, &vc(c as u64), base).as_u64().unwrap() != 1) { start+n+1 } else { len }; // oof
 
     let numopt = u64::from_str_radix(&numstr[start..end], base.as_u64().unwrap() as u32);
-    return if let Ok(n) = numopt { vc(n) } else { vc(0) };
+    numopt.map(vc).unwrap_or_default()
 }
 
 // for now and maybe forever this only works for strings that 
@@ -660,7 +660,7 @@ pub fn isupper(_state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn isalpha(state: &mut State, args: &[Value]) -> Value {
-    isupper(state, args.clone()) | islower(state, args)
+    isupper(state, args) | islower(state, args)
 }
 
 pub fn isdigit(_state: &mut State, args: &[Value]) -> Value {
@@ -669,7 +669,7 @@ pub fn isdigit(_state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn isalnum(state: &mut State, args: &[Value]) -> Value {
-    isalpha(state, args.clone()) | isdigit(state, args)
+    isalpha(state, args) | isdigit(state, args)
 }
 
 pub fn isblank(_state: &mut State, args: &[Value]) -> Value {
@@ -684,15 +684,13 @@ pub fn iscntrl(_state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn toupper(state: &mut State, args: &[Value]) -> Value {
-    let islo = islower(state, args.clone());
-    state.solver.conditional(&islo, 
-        &(args[0].to_owned()-Value::Concrete(0x20, 0)), &args[0])
+    let islo = islower(state, args);
+    state.solver.conditional(&islo, &args[0].sub(&vc(0x20)), &args[0])
 }
 
 pub fn tolower(state: &mut State, args: &[Value]) -> Value {
-    let isup = isupper(state, args.clone());
-    state.solver.conditional(&isup, 
-    &(args[0].to_owned()+Value::Concrete(0x20, 0)), &args[0])
+    let isup = isupper(state, args);
+    state.solver.conditional(&isup, &args[0].add(&vc(0x20)), &args[0])
 }
 
 pub fn zero(_state: &mut State, _args: &[Value]) -> Value {
@@ -700,14 +698,15 @@ pub fn zero(_state: &mut State, _args: &[Value]) -> Value {
 }
 
 pub fn rand(state: &mut State, _args: &[Value]) -> Value {
-    let mut rand_vec = state.context.entry("rand"
-        .to_owned()).or_insert(vec!()).clone();
-
     let rand = state.symbolic_value(&format!("rand_{}", 
         rand::thread_rng().gen::<u64>()), 64);
 
-    rand_vec.push(rand.clone());
-    state.context.insert("rand".to_owned(), rand_vec);
+    let rand_vec = &mut state.context
+        .entry("rand".to_string())
+        .or_insert_with(Vec::new);
+
+    rand_vec.push(rand.to_owned());
+
     rand
 }
 
@@ -766,14 +765,6 @@ pub fn gethostname(state: &mut State, args: &[Value]) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
     state.memory_write_string(addr, "radius");
     Value::Concrete(0, 0)
-
-    /*
-    let len = state.solver.max_value(&args[1]);
-    let bv = state.bv("hostname", 8*len as u32);
-    let data = state.memory.unpack(&Value::Symbolic(bv, 0), len as usize);
-    state.memory_write(&args[0], &data, &args[1]);
-    Value::Concrete(0, 0)
-    */
 }
 
 // fully symbolic getenv

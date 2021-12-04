@@ -574,6 +574,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn slice(&self, high: u64, low: u64) -> Value {
         match self {
             Value::Concrete(a, t) => {
@@ -585,6 +586,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_u64(&self) -> Option<u64> {
         match self {
             Value::Concrete(a, _t) => Some(*a),
@@ -592,6 +594,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_bv(&self) -> Option<BitVec> {
         match self {
             Value::Concrete(_a, _t) => None,
@@ -599,6 +602,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn get_taint(&self) -> u64 {
         match self {
             Value::Concrete(_a, t) => *t,
@@ -606,6 +610,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn with_taint(&self, taint: u64) -> Value {
         match self {
             Value::Concrete(a, t) => Value::Concrete(*a, *t | taint),
@@ -633,20 +638,12 @@ impl Value {
 
     #[inline] 
     pub fn is_concrete(&self) -> bool {
-        if let Value::Concrete(_, _) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Value::Concrete(_, _))
     }
 
     #[inline] 
     pub fn is_symbolic(&self) -> bool {
-        if let Value::Symbolic(_, _) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Value::Symbolic(_, _))
     }
 
     #[inline] 

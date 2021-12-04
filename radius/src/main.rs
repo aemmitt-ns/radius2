@@ -23,6 +23,18 @@ pub mod solver;
 pub mod sims;
 pub mod test;
 
+macro_rules! occurs {
+    ($m:expr, $s:expr) => (
+        $m.occurrences_of($s) > 0
+    )
+}
+
+macro_rules! collect {
+    ($m:expr, $s:expr) => (
+        $m.values_of($s).unwrap_or_default().collect::<Vec<_>>()
+    )
+}
+
 fn main() {
     let matches = App::new("radius2")
         .version(env!("CARGO_PKG_VERSION"))
@@ -45,6 +57,11 @@ fn main() {
             .value_names(&["PATH", "SYMBOL"])
             .multiple(true)
             .help("Add a symbolic file"))
+        .arg(Arg::with_name("libs")
+            .short("L")
+            .long("libs")
+            .takes_value(true)
+            .help("Load libraries from path"))
         .arg(Arg::with_name("verbose")
             .short("v")
             .long("verbose")
@@ -179,17 +196,17 @@ fn main() {
             .help("Evaluate ESIL expression after execution"))
         .get_matches();
 
-    let libpaths: Vec<&str> = matches.values_of("libs").unwrap_or_default().collect();
+    let libpaths: Vec<&str> = collect!(matches, "libs");
 
-    let no_sims = matches.occurrences_of("no_sims") > 0;
-    let profile = matches.occurrences_of("profile") > 0;
+    let no_sims = occurs!(matches, "no_sims");
+    let profile = occurs!(matches, "profile");
     let all_sims = !no_sims && libpaths.is_empty();
 
     let mut options = vec!(
-        RadiusOption::Debug(matches.occurrences_of("verbose") > 0),
-        RadiusOption::Lazy(matches.occurrences_of("lazy") > 0),
-        RadiusOption::Strict(matches.occurrences_of("strict") > 0),
-        RadiusOption::SelfModify(matches.occurrences_of("selfmodify") > 0),
+        RadiusOption::Debug(occurs!(matches, "verbose")),
+        RadiusOption::Lazy(occurs!(matches, "lazy")),
+        RadiusOption::Strict(occurs!(matches, "strict")),
+        RadiusOption::SelfModify(occurs!(matches, "selfmodify")),
         RadiusOption::Sims(!no_sims),
         RadiusOption::SimAll(all_sims),
         RadiusOption::LoadLibs(!libpaths.is_empty())
@@ -199,23 +216,27 @@ fn main() {
         options.push(RadiusOption::LibPath(lib.to_owned()));
     }
 
-    let threads: usize = matches.value_of("threads").unwrap_or_default().parse().unwrap();
+    let threads: usize = matches.value_of("threads")
+        .unwrap_or_default()
+        .parse()
+        .unwrap();
+
     let start = Instant::now();
 
     let mut radius = Radius::new_with_options(matches.value_of("path"), &options);
 
     // execute provided r2 commands
-    let cmds: Vec<&str> = matches.values_of("r2_command").unwrap_or_default().collect();
+    let cmds: Vec<&str> = collect!(matches, "r2_command");
     for cmd in cmds {
         let r = radius.cmd(cmd);
-        if matches.occurrences_of("verbose") > 0 && r.is_ok() {
+        if occurs!(matches, "verbose") && r.is_ok() {
             println!("{}", r.unwrap());
         }
     }
     
     let mut state = if let Some(address) = matches.value_of("address") {
         let addr = radius.get_address(address).unwrap();
-        if matches.occurrences_of("frida") > 0 {
+        if occurs!(matches, "frida") {
             radius.frida_state(addr)
         } else {
             radius.call_state(addr)
@@ -225,10 +246,10 @@ fn main() {
     };
 
     // collect the symbol declarations
-    let mut files: Vec<&str> = matches.values_of("file").unwrap_or_default().collect();
+    let mut files: Vec<&str> = collect!(matches, "file");
     let mut symbol_map = HashMap::new();
     let mut symbol_types = HashMap::new();
-    let symbols: Vec<&str> = matches.values_of("symbol").unwrap_or_default().collect();
+    let symbols: Vec<&str> = collect!(matches, "symbol");
     for i in 0..matches.occurrences_of("symbol") as usize {
         // use get_address so hex / simple ops can be used
         let length = radius.get_address(symbols[3*i+1]).unwrap_or(8) as u32;
@@ -243,18 +264,18 @@ fn main() {
         }
     }
 
-    if matches.occurrences_of("arg") > 0 || matches.occurrences_of("env") > 0{
-        let argvs: Vec<&str> = matches.values_of("arg").unwrap_or_default().collect();
-        let envs: Vec<&str> = matches.values_of("env").unwrap_or_default().collect();
+    if occurs!(matches, "arg") || occurs!(matches, "env") {
+        let argvs: Vec<&str> = collect!(matches, "arg");
+        let envs: Vec<&str> = collect!(matches, "env");
         let mut argv = vec!();
         let mut envv = vec!();
 
         for (t, args) in [argvs, envs].iter().enumerate() {
-            for i in 0..args.len() as usize {
-                let value = if let Some(sym) = symbol_map.get(args[i]) {
+            for arg in args {
+                let value = if let Some(sym) = symbol_map.get(arg) {
                     Value::Symbolic(sym.clone(), 0)
                 } else {
-                    let bytes: Vec<Value> = args[i].as_bytes().iter()
+                    let bytes: Vec<Value> = arg.as_bytes().iter()
                         .map(|b| Value::Concrete(*b as u64, 0)).collect();
 
                     state.memory.pack(&bytes)
@@ -272,14 +293,14 @@ fn main() {
     }
 
     // collect the symbol constraints
-    let cons: Vec<&str> = matches.values_of("constrain").unwrap_or_default().collect();
+    let cons: Vec<&str> = collect!(matches, "constrain");
     for i in 0..matches.occurrences_of("constrain") as usize {
         let bv = &symbol_map[cons[2*i]];
         state.constrain_bytes(bv, cons[2*i+1]);
     }
 
     // collect the ESIL hooks
-    let hooks: Vec<&str> = matches.values_of("hook").unwrap_or_default().collect();
+    let hooks: Vec<&str> = collect!(matches, "hook");
     for i in 0..matches.occurrences_of("hook") as usize {
         if let Ok(addr) = radius.get_address(hooks[2*i]) {
             radius.esil_hook(addr, hooks[2*i+1]);
@@ -287,7 +308,7 @@ fn main() {
     }
 
     // collect the added files
-    for i in 0..files.len()/2 as usize {
+    for i in 0..files.len()/2usize {
         let file = files[2*i];
         let name = files[2*i+1];
         if let Some(sym) = symbol_map.get(name) {
@@ -313,7 +334,7 @@ fn main() {
     }
 
     // set provided address and register values
-    let sets: Vec<&str> = matches.values_of("set").unwrap_or_default().collect();
+    let sets: Vec<&str> = collect!(matches, "set");
     for i in 0..matches.occurrences_of("set") as usize {
         // easiest way to interpret the stuff is just to use 
         let ind = 3*i;
@@ -344,18 +365,18 @@ fn main() {
     }
 
     // set breakpoints, avoids, and merges
-    let mut bps: Vec<u64> = matches.values_of("breakpoint").unwrap_or_default()
+    let mut bps: Vec<u64> = collect!(matches, "breakpoint").iter()
         .map(|x| radius.get_address(x).unwrap()).collect();
-    let mut avoid: Vec<u64> = matches.values_of("avoid").unwrap_or_default()
+    let mut avoid: Vec<u64> = collect!(matches, "avoid").iter()
         .map(|x| radius.get_address(x).unwrap()).collect();
-    let merges: Vec<u64> = matches.values_of("merge").unwrap_or_default()
+    let merges: Vec<u64> = collect!(matches, "merge").iter()
         .map(|x| radius.get_address(x).unwrap()).collect();
 
     // get code references to strings and add them to the avoid list
-    if matches.occurrences_of("avoid_strings") > 0 {
+    if occurs!(matches, "avoid_strings") {
         // need to analyze to get string refs
         radius.analyze(3);
-        for string in matches.values_of("avoid_strings").unwrap_or_default() {
+        for string in collect!(matches, "avoid_strings") {
             for location in radius.r2api.search_strings(string).unwrap() {
                 avoid.extend(radius.r2api.get_references(location)
                     .unwrap_or_default().iter().map(|x| x.from));
@@ -364,10 +385,10 @@ fn main() {
     }
     
     // get code references to strings and add them to the breakpoints
-    if matches.occurrences_of("break_strings") > 0 {
+    if occurs!(matches, "break_strings") {
         // need to analyze to get string refs
         radius.analyze(3);
-        for string in matches.values_of("break_strings").unwrap_or_default() {
+        for string in collect!(matches, "break_strings") {
             for location in radius.r2api.search_strings(string).unwrap() {
                 bps.extend(radius.r2api.get_references(location)
                     .unwrap().iter().map(|x| x.from));
@@ -386,7 +407,7 @@ fn main() {
     }
 
     // collect the ESIL strings to evaluate
-    let evals: Vec<&str> = matches.values_of("evaluate").unwrap_or_default().collect();
+    let evals: Vec<&str> = collect!(matches, "evaluate");
     for eval in evals {
         radius.processor.parse_expression(&mut state, eval);
     }
@@ -408,8 +429,7 @@ fn main() {
 
     if let Some(mut end_state) = result {
         // collect the ESIL strings to evaluate after running
-        let evals: Vec<&str> = matches.values_of("evaluate_after")
-            .unwrap_or_default().collect();
+        let evals: Vec<&str> = collect!(matches, "evaluate_after");
 
         for eval in evals {
             radius.processor.parse_expression(&mut end_state, eval);
@@ -418,15 +438,18 @@ fn main() {
         let solve_start = Instant::now();
 
         for symbol in symbol_map.keys() {
-            let val = Value::Symbolic(end_state.translate(&symbol_map[symbol]).unwrap(), 0);
+            let val = Value::Symbolic(end_state
+                .translate(&symbol_map[symbol])
+                .unwrap(), 0);
+
             if let Some(bv) = end_state.solver.eval_to_bv(&val) {
                 let str_opt = end_state.evaluate_string(&bv);
                 let sym_type = symbol_types[symbol];
                 if sym_type == "str" && str_opt.is_some() {
-                    println!("{} : {:?}", symbol, str_opt.unwrap());
+                    println!("  {} : {:?}", symbol, str_opt.unwrap());
                 } else {
                     let hex = &format!("{:?}", bv)[2..];
-                    println!("{} : {}", symbol, hex);
+                    println!("  {} : {}", symbol, hex);
                 }
             } else {
                 println!("{} : no satisfiable value", symbol);
@@ -438,11 +461,11 @@ fn main() {
         }
 
         // dump program output 
-        if matches.occurrences_of("stdout") > 0 { 
-            print!("{}", end_state.dump_file_string(1).unwrap_or("".to_string()));
+        if occurs!(matches, "stdout") {
+            print!("{}", end_state.dump_file_string(1).unwrap_or_default());
         }
-        if matches.occurrences_of("stderr") > 0 { 
-            print!("{}", end_state.dump_file_string(2).unwrap_or("".to_string()));
+        if occurs!(matches, "stderr") { 
+            print!("{}", end_state.dump_file_string(2).unwrap_or_default());
         }
     }
 

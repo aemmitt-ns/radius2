@@ -4,7 +4,11 @@ use radius2::value::Value;
 
 // simulates the scanf("%d", dst) calls with sym inputs
 fn scanf_sim(state: &mut State, args: &[Value]) -> Value {
-    let input_len = state.context.entry("ints".to_owned()).or_insert(vec!()).len();
+    let input_len = state.context
+        .entry("ints".to_owned())
+        .or_insert_with(Vec::new)
+        .len();
+
     let new_int = state.symbolic_value(&format!("int{}", input_len), 32);
     state.memory_write_value(&args[1], &new_int, 4);
     state.context.get_mut("ints").unwrap().push(new_int);

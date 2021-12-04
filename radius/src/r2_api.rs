@@ -204,6 +204,13 @@ pub struct Syscall {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub r#type: String,
+    pub offset: u64,
+    pub data:   String
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrossRef {
     pub addr: u64,
     pub r#type: String,
@@ -414,45 +421,42 @@ pub struct R2Api {
     pub r2p: Arc<Mutex<R2Pipe>>,
     //pub instructions: HashMap<u64, Instruction>,
     //pub permissions: HashMap<u64, Permission>,
-    pub info: Option<Information>,
+    pub info: Information,
     pub mode: Mode
 }
 
 impl R2Api {
     pub fn new<T: AsRef<str>>(filename: Option<T>, opts: Option<Vec<&'static str>>) -> R2Api {
-        let options = if let Some(o) = &opts {
-            Some(R2PipeSpawnOptions { 
+        let options = &opts.as_ref().map(|o| 
+            R2PipeSpawnOptions { 
                 exepath: "r2".to_owned(), 
                 args: o.to_owned()
-            })
-        } else {
-            None
-        };
+            });
 
-        let r2pipe = match (&filename, opts) {
+        let r2pipe = match (&filename, &opts) {
             (None, None) => R2Pipe::open(),
-            (Some(name), _) => R2Pipe::spawn(name, options),
+            (Some(name), _) => R2Pipe::spawn(name, options.to_owned()),
             _ => Err("cannot have options for non-spawned")
         };
 
         let mut r2api = R2Api {
             r2p: Arc::new(Mutex::new(r2pipe.unwrap())),
-            info: None,
+            info: Information::default(),
             mode: Mode::Default
         };
     
-        let info = r2api.get_info().unwrap();
-        r2api.mode = if info.core.file.starts_with("frida:") {
+        r2api.info = r2api.get_info().unwrap();
+        r2api.mode = if r2api.info.core.file.starts_with("frida:") {
             let _ = r2api.cmd("s `:il~[0]`"); // seek to first module
             Mode::Frida
-        } else if info.core.file.starts_with("dbg:") {
+        } else if r2api.info.core.file.starts_with("dbg:") {
             Mode::Debugger
         } else {
             Mode::Default
         };
 
         // if we are on arm64 default to v35 plugin 
-        if info.bin.arch == "arm" && info.bin.bits == 64 {
+        if r2api.info.bin.arch == "arm" && r2api.info.bin.bits == 64 {
             r2api.set_option("asm.arch", "arm.v35").unwrap_or_default();
         }
 
@@ -464,11 +468,8 @@ impl R2Api {
     }
 
     pub fn get_info(&mut self) -> R2Result<Information> {
-        if self.info.is_none() {
-            let json = self.cmd("ij")?;
-            self.info = serde_json::from_str(json.as_str()).unwrap()
-        }
-        Ok(self.info.as_ref().unwrap().clone())
+        let json = self.cmd("ij")?;    
+        Ok(serde_json::from_str(json.as_str()).unwrap())
     }
 
     pub fn get_registers(&mut self) -> R2Result<RegisterInformation> {
@@ -512,9 +513,8 @@ impl R2Api {
     */
     
     pub fn get_syscall_cc(&mut self) -> R2Result<CallingConvention> {
-        let bin = self.info.as_ref().unwrap().bin.clone();
         // this sucks, need a central place for arch shit
-        match (bin.arch.as_str(), bin.bits) {
+        match (self.info.bin.arch.as_str(), self.info.bin.bits) {
             ("x86", 32) => Ok(CallingConvention {
                 args: vec!(
                     "ebx".to_string(), 
@@ -603,7 +603,7 @@ impl R2Api {
     }
 
     pub fn get_classes(&mut self) -> R2Result<Vec<ClassInfo>> {
-        let json = self.cmd(format!("icj").as_str())?;
+        let json = self.cmd("icj")?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
@@ -646,9 +646,20 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }*/
 
+    pub fn search(&mut self, string: &str) -> R2Result<Vec<SearchResult>> {
+        let json = self.cmd(&format!("/j {}", string))?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    pub fn search_bytes(&mut self, data: &[u8]) -> R2Result<Vec<SearchResult>> {
+        let json = self.cmd(&format!("/x {}", hex_encode(data)))?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    /// Gets all strings then filters, slower than search
     pub fn search_strings(&mut self, string: &str) -> R2Result<Vec<u64>> {
         let result = self.cmd(&format!("izz~[2]~{}", string))?;
-        Ok(result.trim().split("\n").map(|x| u64::from_str_radix(&x[2..], 16)
+        Ok(result.trim().split('\n').map(|x| u64::from_str_radix(&x[2..], 16)
             .unwrap_or_default()).filter(|x| *x != 0).collect())
     }
 
@@ -849,7 +860,7 @@ impl R2Api {
 
     // this got a little nuts
     pub fn load_library_helper(&mut self, lib_paths: &[String], loaded_paths: &[String]) -> R2Result<Vec<String>> {
-        let bits = self.info.as_ref().unwrap().bin.bits;
+        let bits = self.info.bin.bits;
         let mut sections = self.get_segments().unwrap();
         let relocations = self.get_relocations().unwrap();
 

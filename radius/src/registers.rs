@@ -164,34 +164,16 @@ impl Registers {
     #[inline]
     pub fn get_value(&self, index: usize) -> Value {
         let register = &self.indexes[index];
-
-        if register.reg_info.offset as i64 == -1 {
-            return Value::Concrete(0, 0); // this is a zero register
+        if register.reg_info.offset == -1i64 as u64 {
+            return Value::Concrete(0, 0)// this is a zero register
         }
 
         let value = &self.values[register.value_index];
-        let size = register.reg_info.size;
-
-        if size == register.bounds.size {
-            return value.to_owned();
-        }
-
-        let offset: u64 = register.reg_info.offset - register.bounds.start;
-
-        match value {
-            Value::Concrete(val, t) => {
-                let mask: u64 = (1 << size) - 1;
-                Value::Concrete((val >> offset) & mask, *t)
-            },
-            Value::Symbolic(val, t) => {
-                if val.is_const() {
-                    let mask: u64 = (1 << size) - 1;
-                    Value::Concrete((val.as_u64().unwrap() >> offset) & mask, *t)
-                } else {
-                    Value::Symbolic(val.slice(
-                        (offset+size-1) as u32, offset as u32), *t)
-                }
-            }
+        if register.reg_info.size == register.bounds.size {
+            value.to_owned()
+        } else {
+            let offset = register.reg_info.offset - register.bounds.start;
+            value.slice(register.reg_info.size+offset-1, offset)
         }
     }
 
@@ -200,7 +182,7 @@ impl Registers {
         //println!("reg {:?} {:?}", index, value);
         let register = &self.indexes[index];
 
-        if register.reg_info.offset as i64 == -1 {
+        if register.reg_info.offset == -1i64 as u64 {
             return; // this is a zero register
         }
 
@@ -210,7 +192,7 @@ impl Registers {
             self.values[register.value_index] = value;
         } else {
             let bound_size = register.bounds.size as u32;
-            let offset: u64 = register.reg_info.offset - register.bounds.start;
+            let offset = register.reg_info.offset - register.bounds.start;
             let old_value = &self.values[register.value_index];
 
             let mut new_sym;
@@ -221,8 +203,8 @@ impl Registers {
             // im pulling trig and just using new, the downside of not is too high
             match (value, old_value.to_owned()) {
                 (Value::Concrete(new, t1), Value::Concrete(old, _t2)) => {
-                    let new_mask: u64 = (1 << size) - 1; 
-                    let mask: u64 = !(new_mask << offset);
+                    let new_mask = (1 << size) - 1; 
+                    let mask = !(new_mask << offset);
 
                     let new_value = (old & mask) + ((new & new_mask) << offset);
                     self.values[register.value_index] = Value::Concrete(new_value, t1);
