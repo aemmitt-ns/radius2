@@ -1,45 +1,43 @@
-use crate::value::Value;
-use crate::state::{State, StateStatus};
 use crate::sims::fs::FileMode;
+use crate::state::{State, StateStatus};
+use crate::value::Value;
 
 const MAX_LEN: u64 = 8192;
 
 pub fn syscall(syscall_name: &str, state: &mut State, args: &[Value]) -> Value {
     match syscall_name {
-        "indirect_syscall" => indirect(state, args),  // fuq
+        "indirect_syscall" => indirect(state, args), // fuq
 
-        "open"     => open(state, args),
-        "openat"   => openat(state, args),
-        "close"    => close(state, args),
-        "read"     => read(state, args),
-        "write"    => write(state, args),
-        "access"   => access(state, args),
-        "stat"     => stat(state, args),
-        "fstat"    => fstat(state, args),
-        "lstat"    => lstat(state, args),
-        "lseek"    => lseek(state, args),
+        "open" => open(state, args),
+        "openat" => openat(state, args),
+        "close" => close(state, args),
+        "read" => read(state, args),
+        "write" => write(state, args),
+        "access" => access(state, args),
+        "stat" => stat(state, args),
+        "fstat" => fstat(state, args),
+        "lstat" => lstat(state, args),
+        "lseek" => lseek(state, args),
         "mprotect" => mmap(state, args),
-        "mmap"     => mmap(state, args),
-        "munmap"   => munmap(state, args),
-        "brk"      => brk(state, args),
-        "sbrk"     => sbrk(state, args),
-        "getpid"   => getpid(state, args),
-        "getuid"   => getuid(state, args),
-        "geteuid"  => getuid(state, args),
-        "getgid"   => getuid(state, args),
-        "getegid"  => getuid(state, args),
-        "fork"     => fork(state, args),
-        "exit"     => exit(state, args),
-        "ptrace"   => ptrace(state, args),
-         _         => error(state, args)
-
-        // this is literally every syscall
-        // the rest arent real
-        // you have been played for a fool
+        "mmap" => mmap(state, args),
+        "munmap" => munmap(state, args),
+        "brk" => brk(state, args),
+        "sbrk" => sbrk(state, args),
+        "getpid" => getpid(state, args),
+        "getuid" => getuid(state, args),
+        "geteuid" => getuid(state, args),
+        "getgid" => getuid(state, args),
+        "getegid" => getuid(state, args),
+        "fork" => fork(state, args),
+        "exit" => exit(state, args),
+        "ptrace" => ptrace(state, args),
+        _ => error(state, args), // this is literally every syscall
+                                 // the rest arent real
+                                 // you have been played for a fool
     }
 }
 
-// get actual syscall and recall .. 
+// get actual syscall and recall ..
 pub fn indirect(state: &mut State, args: &[Value]) -> Value {
     let sn = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let sys_str = state.r2api.get_syscall_str(sn).unwrap();
@@ -143,29 +141,81 @@ pub fn stat(state: &mut State, args: &[Value]) -> Value {
     if let Some(statdata) = statopt {
         // oof this is just one case, any different bits, arch, or os could be different
         // this definitely sucks.
-        state.memory.write_value(statbuf, &Value::Concrete(statdata.st_dev, 0), 8);
-        state.memory.write_value(statbuf+8, &Value::Concrete(statdata.st_ino, 0), 8);
-        state.memory.write_value(statbuf+16, &Value::Concrete(statdata.st_mode as u64, 0), 8);
-        state.memory.write_value(statbuf+24, &Value::Concrete(statdata.st_nlink as u64, 0), 4);
-        state.memory.write_value(statbuf+28, &Value::Concrete(statdata.st_uid as u64, 0), 4);
-        state.memory.write_value(statbuf+32, &Value::Concrete(statdata.st_gid as u64, 0), 4);
-        state.memory.write_value(statbuf+36, &Value::Concrete(statdata.__pad0 as u64, 0), 4);
-        state.memory.write_value(statbuf+40, &Value::Concrete(statdata.st_rdev, 0), 8);
-        state.memory.write_value(statbuf+48, &Value::Concrete(statdata.st_size as u64, 0), 8);
-        state.memory.write_value(statbuf+56, &Value::Concrete(statdata.st_blksize as u64, 0), 8);
+        state
+            .memory
+            .write_value(statbuf, &Value::Concrete(statdata.st_dev, 0), 8);
+        state
+            .memory
+            .write_value(statbuf + 8, &Value::Concrete(statdata.st_ino, 0), 8);
+        state.memory.write_value(
+            statbuf + 16,
+            &Value::Concrete(statdata.st_mode as u64, 0),
+            8,
+        );
+        state.memory.write_value(
+            statbuf + 24,
+            &Value::Concrete(statdata.st_nlink as u64, 0),
+            4,
+        );
+        state
+            .memory
+            .write_value(statbuf + 28, &Value::Concrete(statdata.st_uid as u64, 0), 4);
+        state
+            .memory
+            .write_value(statbuf + 32, &Value::Concrete(statdata.st_gid as u64, 0), 4);
+        state
+            .memory
+            .write_value(statbuf + 36, &Value::Concrete(statdata.__pad0 as u64, 0), 4);
+        state
+            .memory
+            .write_value(statbuf + 40, &Value::Concrete(statdata.st_rdev, 0), 8);
+        state.memory.write_value(
+            statbuf + 48,
+            &Value::Concrete(statdata.st_size as u64, 0),
+            8,
+        );
+        state.memory.write_value(
+            statbuf + 56,
+            &Value::Concrete(statdata.st_blksize as u64, 0),
+            8,
+        );
         //state.memory.write_value(statbuf, &Value::Concrete(statdata.__pad2 as u64, 0), 4);
-        state.memory.write_value(statbuf+64, &Value::Concrete(statdata.st_blocks as u64, 0), 8);
-        state.memory.write_value(statbuf+72, &Value::Concrete(statdata.st_atime, 0), 8);
-        state.memory.write_value(statbuf+80, &Value::Concrete(statdata.st_atimensec, 0), 8);
-        state.memory.write_value(statbuf+88, &Value::Concrete(statdata.st_mtime, 0), 8);
-        state.memory.write_value(statbuf+96, &Value::Concrete(statdata.st_mtimensec, 0), 8);
-        state.memory.write_value(statbuf+104, &Value::Concrete(statdata.st_ctime, 0), 8);
-        state.memory.write_value(statbuf+112, &Value::Concrete(statdata.st_ctimensec, 0), 8);
-        state.memory.write_value(statbuf+120, &Value::Concrete(statdata.__glibc_reserved[0] as u64, 0), 4);
-        state.memory.write_value(statbuf+124, &Value::Concrete(statdata.__glibc_reserved[1] as u64, 0), 4);
+        state.memory.write_value(
+            statbuf + 64,
+            &Value::Concrete(statdata.st_blocks as u64, 0),
+            8,
+        );
+        state
+            .memory
+            .write_value(statbuf + 72, &Value::Concrete(statdata.st_atime, 0), 8);
+        state
+            .memory
+            .write_value(statbuf + 80, &Value::Concrete(statdata.st_atimensec, 0), 8);
+        state
+            .memory
+            .write_value(statbuf + 88, &Value::Concrete(statdata.st_mtime, 0), 8);
+        state
+            .memory
+            .write_value(statbuf + 96, &Value::Concrete(statdata.st_mtimensec, 0), 8);
+        state
+            .memory
+            .write_value(statbuf + 104, &Value::Concrete(statdata.st_ctime, 0), 8);
+        state
+            .memory
+            .write_value(statbuf + 112, &Value::Concrete(statdata.st_ctimensec, 0), 8);
+        state.memory.write_value(
+            statbuf + 120,
+            &Value::Concrete(statdata.__glibc_reserved[0] as u64, 0),
+            4,
+        );
+        state.memory.write_value(
+            statbuf + 124,
+            &Value::Concrete(statdata.__glibc_reserved[1] as u64, 0),
+            4,
+        );
         Value::Concrete(0, 0)
     } else {
-        Value::Concrete(-1i64 as u64, 0) 
+        Value::Concrete(-1i64 as u64, 0)
     }
 }
 
@@ -210,7 +260,9 @@ pub fn mmap(state: &mut State, args: &[Value]) -> Value {
     }
 
     let perms = state.memory.prot_to_str(prot);
-    state.memory.add_segment("mmapped", addr, size, perms.as_str());
+    state
+        .memory
+        .add_segment("mmapped", addr, size, perms.as_str());
     Value::Concrete(addr, 0)
 }
 
@@ -247,10 +299,12 @@ pub fn sbrk(state: &mut State, args: &[Value]) -> Value {
 // will result in a split state when used to branch
 // essentially recreating a fork. pretty cool!
 pub fn fork(state: &mut State, _args: &[Value]) -> Value {
-    let cpid = state.pid+1;
+    let cpid = state.pid + 1;
     state.pid = cpid;
     let pid = state.bv(format!("pid_{}", cpid).as_str(), 64);
-    let a = pid._eq(&state.bvv(cpid, 64)).or(&pid._eq(&state.bvv(0, 64)))
+    let a = pid
+        ._eq(&state.bvv(cpid, 64))
+        .or(&pid._eq(&state.bvv(0, 64)))
         .or(&pid._eq(&state.bvv(-1i64 as u64, 64)));
 
     state.solver.assert(&a);

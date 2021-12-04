@@ -1,14 +1,14 @@
-use crate::r2_api::{R2Api, R2Result, FunctionInfo, BasicBlock, Instruction, Information};
-use crate::processor::{Processor, HookMethod};
+use crate::processor::{HookMethod, Processor};
+use crate::r2_api::{BasicBlock, FunctionInfo, Information, Instruction, R2Api, R2Result};
 use crate::state::{State, StateStatus};
 //use crate::value::Value;
-use crate::sims::{get_sims, SimMethod, zero};
-use crate::sims::syscall::{indirect};
+use crate::sims::syscall::indirect;
+use crate::sims::{get_sims, zero, SimMethod};
 use crate::value::Value;
 
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::collections::VecDeque;
 
 use ahash::AHashMap;
 type HashMap<P, Q> = AHashMap<P, Q>;
@@ -25,7 +25,7 @@ pub enum RadiusOption {
     Optimize(bool),
     /// Enable debug output
     Debug(bool),
-    /// panic! on unimplemented 
+    /// panic! on unimplemented
     Strict(bool),
     /// Don't check sat on symbolic pcs
     Lazy(bool),
@@ -34,7 +34,7 @@ pub enum RadiusOption {
     /// Force execution of all branches
     Force(bool),
     /// Execute blocks in topological order
-    Topological(bool), 
+    Topological(bool),
     /// Maximum values to evaluate for sym PCs
     EvalMax(usize),
     /// Radare2 argument, must be static
@@ -44,23 +44,23 @@ pub enum RadiusOption {
     /// Load libraries
     LoadLibs(bool),
     /// Path to load library from
-    LibPath(String)
+    LibPath(String),
 }
 
 /**
  * Main Radius struct that coordinates and configures
- * the symbolic execution of a binary. 
- * 
+ * the symbolic execution of a binary.
+ *
  * Radius can be instantiated using either `Radius::new(filename: &str)`
- * or `Radius::new_with_options(...)` 
- * 
+ * or `Radius::new_with_options(...)`
+ *
  * **Example**
- * 
+ *
  * ```
  * use radius2::radius::Radius;
  * let mut radius = Radius::new("../tests/r200");
  * ```
- * 
+ *
  */
 pub struct Radius {
     pub r2api: R2Api,
@@ -69,16 +69,15 @@ pub struct Radius {
     pub eval_max: usize,
     pub check: bool,
     pub debug: bool,
-    pub strict: bool
+    pub strict: bool,
 }
 
 impl Radius {
-
     /**
      * Create a new Radius instance for the provided binary
-     * 
+     *
      * **Example**
-     * 
+     *
      * ```
      * use radius2::radius::Radius;
      * let mut radius = Radius::new("../tests/r100");
@@ -91,22 +90,19 @@ impl Radius {
 
     /**
      * Create a new Radius instance for the provided binary with a vec of `RadiusOption`
-     * 
+     *
      * **Example**
-     * 
+     *
      * ```
      * use radius2::radius::{Radius, RadiusOption};
      * let options = [RadiusOption::Optimize(false), RadiusOption::Sims(false)];
      * let mut radius = Radius::new_with_options(Some("../tests/baby-re"), &options);
      * ```
      */
-    pub fn new_with_options<T: AsRef<str>>(
-        filename: Option<T>, 
-        options: &[RadiusOption]) -> Self {
-
-        let mut argv = vec!();
+    pub fn new_with_options<T: AsRef<str>>(filename: Option<T>, options: &[RadiusOption]) -> Self {
+        let mut argv = vec![];
         let mut eval_max = 256;
-        let mut paths = vec!();
+        let mut paths = vec![];
         for o in options {
             if let RadiusOption::R2Argument(arg) = o {
                 argv.push(*arg);
@@ -136,17 +132,16 @@ impl Radius {
             argv.push("-e bin.cache=true");
         }
 
-        let args = if !argv.is_empty() {
-            Some(argv)
-        } else {
-            None
-        };
+        let args = if !argv.is_empty() { Some(argv) } else { None };
 
         let mut r2api = R2Api::new(filename, args);
 
         let arch = &r2api.info.bin.arch;
-        let opt = !options.contains(&RadiusOption::Optimize(false)) 
-            && arch.as_str() != "arm"; // don't optimize arm, does little
+
+        // don't optimize dalvik & arm
+        let opt = !options.contains(&RadiusOption::Optimize(false))
+            && arch.as_str() != "arm"
+            && arch.as_str() != "dalvik";
 
         let lazy = !options.contains(&RadiusOption::Lazy(false));
         let force = options.contains(&RadiusOption::Force(true));
@@ -157,7 +152,7 @@ impl Radius {
         let strict = options.contains(&RadiusOption::Strict(true));
 
         let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topological);
-        let processors = Arc::new(Mutex::new(vec!()));
+        let processors = Arc::new(Mutex::new(vec![]));
 
         if !options.contains(&RadiusOption::Syscalls(false)) {
             let syscalls = r2api.get_syscalls().unwrap();
@@ -172,7 +167,7 @@ impl Radius {
         let _libs = if options.contains(&RadiusOption::LoadLibs(true)) {
             r2api.load_libraries(&paths).unwrap()
         } else {
-            vec!()
+            vec![]
         };
 
         // this is weird, idk
@@ -187,16 +182,16 @@ impl Radius {
             eval_max,
             check,
             debug,
-            strict
+            strict,
         }
     }
 
     /**
      * Initialized state at the provided function address with an initialized stack
-     * (if applicable) 
-     * 
+     * (if applicable)
+     *
      * **Example**
-     * 
+     *
      * ```
      * use radius2::radius::Radius;
      * let mut radius = Radius::new("../tests/r100");
@@ -229,9 +224,9 @@ impl Radius {
 
     /**
      * Initialized state at the program entry point (the first if multiple).
-     * 
+     *
      * **Example**
-     * 
+     *
      * ```
      * use radius2::radius::Radius;
      * let mut radius = Radius::new("../tests/r100");
@@ -248,8 +243,7 @@ impl Radius {
         state.memory.add_heap();
         state.memory.add_std_streams();
 
-        let start_main_reloc = self.r2api.get_address(
-            "reloc.__libc_start_main").unwrap();
+        let start_main_reloc = self.r2api.get_address("reloc.__libc_start_main").unwrap();
 
         self.hook(start_main_reloc, __libc_start_main);
         state
@@ -257,47 +251,68 @@ impl Radius {
 
     /// Set argv and env with values instead of the dumb string way
     pub fn set_argv_env(&mut self, state: &mut State, args: &[Value], env: &[Value]) {
-
         // we write args to both regs and stack
         // i think this is ok
         let sp = state.registers.get_with_alias("SP");
-        let ptrlen = (state.memory.bits/8) as usize;
+        let ptrlen = (state.memory.bits / 8) as usize;
         let argc = Value::Concrete(args.len() as u64, 0);
         state.memory_write_value(&sp, &argc, ptrlen);
         state.registers.set_with_alias("A0", argc);
 
         let types = ["argv", "env"];
-        let mut current = sp+Value::Concrete(ptrlen as u64, 0);
+        let mut current = sp + Value::Concrete(ptrlen as u64, 0);
         for (i, strings) in [args, env].iter().enumerate() {
-            state.context.insert(types[i].to_owned(), vec!(current.clone()));
-            let alias = format!("A{}", i+1);
+            state
+                .context
+                .insert(types[i].to_owned(), vec![current.clone()]);
+            let alias = format!("A{}", i + 1);
             state.registers.set_with_alias(&alias, current.clone());
             for string in strings.iter() {
-                let addr = state.memory.alloc(
-                    &Value::Concrete((string.size()/8) as u64 +1, 0));
+                let addr = state
+                    .memory
+                    .alloc(&Value::Concrete((string.size() / 8) as u64 + 1, 0));
 
                 state.memory_write_value(
-                    &Value::Concrete(addr, 0), string, string.size() as usize/8);
+                    &Value::Concrete(addr, 0),
+                    string,
+                    string.size() as usize / 8,
+                );
 
                 state.memory.write_value(
-                    addr+(string.size()/8) as u64, &Value::Concrete(0,0), 1);
+                    addr + (string.size() / 8) as u64,
+                    &Value::Concrete(0, 0),
+                    1,
+                );
 
-                state.memory_write_value(
-                    &current, &Value::Concrete(addr, 0), ptrlen);
+                state.memory_write_value(&current, &Value::Concrete(addr, 0), ptrlen);
 
-                current = current + Value::Concrete(ptrlen as u64, 0); 
+                current = current + Value::Concrete(ptrlen as u64, 0);
             }
-            state.memory_write_value(&current, &Value::Concrete(0, 0), ptrlen); 
-            current = current + Value::Concrete(ptrlen as u64, 0); 
+            state.memory_write_value(&current, &Value::Concrete(0, 0), ptrlen);
+            current = current + Value::Concrete(ptrlen as u64, 0);
         }
     }
 
     pub fn init_state(&mut self) -> State {
-        State::new(&mut self.r2api, self.eval_max, self.debug, false, self.check, self.strict)
+        State::new(
+            &mut self.r2api,
+            self.eval_max,
+            self.debug,
+            false,
+            self.check,
+            self.strict,
+        )
     }
 
     pub fn blank_state(&mut self) -> State {
-        State::new(&mut self.r2api, self.eval_max, self.debug, true, self.check, self.strict)
+        State::new(
+            &mut self.r2api,
+            self.eval_max,
+            self.debug,
+            true,
+            self.check,
+            self.strict,
+        )
     }
 
     /// Blank except for PC and SP
@@ -306,7 +321,9 @@ impl Radius {
         self.r2api.init_vm();
         let mut state = self.blank_state();
         let sp = self.r2api.get_register_value("SP").unwrap();
-        state.registers.set_with_alias("PC", Value::Concrete(addr, 0));
+        state
+            .registers
+            .set_with_alias("PC", Value::Concrete(addr, 0));
         state.registers.set_with_alias("SP", Value::Concrete(sp, 0));
         state.memory.add_stack();
         state.memory.add_heap();
@@ -328,14 +345,13 @@ impl Radius {
         self.processor.esil_hooks.insert(addr, esils);
     }
 
-        
     /// Hook a symbol with a callback that is passed each state that reaches it
     pub fn hook_symbol(&mut self, sym: &str, hook_callback: HookMethod) {
         let addr = self.get_address(sym).unwrap();
         self.hook(addr, hook_callback);
     }
 
-    // internal method to register import sims 
+    // internal method to register import sims
     fn register_sims(r2api: &mut R2Api, processor: &mut Processor, sim_all: bool) {
         let sims = get_sims();
         let files = r2api.get_files().unwrap();
@@ -379,7 +395,7 @@ impl Radius {
         self.processor.sims.insert(addr, sim);
     }
 
-    /// Add a breakpoint at the provided address. 
+    /// Add a breakpoint at the provided address.
     /// This is where execution will stop after `run` is called
     pub fn breakpoint(&mut self, addr: u64) {
         self.processor.breakpoints.insert(addr);
@@ -401,7 +417,14 @@ impl Radius {
 
     pub fn get_steps(&self) -> u64 {
         let steps = self.processor.steps;
-        steps + self.processors.lock().unwrap().iter().map(|p| p.steps).sum::<u64>()
+        steps
+            + self
+                .processors
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|p| p.steps)
+                .sum::<u64>()
     }
 
     /// Simple way to execute until a given target address while avoiding a vec of other addrs
@@ -413,15 +436,14 @@ impl Radius {
 
     /**
      * Main run method, start or continue a symbolic execution
-     * 
-     * More words 
-     * 
+     *
+     * More words
+     *
      */
     pub fn run(&mut self, state: State, threads: usize) -> Option<State> {
-
         // if there are multiple threads we need to duplicate solvers
-        // else there will be race conditions. Unfortunately this 
-        // will prevent mergers from happening. this sucks 
+        // else there will be race conditions. Unfortunately this
+        // will prevent mergers from happening. this sucks
         if threads == 1 || !self.processor.mergepoints.is_empty() {
             return self.processor.run(state, false).pop_front();
         }
@@ -452,18 +474,22 @@ impl Radius {
                 handles.push(handle);
                 count += 1;
             }
-            
+
             while !handles.is_empty() {
                 handles.pop().unwrap().join().unwrap();
             }
 
             if statevector.lock().unwrap().is_empty() {
                 break None;
-            } 
+            }
 
-            if let Some(state) = statevector.lock().unwrap().iter() 
-                .find(|s| s.status == StateStatus::Break) {
-                break Some(state.to_owned()); 
+            if let Some(state) = statevector
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|s| s.status == StateStatus::Break)
+            {
+                break Some(state.to_owned());
             }
         }
     }
@@ -520,26 +546,26 @@ impl Radius {
 
     /// write string to binary / real memory
     pub fn write_string(&mut self, address: u64, string: &str) {
-        self.r2api.write(address, 
-            string.chars().map(|c| c as u8).collect::<Vec<_>>())
+        self.r2api
+            .write(address, string.chars().map(|c| c as u8).collect::<Vec<_>>())
     }
 
     /// set option
     pub fn set_option(&mut self, key: &str, value: &str) {
         self.r2api.set_option(key, value).unwrap();
     }
-    
-    /// Run any r2 command 
-    pub fn cmd(&mut self, cmd: &str) -> R2Result<String> { 
+
+    /// Run any r2 command
+    pub fn cmd(&mut self, cmd: &str) -> R2Result<String> {
         self.r2api.cmd(cmd)
     }
 
     /// close r2
-    pub fn close(&mut self) { 
+    pub fn close(&mut self) {
         self.r2api.close()
     }
 
-    // clear cached data from r2api and processors 
+    // clear cached data from r2api and processors
     pub fn clear(&mut self) {
         self.r2api.clear();
         self.processors.lock().unwrap().clear();
@@ -550,11 +576,11 @@ pub fn __libc_start_main(state: &mut State) -> bool {
     let mut args = state.get_args();
     let main = args.remove(0);
 
-    // TODO go to init then main    
-    // but we need a nice arch neutral way to push ret 
-    // so until then 
+    // TODO go to init then main
+    // but we need a nice arch neutral way to push ret
+    // so until then
 
-    // go to main 
+    // go to main
     state.registers.set_with_alias("PC", main);
     state.set_args(args);
 

@@ -9,7 +9,7 @@ fn main() {
     state.registers.set("v7", bv.clone());
     let mut new_state = radius.run_until(state, 0x001bd21e, &[]).unwrap();
     let flag = new_state.eval(&bv).unwrap().as_u64().unwrap();
-    
+
     println!("FLAG: {:x}", flag);
     assert_eq!(flag, 0xcafebabe);
 }

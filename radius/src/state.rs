@@ -1,9 +1,9 @@
-use crate::r2_api::{R2Api, Endian, Information};
-use crate::registers::Registers;
 use crate::memory::Memory;
-use crate::value::Value;
-use crate::solver::{Solver, BitVec};
+use crate::r2_api::{Endian, Information, R2Api};
+use crate::registers::Registers;
 use crate::sims::fs::SimFilesytem;
+use crate::solver::{BitVec, Solver};
+use crate::value::Value;
 
 use std::u8;
 //use std::collections::HashMap;
@@ -18,8 +18,8 @@ pub const DO_EVENT_HOOKS: bool = true;
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum EventTrigger {
-    Before, // call hook before event occurs 
-    After   // call hook after
+    Before, // call hook before event occurs
+    After,  // call hook after
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
@@ -34,12 +34,12 @@ pub enum Event {
     Search(EventTrigger),          // mem search (strchr, memmem)
     SymbolicSearch(EventTrigger),  // search with symbolic addr, needle, or length
     Compare(EventTrigger),         // compare memory (memcmp, strcmp)
-    SymbolicCompare(EventTrigger), // symbolic compare 
+    SymbolicCompare(EventTrigger), // symbolic compare
     StringLength(EventTrigger),    // string length check (strlen)
     SymbolicStrlen(EventTrigger),  // strlen of symbolic address
     Move(EventTrigger),            // move bytes from src to dst (memcpy, memmove)
     SymbolicMove(EventTrigger),    // symbolic move (memcpy, memmove)
-    All(EventTrigger)              // gotta hook em all, ra! - di! - us!
+    All(EventTrigger),             // gotta hook em all, ra! - di! - us!
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -53,10 +53,10 @@ pub enum EventContext {
     SearchContext(Value, Value, Value),
     CompareContext(Value, Value, Value),
     StrlenContext(Value, Value),
-    MoveContext(Value, Value, Value)
+    MoveContext(Value, Value, Value),
 }
 
-pub type EventHook = fn (&mut State, &EventContext);
+pub type EventHook = fn(&mut State, &EventContext);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecMode {
@@ -71,18 +71,18 @@ pub enum ExecMode {
 pub struct EsilState {
     pub mode: ExecMode,
     pub previous: Value,
-    pub current:  Value,
-    pub last_sz:  usize,
+    pub current: Value,
+    pub last_sz: usize,
     pub stored_address: Option<Value>,
     pub temp1: Vec<StackItem>,
     pub temp2: Vec<StackItem>,
-    pub pcs: Vec<u64>
+    pub pcs: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
 pub enum StackItem {
     StackRegister(usize),
-    StackValue(Value)
+    StackValue(Value),
 }
 
 impl Default for StackItem {
@@ -99,46 +99,51 @@ pub enum StateStatus {
     PostMerge, // so we dont get caught in merge loop
     Unsat,
     Inactive,
-    Crash    
+    Crash,
 }
 
 #[derive(Clone)]
 pub struct State {
-    pub solver:     Solver,
-    pub r2api:      R2Api,
-    pub info:       Information,
-    pub stack:      Vec<StackItem>,
-    pub esil:       EsilState,
-    pub condition:  Option<BitVec>,
-    pub registers:  Registers,
-    pub memory:     Memory,
+    pub solver: Solver,
+    pub r2api: R2Api,
+    pub info: Information,
+    pub stack: Vec<StackItem>,
+    pub esil: EsilState,
+    pub condition: Option<BitVec>,
+    pub registers: Registers,
+    pub memory: Memory,
     pub filesystem: SimFilesytem,
-    pub status:     StateStatus,
-    pub context:    HashMap<String, Vec<Value>>,
-    pub taints:     HashMap<String, u64>,
-    pub hooks:      HashMap<Event, EventHook>,
-    pub pid:        u64,
-    pub backtrace:  Vec<(u64, u64)>,
-    pub blank:      bool,
-    pub debug:      bool,
-    pub strict:     bool,
-    pub has_event_hooks: bool
+    pub status: StateStatus,
+    pub context: HashMap<String, Vec<Value>>,
+    pub taints: HashMap<String, u64>,
+    pub hooks: HashMap<Event, EventHook>,
+    pub pid: u64,
+    pub backtrace: Vec<(u64, u64)>,
+    pub blank: bool,
+    pub debug: bool,
+    pub strict: bool,
+    pub has_event_hooks: bool,
 }
 
 impl State {
     /// Create a new state, should generally not be called directly
-    pub fn new(r2api: &mut R2Api, eval_max: usize, debug: bool, 
-            blank: bool, check: bool, strict: bool) -> Self {
-
+    pub fn new(
+        r2api: &mut R2Api,
+        eval_max: usize,
+        debug: bool,
+        blank: bool,
+        check: bool,
+        strict: bool,
+    ) -> Self {
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
             previous: Value::Concrete(0, 0),
             current: Value::Concrete(0, 0),
             last_sz: 64,
             stored_address: None,
-            temp1: vec!(), // these instances are actually not used
-            temp2: vec!(),
-            pcs: Vec::with_capacity(64)
+            temp1: vec![], // these instances are actually not used
+            temp2: vec![],
+            pcs: Vec::with_capacity(64),
         };
 
         let solver = Solver::new(eval_max);
@@ -164,7 +169,7 @@ impl State {
             blank,
             debug,
             strict,
-            has_event_hooks: false
+            has_event_hooks: false,
         }
     }
 
@@ -173,8 +178,11 @@ impl State {
 
         let mut registers = self.registers.clone();
         registers.solver = solver.clone();
-        registers.values = registers.values.iter()
-            .map(|r| solver.translate_value(r)).collect();
+        registers.values = registers
+            .values
+            .iter()
+            .map(|r| solver.translate_value(r))
+            .collect();
 
         let mut memory = self.memory.clone();
         memory.solver = solver.clone();
@@ -188,8 +196,7 @@ impl State {
         let mut context = HashMap::new();
         for key in self.context.keys() {
             let values = self.context.get(key).unwrap();
-            let new_values = values.iter()
-                .map(|v| solver.translate_value(v)).collect();
+            let new_values = values.iter().map(|v| solver.translate_value(v)).collect();
 
             context.insert(key.to_owned(), new_values);
         }
@@ -197,8 +204,7 @@ impl State {
         let mut filesystem = self.filesystem.clone();
         for f in &mut filesystem.files {
             let content = f.content.clone();
-            f.content = content.iter()
-                .map(|v| solver.translate_value(v)).collect();
+            f.content = content.iter().map(|v| solver.translate_value(v)).collect();
         }
 
         let esil_state = EsilState {
@@ -209,7 +215,7 @@ impl State {
             stored_address: None,
             temp1: Vec::with_capacity(128),
             temp2: Vec::with_capacity(128),
-            pcs: Vec::with_capacity(64)
+            pcs: Vec::with_capacity(64),
         };
 
         State {
@@ -231,7 +237,7 @@ impl State {
             blank: self.blank,
             debug: self.debug,
             strict: self.strict,
-            has_event_hooks: self.has_event_hooks
+            has_event_hooks: self.has_event_hooks,
         }
     }
 
@@ -239,7 +245,7 @@ impl State {
         self.has_event_hooks = true;
         self.hooks.insert(event, hook);
     }
-    
+
     pub fn do_hooked(&mut self, event: &Event, event_context: &EventContext) {
         if let Some(hook) = self.hooks.get(event) {
             hook(self, event_context)
@@ -254,8 +260,7 @@ impl State {
             } else {
                 Event::Alloc(EventTrigger::Before)
             };
-            self.do_hooked(&event, 
-                &EventContext::AllocContext(length.to_owned()));
+            self.do_hooked(&event, &EventContext::AllocContext(length.to_owned()));
         }
 
         let ret = self.memory.alloc_sym(length, &mut self.solver);
@@ -266,8 +271,7 @@ impl State {
             } else {
                 Event::Alloc(EventTrigger::After)
             };
-            self.do_hooked(&event, 
-                &EventContext::AllocContext(length.to_owned()));
+            self.do_hooked(&event, &EventContext::AllocContext(length.to_owned()));
         }
 
         ret
@@ -281,8 +285,7 @@ impl State {
             } else {
                 Event::Free(EventTrigger::Before)
             };
-            self.do_hooked(&event, 
-                &EventContext::FreeContext(addr.to_owned()));
+            self.do_hooked(&event, &EventContext::FreeContext(addr.to_owned()));
         }
 
         let ret = self.memory.free_sym(addr, &mut self.solver);
@@ -293,8 +296,7 @@ impl State {
             } else {
                 Event::Free(EventTrigger::After)
             };
-            self.do_hooked(&event, 
-                &EventContext::FreeContext(addr.to_owned()));
+            self.do_hooked(&event, &EventContext::FreeContext(addr.to_owned()));
         }
 
         ret
@@ -302,39 +304,49 @@ impl State {
 
     /// Read `length` bytes from `address`
     pub fn memory_read(&mut self, address: &Value, length: &Value) -> Vec<Value> {
-        if DO_EVENT_HOOKS && self.has_event_hooks && 
-            (address.is_symbolic() || length.is_symbolic()) {
-            self.do_hooked(&Event::SymbolicRead(EventTrigger::Before), 
-                &EventContext::ReadContext(address.to_owned(), length.to_owned()));
+        if DO_EVENT_HOOKS && self.has_event_hooks && (address.is_symbolic() || length.is_symbolic())
+        {
+            self.do_hooked(
+                &Event::SymbolicRead(EventTrigger::Before),
+                &EventContext::ReadContext(address.to_owned(), length.to_owned()),
+            );
         }
 
         let ret = self.memory.read_sym_len(address, length, &mut self.solver);
 
-        if DO_EVENT_HOOKS && self.has_event_hooks && 
-            (address.is_symbolic() || length.is_symbolic()) {
-            self.do_hooked(&Event::SymbolicRead(EventTrigger::After), 
-                &EventContext::ReadContext(address.to_owned(), length.to_owned()));
+        if DO_EVENT_HOOKS && self.has_event_hooks && (address.is_symbolic() || length.is_symbolic())
+        {
+            self.do_hooked(
+                &Event::SymbolicRead(EventTrigger::After),
+                &EventContext::ReadContext(address.to_owned(), length.to_owned()),
+            );
         }
-    
+
         ret
     }
 
     /// Write `length` bytes to `address`
     pub fn memory_write(&mut self, address: &Value, values: &[Value], length: &Value) {
-        if DO_EVENT_HOOKS && self.has_event_hooks && 
-            (address.is_symbolic() || length.is_symbolic()) {
-            self.do_hooked(&Event::SymbolicWrite(EventTrigger::Before), 
-                &EventContext::WriteContext(address.to_owned(), length.to_owned()));
+        if DO_EVENT_HOOKS && self.has_event_hooks && (address.is_symbolic() || length.is_symbolic())
+        {
+            self.do_hooked(
+                &Event::SymbolicWrite(EventTrigger::Before),
+                &EventContext::WriteContext(address.to_owned(), length.to_owned()),
+            );
         }
 
-        let ret = self.memory.write_sym_len(address, values, length, &mut self.solver);
+        let ret = self
+            .memory
+            .write_sym_len(address, values, length, &mut self.solver);
 
-        if DO_EVENT_HOOKS && self.has_event_hooks && 
-            (address.is_symbolic() || length.is_symbolic()) {
-            self.do_hooked(&Event::SymbolicWrite(EventTrigger::After), 
-                &EventContext::WriteContext(address.to_owned(), length.to_owned()));
+        if DO_EVENT_HOOKS && self.has_event_hooks && (address.is_symbolic() || length.is_symbolic())
+        {
+            self.do_hooked(
+                &Event::SymbolicWrite(EventTrigger::After),
+                &EventContext::WriteContext(address.to_owned(), length.to_owned()),
+            );
         }
-        
+
         ret
     }
 
@@ -342,15 +354,19 @@ impl State {
     #[inline]
     pub fn memory_read_value(&mut self, address: &Value, length: usize) -> Value {
         if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
-            self.do_hooked(&Event::SymbolicRead(EventTrigger::Before), 
-                &EventContext::ReadContext(address.to_owned(), Value::Concrete(length as u64, 0)));
+            self.do_hooked(
+                &Event::SymbolicRead(EventTrigger::Before),
+                &EventContext::ReadContext(address.to_owned(), Value::Concrete(length as u64, 0)),
+            );
         }
 
         let ret = self.memory.read_sym(address, length, &mut self.solver);
 
         if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
-            self.do_hooked(&Event::SymbolicRead(EventTrigger::After), 
-                &EventContext::ReadContext(address.to_owned(), Value::Concrete(length as u64, 0)));
+            self.do_hooked(
+                &Event::SymbolicRead(EventTrigger::After),
+                &EventContext::ReadContext(address.to_owned(), Value::Concrete(length as u64, 0)),
+            );
         }
 
         ret
@@ -360,34 +376,50 @@ impl State {
     #[inline]
     pub fn memory_write_value(&mut self, address: &Value, value: &Value, length: usize) {
         if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
-            self.do_hooked(&Event::SymbolicRead(EventTrigger::Before), 
-                &EventContext::ReadContext(address.to_owned(), Value::Concrete(length as u64, 0)));
+            self.do_hooked(
+                &Event::SymbolicRead(EventTrigger::Before),
+                &EventContext::ReadContext(address.to_owned(), Value::Concrete(length as u64, 0)),
+            );
         }
 
-        let ret = self.memory.write_sym(address, value, length, &mut self.solver);
+        let ret = self
+            .memory
+            .write_sym(address, value, length, &mut self.solver);
 
         if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
-            self.do_hooked(&Event::SymbolicWrite(EventTrigger::After), 
-                &EventContext::WriteContext(address.to_owned(), Value::Concrete(length as u64, 0)));
+            self.do_hooked(
+                &Event::SymbolicWrite(EventTrigger::After),
+                &EventContext::WriteContext(address.to_owned(), Value::Concrete(length as u64, 0)),
+            );
         }
 
         ret
     }
 
-    /// Search for `needle` at the address `addr` for a maximum of `length` bytes 
+    /// Search for `needle` at the address `addr` for a maximum of `length` bytes
     /// Returns a `Value` containing the **address** of the needle, not index
-    pub fn memory_search(&mut self, addr: &Value, needle: &Value, length: &Value, reverse: bool) -> Value {
+    pub fn memory_search(
+        &mut self,
+        addr: &Value,
+        needle: &Value,
+        length: &Value,
+        reverse: bool,
+    ) -> Value {
         if DO_EVENT_HOOKS && self.has_event_hooks {
             let event = if addr.is_symbolic() || length.is_symbolic() {
                 Event::SymbolicSearch(EventTrigger::Before)
             } else {
                 Event::Search(EventTrigger::Before)
             };
-            self.do_hooked(&event, 
-                &EventContext::SearchContext(addr.to_owned(), needle.to_owned(), length.to_owned()));
+            self.do_hooked(
+                &event,
+                &EventContext::SearchContext(addr.to_owned(), needle.to_owned(), length.to_owned()),
+            );
         }
 
-        let ret = self.memory.search(addr, needle, length, reverse, &mut self.solver);
+        let ret = self
+            .memory
+            .search(addr, needle, length, reverse, &mut self.solver);
 
         if DO_EVENT_HOOKS && self.has_event_hooks {
             let event = if addr.is_symbolic() || length.is_symbolic() {
@@ -395,8 +427,10 @@ impl State {
             } else {
                 Event::Search(EventTrigger::After)
             };
-            self.do_hooked(&event, 
-                &EventContext::SearchContext(addr.to_owned(), needle.to_owned(), length.to_owned()));
+            self.do_hooked(
+                &event,
+                &EventContext::SearchContext(addr.to_owned(), needle.to_owned(), length.to_owned()),
+            );
         }
 
         ret
@@ -405,15 +439,16 @@ impl State {
     /// Compare memory at `dst` and `src` address up to `length` bytes.
     /// This is akin to memcmp but will handle symbolic addrs and length
     pub fn memory_compare(&mut self, dst: &Value, src: &Value, length: &Value) -> Value {
-
         if DO_EVENT_HOOKS && self.has_event_hooks {
             let event = if dst.is_symbolic() || src.is_symbolic() || length.is_symbolic() {
                 Event::SymbolicCompare(EventTrigger::Before)
             } else {
                 Event::Compare(EventTrigger::Before)
             };
-            self.do_hooked(&event, 
-                &EventContext::CompareContext(dst.to_owned(), src.to_owned(), length.to_owned()));
+            self.do_hooked(
+                &event,
+                &EventContext::CompareContext(dst.to_owned(), src.to_owned(), length.to_owned()),
+            );
         }
 
         let ret = self.memory.compare(dst, src, length, &mut self.solver);
@@ -424,8 +459,10 @@ impl State {
             } else {
                 Event::Compare(EventTrigger::After)
             };
-            self.do_hooked(&event,
-                &EventContext::CompareContext(dst.to_owned(), src.to_owned(), length.to_owned()));
+            self.do_hooked(
+                &event,
+                &EventContext::CompareContext(dst.to_owned(), src.to_owned(), length.to_owned()),
+            );
         }
 
         ret
@@ -439,8 +476,10 @@ impl State {
             } else {
                 Event::StringLength(EventTrigger::Before)
             };
-            self.do_hooked(&event, 
-                &EventContext::StrlenContext(addr.to_owned(), length.to_owned()));
+            self.do_hooked(
+                &event,
+                &EventContext::StrlenContext(addr.to_owned(), length.to_owned()),
+            );
         }
 
         let ret = self.memory.strlen(addr, length, &mut self.solver);
@@ -451,8 +490,10 @@ impl State {
             } else {
                 Event::StringLength(EventTrigger::After)
             };
-            self.do_hooked(&event, 
-                &EventContext::StrlenContext(addr.to_owned(), length.to_owned()));
+            self.do_hooked(
+                &event,
+                &EventContext::StrlenContext(addr.to_owned(), length.to_owned()),
+            );
         }
 
         ret
@@ -466,8 +507,10 @@ impl State {
             } else {
                 Event::Move(EventTrigger::Before)
             };
-            self.do_hooked(&event, 
-                &EventContext::MoveContext(dst.to_owned(), src.to_owned(), length.to_owned()));
+            self.do_hooked(
+                &event,
+                &EventContext::MoveContext(dst.to_owned(), src.to_owned(), length.to_owned()),
+            );
         }
 
         self.memory.memmove(dst, src, length, &mut self.solver);
@@ -478,8 +521,10 @@ impl State {
             } else {
                 Event::Move(EventTrigger::After)
             };
-            self.do_hooked(&event, 
-                &EventContext::MoveContext(dst.to_owned(), src.to_owned(), length.to_owned()));
+            self.do_hooked(
+                &event,
+                &EventContext::MoveContext(dst.to_owned(), src.to_owned(), length.to_owned()),
+            );
         }
     }
 
@@ -504,7 +549,7 @@ impl State {
         self.memory.pack(data)
     }
 
-    /// unpack `Value` into vector of bytes 
+    /// unpack `Value` into vector of bytes
     pub fn unpack(&self, data: &Value, length: usize) -> Vec<Value> {
         self.memory.unpack(data, length)
     }
@@ -514,8 +559,10 @@ impl State {
     }
 
     pub fn fill_file_string(&mut self, fd: usize, string: &str) {
-        let data: Vec<Value> = string.chars()
-            .map(|c| Value::Concrete(c as u64, 0)).collect();
+        let data: Vec<Value> = string
+            .chars()
+            .map(|c| Value::Concrete(c as u64, 0))
+            .collect();
 
         self.filesystem.fill(fd, &data)
     }
@@ -526,7 +573,8 @@ impl State {
 
     pub fn dump_file_string(&mut self, fd: usize) -> Option<String> {
         let values = self.filesystem.dump(fd);
-        let bytes = values.iter()
+        let bytes = values
+            .iter()
             .map(|v| self.solver.evalcon_to_u64(v).unwrap_or(0) as u8)
             .collect();
 
@@ -536,9 +584,9 @@ impl State {
     // TODO do this in a way that isn't a global maximum of stupidity
     /// Apply this state to the radare2 instance. This writes all the values
     /// in the states memory back to the memory in r2 as well as the register
-    /// values, evaluating any symbolic expressions. 
+    /// values, evaluating any symbolic expressions.
     pub fn apply(&mut self) {
-        let mut inds = vec!();
+        let mut inds = vec![];
         for reg in &self.registers.indexes {
             if !inds.contains(&reg.value_index) {
                 inds.push(reg.value_index);
@@ -551,7 +599,7 @@ impl State {
         for addr in self.memory.addresses() {
             let bval = self.memory.read_value(addr, 1);
             let b = self.solver.evalcon_to_u64(&bval).unwrap() as u8;
-            self.r2api.write(addr, vec!(b));
+            self.r2api.write(addr, vec![b]);
         }
     }
 
@@ -559,7 +607,7 @@ impl State {
     /// useful for constraining the data in some initial
     /// state with the assertions of some desired final state
     pub fn constrain_with_state(&mut self, state: &Self) {
-       self.solver = state.solver.clone(); 
+        self.solver = state.solver.clone();
     }
 
     /// Create a bitvector from this states solver
@@ -575,15 +623,11 @@ impl State {
     /// Create a `Value::Concrete` from a value `v` and bit width `n`
     #[inline]
     pub fn concrete_value(&self, v: u64, n: u32) -> Value {
-        let mask = if n < 64 { 
-            (1 << n) - 1
-        } else {
-            -1i64 as u64
-        };
+        let mask = if n < 64 { (1 << n) - 1 } else { -1i64 as u64 };
         Value::Concrete(v & mask, 0)
     }
 
-    /// Create a `Value::Symbolic` from a name `s` and bit width `n` 
+    /// Create a `Value::Symbolic` from a name `s` and bit width `n`
     #[inline]
     pub fn symbolic_value(&self, s: &str, n: u32) -> Value {
         Value::Symbolic(self.bv(s, n), 0)
@@ -591,16 +635,12 @@ impl State {
 
     /// Create a tainted `Value::Concrete` from a value `v` and bit width `n`
     pub fn tainted_concrete_value(&mut self, t: &str, v: u64, n: u32) -> Value {
-        let mask = if n < 64 { 
-            (1 << n) - 1
-        } else {
-            -1i64 as u64
-        };
+        let mask = if n < 64 { (1 << n) - 1 } else { -1i64 as u64 };
         let taint = self.get_tainted_identifier(t);
         Value::Concrete(v & mask, taint)
     }
 
-    /// Create a tainted `Value::Symbolic` from a name `s` and bit width `n` 
+    /// Create a tainted `Value::Symbolic` from a name `s` and bit width `n`
     pub fn tainted_symbolic_value(&mut self, t: &str, s: &str, n: u32) -> Value {
         let taint = self.get_tainted_identifier(t);
         Value::Symbolic(self.bv(s, n), taint)
@@ -653,33 +693,32 @@ impl State {
         self.solver.evalcon(bv)
     }
 
-    /// constrain bytes of bitvector to be an exact string eg. "ABC" 
+    /// constrain bytes of bitvector to be an exact string eg. "ABC"
     /// or use "[...]" to match a simple pattern eg. "[XYZa-z0-9]"
     pub fn constrain_bytes(&mut self, bv: &BitVec, pattern: &str) {
         if &pattern[..1] != "[" {
             for (i, c) in pattern.chars().enumerate() {
-                self.assert(&bv
-                    .slice(8*(i as u32 + 1)-1, 8*i as u32)
-                    ._eq(&self.bvv(c as u64, 8)));
+                self.assert(
+                    &bv.slice(8 * (i as u32 + 1) - 1, 8 * i as u32)
+                        ._eq(&self.bvv(c as u64, 8)),
+                );
             }
         } else {
             let patlen = pattern.len();
-            let newpat = &pattern[1..patlen-1]; 
+            let newpat = &pattern[1..patlen - 1];
             let mut assertions = Vec::with_capacity(256);
 
-            for ind in 0..bv.get_width()/8 {
+            for ind in 0..bv.get_width() / 8 {
                 assertions.clear();
-                let s = &bv.slice(8*(ind + 1)-1, 8*ind);
+                let s = &bv.slice(8 * (ind + 1) - 1, 8 * ind);
 
                 let mut i = 0;
-                while i < patlen-2 {
+                while i < patlen - 2 {
                     let c = newpat.as_bytes()[i] as u64;
-                    if i < patlen-4 && &newpat[i+1..i+2] == "-" {
-                        let n = newpat.as_bytes()[i+2] as u64;
+                    if i < patlen - 4 && &newpat[i + 1..i + 2] == "-" {
+                        let n = newpat.as_bytes()[i + 2] as u64;
                         i += 3;
-                        assertions.push(
-                            s.ugte(&self.bvv(c, 8)).and(&
-                            s.ulte(&self.bvv(n, 8))));
+                        assertions.push(s.ugte(&self.bvv(c, 8)).and(&s.ulte(&self.bvv(n, 8))));
                     } else {
                         i += 1;
                         assertions.push(s._eq(&self.bvv(c, 8)));
@@ -691,10 +730,10 @@ impl State {
         }
     }
 
-    /// constrain bytes of bitvector to be an exact string eg. "ABC" 
+    /// constrain bytes of bitvector to be an exact string eg. "ABC"
     /// or use "[...]" to match a simple pattern eg. "[XYZa-z0-9]"
     pub fn constrain_bytes_value(&mut self, bv: &Value, pattern: &str) {
-        if let Value::Symbolic(s, _) = bv { 
+        if let Value::Symbolic(s, _) = bv {
             self.constrain_bytes(&s, pattern)
         }
     }
@@ -724,7 +763,7 @@ impl State {
         self.set_status(StateStatus::Inactive);
     }
 
-    /// convenience method to break 
+    /// convenience method to break
     pub fn set_break(&mut self) {
         self.set_status(StateStatus::Break);
     }
@@ -733,17 +772,19 @@ impl State {
     pub fn get_args(&mut self) -> Vec<Value> {
         let pc = self.registers.get_pc().as_u64().unwrap();
         let cc = self.r2api.get_cc(pc).unwrap_or_default();
-        let mut args = Vec::with_capacity(16); 
+        let mut args = Vec::with_capacity(16);
 
         if !cc.args.is_empty() {
             for arg in &cc.args {
                 args.push(self.registers.get_with_alias(arg));
             }
-        } else { // read args from stack?
+        } else {
+            // read args from stack?
             let mut sp = self.registers.get_with_alias("SP");
-            let length = self.memory.bits as usize/8; 
+            let length = self.memory.bits as usize / 8;
 
-            for _ in 0..8 { // do 8 idk?
+            for _ in 0..8 {
+                // do 8 idk?
                 sp = sp + Value::Concrete(length as u64, 0);
                 let value = self.memory_read_value(&sp, length);
                 args.push(value);
@@ -764,11 +805,13 @@ impl State {
                     self.registers.set_with_alias(arg, values.remove(0));
                 }
             }
-        } else { // read args from stack?
+        } else {
+            // read args from stack?
             let mut sp = self.registers.get_with_alias("SP");
-            let length = self.memory.bits as usize/8; 
+            let length = self.memory.bits as usize / 8;
 
-            for _ in 0..8 { // do 8 idk?
+            for _ in 0..8 {
+                // do 8 idk?
                 sp = sp + Value::Concrete(length as u64, 0);
                 if !values.is_empty() {
                     self.memory_write_value(&sp, &values.remove(0), length);
@@ -797,16 +840,16 @@ impl State {
         self.solver.evaluate_many(bv)
     }
 
-    /// Evaluate bytes from bitvector `bv` 
+    /// Evaluate bytes from bitvector `bv`
     pub fn evaluate_bytes(&mut self, bv: &BitVec) -> Option<Vec<u8>> {
         let new_bv = bv; //self.translate(bv).unwrap();
-        let mut data: Vec<u8> = vec!();
+        let mut data: Vec<u8> = vec![];
         if self.solver.is_sat() {
             //let one_sol = new_bv.get_a_solution().disambiguate();
             let solution_opt = self.solver.solution(&new_bv);
             if let Some(solution) = solution_opt {
-                for i in 0..(new_bv.get_width()/8) as usize {
-                    let sol = u8::from_str_radix(&solution[i*8..(i+1)*8], 2);
+                for i in 0..(new_bv.get_width() / 8) as usize {
+                    let sol = u8::from_str_radix(&solution[i * 8..(i + 1) * 8], 2);
                     data.push(sol.unwrap());
                 }
                 if self.memory.endian == Endian::Little {
@@ -821,7 +864,7 @@ impl State {
         }
     }
 
-    /// Evaluate bytes from bitvector `bv` 
+    /// Evaluate bytes from bitvector `bv`
     pub fn evaluate_string(&mut self, bv: &BitVec) -> Option<String> {
         if let Some(bytes) = self.evaluate_bytes(bv) {
             String::from_utf8(bytes).ok()

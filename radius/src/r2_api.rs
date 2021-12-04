@@ -1,9 +1,8 @@
-
 use r2pipe::{R2Pipe, R2PipeSpawnOptions};
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
 use std::u64;
 use std::u8;
-use std::sync::{Arc, Mutex};
 //use ahash::AHashMap;
 //type HashMap<P, Q> = AHashMap<P, Q>;
 
@@ -12,39 +11,39 @@ use std::path::Path;
 use std::{thread, time};
 
 pub const STACK_START: u64 = 0xff000000;
-pub const STACK_SIZE:  u64 = 0x780000*2;
+pub const STACK_SIZE: u64 = 0x780000 * 2;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Endian {
     Little,
     Big,
     Mixed,
-    Unknown
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Mode {
     Default,
     Debugger,
-    Frida
+    Frida,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallingConvention {
-    pub ret:  String,
-    pub args: Vec<String>
+    pub ret: String,
+    pub args: Vec<String>,
 }
 
 impl Default for CallingConvention {
     fn default() -> Self {
         CallingConvention {
             ret: String::from("A0"),
-            args: vec!(
+            args: vec![
                 String::from("A0"),
                 String::from("A1"),
                 String::from("A2"),
-                String::from("A3")
-            )
+                String::from("A3"),
+            ],
         }
     }
 }
@@ -55,7 +54,7 @@ impl Endian {
             "little" => Endian::Little,
             "big" => Endian::Big,
             "mixed" => Endian::Mixed,
-            _ => Endian::Unknown
+            _ => Endian::Unknown,
         }
     }
 }
@@ -65,28 +64,28 @@ pub struct Instruction {
     pub offset: u64,
     pub size: u64,
 
-    #[serde(default="invalid")]
+    #[serde(default = "invalid")]
     pub opcode: String,
 
-    #[serde(default="invalid")]
+    #[serde(default = "invalid")]
     pub disasm: String,
 
-    #[serde(default="blank")]
+    #[serde(default = "blank")]
     pub esil: String,
 
     pub bytes: String,
 
-    #[serde(default="invalid")]
+    #[serde(default = "invalid")]
     pub r#type: String,
 
-    #[serde(default="zero")]
+    #[serde(default = "zero")]
     pub type_num: i64,
 
-    #[serde(default="zero")]
+    #[serde(default = "zero")]
     pub jump: i64,
 
-    #[serde(default="zero")]
-    pub fail: i64  
+    #[serde(default = "zero")]
+    pub fail: i64,
 }
 
 fn invalid() -> String {
@@ -103,12 +102,12 @@ fn zero() -> i64 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Segment {
-    pub name:  String,
-    pub size:  u64,
+    pub name: String,
+    pub size: u64,
     pub vsize: u64,
-    pub perm:  String,
+    pub perm: String,
     pub paddr: u64,
-    pub vaddr: u64
+    pub vaddr: u64,
 }
 
 #[derive(Debug)]
@@ -116,14 +115,14 @@ pub struct Permission {
     pub initialized: bool,
     pub read: bool,
     pub write: bool,
-    pub execute: bool
+    pub execute: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AliasInfo {
     pub reg: String,
     pub role: u64,
-    pub role_str: String
+    pub role_str: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,23 +131,23 @@ pub struct RegisterInfo {
     pub r#type: u64,
     pub type_str: String,
     pub size: u64,
-    pub offset: u64
+    pub offset: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterInformation {
     pub alias_info: Vec<AliasInfo>,
-    pub reg_info: Vec<RegisterInfo>
+    pub reg_info: Vec<RegisterInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoreInfo {
     pub file: String,
 
-    #[serde(default="zero")]
+    #[serde(default = "zero")]
     pub size: i64,
     pub mode: String,
-    pub format: String
+    pub format: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,7 +158,7 @@ pub struct BinInfo {
     pub canary: bool,
     pub endian: String,
     pub os: String,
-    pub nx: bool
+    pub nx: bool,
 }
 
 impl Default for BinInfo {
@@ -171,7 +170,7 @@ impl Default for BinInfo {
             canary: false,
             endian: "little".to_string(),
             os: "".to_string(),
-            nx: false
+            nx: false,
         }
     }
 }
@@ -182,7 +181,7 @@ impl Default for CoreInfo {
             file: "".to_string(),
             size: 0,
             mode: "".to_string(),
-            format: "".to_string()
+            format: "".to_string(),
         }
     }
 }
@@ -193,34 +192,34 @@ pub struct Information {
     pub core: CoreInfo,
 
     #[serde(default)]
-    pub bin: BinInfo
+    pub bin: BinInfo,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Syscall {
     pub name: String,
     pub swi: u64,
-    pub num: u64
+    pub num: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     pub r#type: String,
     pub offset: u64,
-    pub data:   String
+    pub data: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrossRef {
     pub addr: u64,
     pub r#type: String,
-    pub at: u64
+    pub at: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VarRef {
     pub base: String,
-    pub offset: u64
+    pub offset: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -228,7 +227,7 @@ pub struct Variable {
     pub name: String,
     pub kind: String,
     pub r#type: String,
-    pub r#ref: VarRef
+    pub r#ref: VarRef,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -246,7 +245,7 @@ pub struct FunctionInfo {
     pub r#type: String,
     pub nbbs: u64, // number of basic blocks
     pub edges: u64,
-    pub ebbs: u64, 
+    pub ebbs: u64,
     pub signature: String,
     pub minbound: u64,
     pub maxbound: u64,
@@ -261,7 +260,7 @@ pub struct FunctionInfo {
     pub bpvars: Vec<Variable>,
     pub spvars: Vec<Variable>,
     pub regvars: Vec<Variable>,
-    pub difftype: String
+    pub difftype: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -274,11 +273,11 @@ pub struct BasicBlock {
     pub ninstr: u64,
     pub traced: bool,
 
-    #[serde(default="zero")]
+    #[serde(default = "zero")]
     pub jump: i64,
 
-    #[serde(default="zero")]
-    pub fail: i64  
+    #[serde(default = "zero")]
+    pub fail: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -292,7 +291,7 @@ pub struct Symbol {
     pub r#type: String,
     pub vaddr: u64,
     pub paddr: u64,
-    pub is_imported: bool
+    pub is_imported: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -301,7 +300,7 @@ pub struct Import {
     pub bind: String,
     pub r#type: String,
     pub name: String,
-    pub plt: u64
+    pub plt: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -315,7 +314,7 @@ pub struct Export {
     r#type: String,
     vaddr: u64,
     paddr: u64,
-    is_imported: bool
+    is_imported: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -332,13 +331,13 @@ pub struct ClassField {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Relocation {
-    #[serde(default="blank")]
+    #[serde(default = "blank")]
     pub name: String,
     pub vaddr: u64,
     pub paddr: u64,
     pub r#type: String,
     pub demname: String,
-    pub is_ifunc: bool
+    pub is_ifunc: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -348,8 +347,7 @@ pub struct File {
     pub uri: String,
     pub from: u64,
     pub writable: bool,
-    pub size: usize
-
+    pub size: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -359,20 +357,20 @@ pub struct Entrypoint {
     pub baddr: u64,
     pub laddr: u64,
     pub haddr: u64,
-    pub r#type: String
+    pub r#type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassInfo {
     pub classname: String,
     pub addr: u64,
-    pub index: i64, 
+    pub index: i64,
     //pub r#super: String,
     pub methods: Vec<ClassMethod>,
     pub fields: Vec<ClassField>,
 
     #[serde(rename = "super")]
-    pub superclass: String
+    pub superclass: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -383,12 +381,12 @@ pub struct Reference {
 
     #[serde(default)]
     pub fcn_addr: u64,
-    
+
     #[serde(default)]
     pub fcn_name: String,
 
     #[serde(default)]
-    pub refname: String
+    pub refname: String,
 }
 
 pub type R2Result<T> = Result<T, String>;
@@ -402,15 +400,15 @@ pub fn r2_result<T, E>(result: Result<T, E>) -> R2Result<T> {
 
 pub fn hex_encode(data: &[u8]) -> String {
     data.iter()
-        .map(|d| {format!("{:02x}", *d)})
+        .map(|d| format!("{:02x}", *d))
         .collect::<Vec<_>>()
         .join("")
 }
 
 pub fn hex_decode(data: &str) -> Vec<u8> {
     let mut result = Vec::with_capacity(data.len());
-    for i in 0..data.len()/2 {
-        result.push(u8::from_str_radix(&data[2*i..2*i+2], 16).unwrap());
+    for i in 0..data.len() / 2 {
+        result.push(u8::from_str_radix(&data[2 * i..2 * i + 2], 16).unwrap());
     }
     result
 }
@@ -422,29 +420,28 @@ pub struct R2Api {
     //pub instructions: HashMap<u64, Instruction>,
     //pub permissions: HashMap<u64, Permission>,
     pub info: Information,
-    pub mode: Mode
+    pub mode: Mode,
 }
 
 impl R2Api {
     pub fn new<T: AsRef<str>>(filename: Option<T>, opts: Option<Vec<&'static str>>) -> R2Api {
-        let options = &opts.as_ref().map(|o| 
-            R2PipeSpawnOptions { 
-                exepath: "r2".to_owned(), 
-                args: o.to_owned()
-            });
+        let options = &opts.as_ref().map(|o| R2PipeSpawnOptions {
+            exepath: "r2".to_owned(),
+            args: o.to_owned(),
+        });
 
         let r2pipe = match (&filename, &opts) {
             (None, None) => R2Pipe::open(),
             (Some(name), _) => R2Pipe::spawn(name, options.to_owned()),
-            _ => Err("cannot have options for non-spawned")
+            _ => Err("cannot have options for non-spawned"),
         };
 
         let mut r2api = R2Api {
             r2p: Arc::new(Mutex::new(r2pipe.unwrap())),
             info: Information::default(),
-            mode: Mode::Default
+            mode: Mode::Default,
         };
-    
+
         r2api.info = r2api.get_info().unwrap();
         r2api.mode = if r2api.info.core.file.starts_with("frida:") {
             let _ = r2api.cmd("s `:il~[0]`"); // seek to first module
@@ -455,7 +452,7 @@ impl R2Api {
             Mode::Default
         };
 
-        // if we are on arm64 default to v35 plugin 
+        // if we are on arm64 default to v35 plugin
         if r2api.info.bin.arch == "arm" && r2api.info.bin.bits == 64 {
             r2api.set_option("asm.arch", "arm.v35").unwrap_or_default();
         }
@@ -468,7 +465,7 @@ impl R2Api {
     }
 
     pub fn get_info(&mut self) -> R2Result<Information> {
-        let json = self.cmd("ij")?;    
+        let json = self.cmd("ij")?;
         Ok(serde_json::from_str(json.as_str()).unwrap())
     }
 
@@ -511,94 +508,94 @@ impl R2Api {
     x32           rdi   rsi   rdx   r10   r8    r9    -
     xtensa        a6    a3    a4    a5    a8    a9    -
     */
-    
+
     pub fn get_syscall_cc(&mut self) -> R2Result<CallingConvention> {
         // this sucks, need a central place for arch shit
         match (self.info.bin.arch.as_str(), self.info.bin.bits) {
             ("x86", 32) => Ok(CallingConvention {
-                args: vec!(
-                    "ebx".to_string(), 
-                    "ecx".to_string(), 
-                    "edx".to_string(), 
-                    "esi".to_string(), 
-                    "edi".to_string(), 
-                    "ebp".to_string()
-                ),
-                ret: "eax".to_string()
+                args: vec![
+                    "ebx".to_string(),
+                    "ecx".to_string(),
+                    "edx".to_string(),
+                    "esi".to_string(),
+                    "edi".to_string(),
+                    "ebp".to_string(),
+                ],
+                ret: "eax".to_string(),
             }),
             ("x86", 64) => Ok(CallingConvention {
-                args: vec!(
-                    "rdi".to_string(), 
-                    "rsi".to_string(), 
-                    "rdx".to_string(), 
-                    "r10".to_string(), 
-                    "r8".to_string(), 
-                    "r9".to_string()
-                ),
-                ret: "rax".to_string()
+                args: vec![
+                    "rdi".to_string(),
+                    "rsi".to_string(),
+                    "rdx".to_string(),
+                    "r10".to_string(),
+                    "r8".to_string(),
+                    "r9".to_string(),
+                ],
+                ret: "rax".to_string(),
             }),
             // 16 is thumb mode, need to handle better
             ("arm", 16) | ("arm", 32) => Ok(CallingConvention {
-                args: vec!(
-                    "r0".to_string(), 
-                    "r1".to_string(), 
-                    "r2".to_string(), 
-                    "r3".to_string(), 
-                    "r4".to_string(), 
+                args: vec![
+                    "r0".to_string(),
+                    "r1".to_string(),
+                    "r2".to_string(),
+                    "r3".to_string(),
+                    "r4".to_string(),
                     "r5".to_string(),
-                    "r6".to_string()
-                ),
-                ret: "r0".to_string()
+                    "r6".to_string(),
+                ],
+                ret: "r0".to_string(),
             }),
             ("arm", 64) => Ok(CallingConvention {
-                args: vec!(
-                    "x0".to_string(), 
-                    "x1".to_string(), 
-                    "x2".to_string(), 
-                    "x3".to_string(), 
-                    "x4".to_string(), 
+                args: vec![
+                    "x0".to_string(),
+                    "x1".to_string(),
+                    "x2".to_string(),
+                    "x3".to_string(),
+                    "x4".to_string(),
                     "x5".to_string(),
                     "x6".to_string(),
                     "x7".to_string(),
-                    "x8".to_string() // supposedly xnu/ios can have up 9 args
-                ),
-                ret: "x0".to_string()
+                    "x8".to_string(), // supposedly xnu/ios can have up 9 args
+                ],
+                ret: "x0".to_string(),
             }),
             ("riscv", _) | ("mips", _) => Ok(CallingConvention {
-                args: vec!(
-                    "a0".to_string(), 
-                    "a1".to_string(), 
-                    "a2".to_string(), 
-                    "a3".to_string(), 
-                    "a4".to_string(), 
-                    "a5".to_string()
-                ),
-                ret: "a0".to_string()
+                args: vec![
+                    "a0".to_string(),
+                    "a1".to_string(),
+                    "a2".to_string(),
+                    "a3".to_string(),
+                    "a4".to_string(),
+                    "a5".to_string(),
+                ],
+                ret: "a0".to_string(),
             }),
             ("sparc", _) => Ok(CallingConvention {
-                args: vec!(
-                    "o0".to_string(), 
-                    "o1".to_string(), 
-                    "o2".to_string(), 
-                    "o3".to_string(), 
-                    "o4".to_string(), 
-                    "o5".to_string()
-                ),
-                ret: "o0".to_string()
+                args: vec![
+                    "o0".to_string(),
+                    "o1".to_string(),
+                    "o2".to_string(),
+                    "o3".to_string(),
+                    "o4".to_string(),
+                    "o5".to_string(),
+                ],
+                ret: "o0".to_string(),
             }),
             ("ppc", _) => Ok(CallingConvention {
-                args: vec!(
-                    "r3".to_string(), 
-                    "r4".to_string(), 
+                args: vec![
+                    "r3".to_string(),
+                    "r4".to_string(),
                     "r5".to_string(),
-                    "r6".to_string(), 
-                    "r7".to_string(), 
-                    "r8".to_string(), 
-                    "r9".to_string()
-                ),
-                ret: "r3".to_string() // TODO errors are in r0
+                    "r6".to_string(),
+                    "r7".to_string(),
+                    "r8".to_string(),
+                    "r9".to_string(),
+                ],
+                ret: "r3".to_string(), // TODO errors are in r0
             }),
-            _ => Err("calling convention not found".to_owned())
+            _ => Err("calling convention not found".to_owned()),
         }
     }
 
@@ -612,7 +609,7 @@ impl R2Api {
         let mut class_map = HashMap::new();
         for c in &classes {
             class_map.insert(c.classname.clone(), c.to_owned());
-        }    
+        }
         Ok(class_map)
     }
 
@@ -621,7 +618,7 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn analyze(&mut self, n: usize) -> R2Result<String> { 
+    pub fn analyze(&mut self, n: usize) -> R2Result<String> {
         // n = 14 automatically wins flareon
         self.cmd("a".repeat(n).as_str())
     }
@@ -659,8 +656,12 @@ impl R2Api {
     /// Gets all strings then filters, slower than search
     pub fn search_strings(&mut self, string: &str) -> R2Result<Vec<u64>> {
         let result = self.cmd(&format!("izz~[2]~{}", string))?;
-        Ok(result.trim().split('\n').map(|x| u64::from_str_radix(&x[2..], 16)
-            .unwrap_or_default()).filter(|x| *x != 0).collect())
+        Ok(result
+            .trim()
+            .split('\n')
+            .map(|x| u64::from_str_radix(&x[2..], 16).unwrap_or_default())
+            .filter(|x| *x != 0)
+            .collect())
     }
 
     pub fn get_blocks(&mut self, addr: u64) -> R2Result<Vec<BasicBlock>> {
@@ -672,14 +673,14 @@ impl R2Api {
     pub fn get_ret(&mut self) -> R2Result<String> {
         // simple as that?
         let ret = self.cmd("pae ret")?;
-        Ok(ret[0..ret.len()-1].to_owned())
+        Ok(ret[0..ret.len() - 1].to_owned())
     }
 
     pub fn get_register_value(&mut self, reg: &str) -> R2Result<u64> {
         let cmd = format!("aer {}", reg);
         let val = self.cmd(cmd.as_str())?;
         // println!("val: {}", val);
-        Ok(u64::from_str_radix(&val[2..val.len()-1], 16).unwrap())
+        Ok(u64::from_str_radix(&val[2..val.len() - 1], 16).unwrap())
     }
 
     pub fn set_register_value(&mut self, reg: &str, value: u64) {
@@ -690,15 +691,15 @@ impl R2Api {
     pub fn get_syscall_str(&mut self, sys_num: u64) -> R2Result<String> {
         let cmd = format!("asl {}", sys_num);
         let ret = self.cmd(cmd.as_str())?;
-        Ok(ret[0..ret.len()-1].to_owned())
+        Ok(ret[0..ret.len() - 1].to_owned())
     }
 
     pub fn get_syscall_num(&mut self, sys_str: &str) -> R2Result<u64> {
         let cmd = format!("asl {}", sys_str);
         let ret = self.cmd(cmd.as_str())?;
-        Ok((&ret[0..ret.len()-1]).parse::<u64>().unwrap())
+        Ok((&ret[0..ret.len() - 1]).parse::<u64>().unwrap())
     }
-    
+
     pub fn get_syscalls(&mut self) -> R2Result<Vec<Syscall>> {
         let json = self.cmd("asj")?;
         r2_result(serde_json::from_str(json.as_str()))
@@ -712,7 +713,7 @@ impl R2Api {
         match self.mode {
             Mode::Debugger => self.cmd(format!("db {}", addr).as_str()),
             Mode::Frida => self.cmd(format!(":db {}", addr).as_str()),
-            _ => Ok("idk".to_string())
+            _ => Ok("idk".to_string()),
         }
     }
 
@@ -720,13 +721,12 @@ impl R2Api {
         match self.mode {
             Mode::Debugger => self.cmd("dc"),
             Mode::Frida => self.cmd(":dc"),
-            _ => Ok("idk".to_string())
+            _ => Ok("idk".to_string()),
         }
     }
 
     pub fn init_vm(&mut self) {
-        let _r = self.cmd(format!("aei; aeim {} {}", 
-            STACK_START, STACK_SIZE).as_str());
+        let _r = self.cmd(format!("aei; aeim {} {}", STACK_START, STACK_SIZE).as_str());
     }
 
     pub fn init_entry(&mut self, args: &[String], vars: &[String]) {
@@ -743,11 +743,13 @@ impl R2Api {
         let alloc = self.cmd(":dma 4096").unwrap();
         let func = format!(
             "{{ptr('{}').writeUtf8String(JSON.stringify(this.context))}}",
-            alloc.trim());
+            alloc.trim()
+        );
 
         let script_data = format!(
             ": Interceptor.attach(ptr('0x{:x}'),function(){});:db {}",
-            addr, func, addr);
+            addr, func, addr
+        );
 
         self.cmd(&script_data).unwrap();
         loop {
@@ -785,9 +787,13 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn disassemble_bytes(&mut self, addr: u64, data: &[u8], num: usize) -> R2Result<Vec<Instruction>> {
-        let cmd = format!("wx {} @ {}; pij {} @ {}", 
-            hex_encode(data), addr, num, addr);
+    pub fn disassemble_bytes(
+        &mut self,
+        addr: u64,
+        data: &[u8],
+        num: usize,
+    ) -> R2Result<Vec<Instruction>> {
+        let cmd = format!("wx {} @ {}; pij {} @ {}", hex_encode(data), addr, num, addr);
 
         let json = self.cmd(cmd.as_str())?;
         r2_result(serde_json::from_str(json.as_str()))
@@ -818,7 +824,7 @@ impl R2Api {
         };
 
         let val = self.cmd(cmd.as_str())?;
-        r2_result(u64::from_str_radix(&val[2..val.len()-1], 16))
+        r2_result(u64::from_str_radix(&val[2..val.len() - 1], 16))
     }
 
     pub fn get_files(&mut self) -> R2Result<Vec<File>> {
@@ -828,12 +834,12 @@ impl R2Api {
 
     pub fn set_file(&mut self, path: &str) {
         if let Some(file) = self.get_files().unwrap().iter().find(|f| f.uri == path) {
-            self.cmd(format!("op {}", file.fd).as_str()).unwrap();   
+            self.cmd(format!("op {}", file.fd).as_str()).unwrap();
         }
     }
 
     pub fn set_file_fd(&mut self, fd: usize) {
-        self.cmd(format!("op {}", fd).as_str()).unwrap();   
+        self.cmd(format!("op {}", fd).as_str()).unwrap();
     }
 
     pub fn get_libraries(&mut self) -> R2Result<Vec<String>> {
@@ -859,7 +865,11 @@ impl R2Api {
     }
 
     // this got a little nuts
-    pub fn load_library_helper(&mut self, lib_paths: &[String], loaded_paths: &[String]) -> R2Result<Vec<String>> {
+    pub fn load_library_helper(
+        &mut self,
+        lib_paths: &[String],
+        loaded_paths: &[String],
+    ) -> R2Result<Vec<String>> {
         let bits = self.info.bin.bits;
         let mut sections = self.get_segments().unwrap();
         let relocations = self.get_relocations().unwrap();
@@ -893,8 +903,10 @@ impl R2Api {
                     for export in &self.get_exports().unwrap() {
                         if let Some(reloc) = relocation_map.get(&export.name) {
                             // write the export address into the reloc
-                            self.cmd(format!("wv{} {} @ {}", bits/8, export.vaddr, 
-                                reloc.vaddr).as_str())?;
+                            self.cmd(
+                                format!("wv{} {} @ {}", bits / 8, export.vaddr, reloc.vaddr)
+                                    .as_str(),
+                            )?;
                         }
                     }
                     if let Ok(librs) = self.load_library_helper(lib_paths, &full_paths) {
@@ -906,8 +918,10 @@ impl R2Api {
                     self.set_file(&lib_path);
                     for export in &self.get_exports().unwrap() {
                         if let Some(reloc) = relocation_map.get(&export.name) {
-                            self.cmd(format!("wv{} {} @ {}", bits/8, export.vaddr, 
-                                reloc.vaddr).as_str())?;
+                            self.cmd(
+                                format!("wv{} {} @ {}", bits / 8, export.vaddr, reloc.vaddr)
+                                    .as_str(),
+                            )?;
                         }
                     }
                     break;
@@ -918,9 +932,7 @@ impl R2Api {
         Ok(full_paths)
     }
 
-    pub fn clear(&mut self) {
-        
-    }
+    pub fn clear(&mut self) {}
 
     pub fn close(&mut self) {
         self.r2p.lock().unwrap().close();

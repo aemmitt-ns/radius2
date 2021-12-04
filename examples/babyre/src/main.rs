@@ -4,7 +4,8 @@ use radius2::value::Value;
 
 // simulates the scanf("%d", dst) calls with sym inputs
 fn scanf_sim(state: &mut State, args: &[Value]) -> Value {
-    let input_len = state.context
+    let input_len = state
+        .context
         .entry("ints".to_owned())
         .or_insert_with(Vec::new)
         .len();
@@ -29,7 +30,7 @@ fn main() {
     let new_state = radius.run_until(state, 0x004028e9, &[0x00402941]).unwrap();
 
     // solving takes the majority of the ~5 sec runtime
-    let mut flag_bytes = vec!(); // the hook writes the flag bytes, collect them
+    let mut flag_bytes = vec![]; // the hook writes the flag bytes, collect them
     for input in new_state.context.get("ints").unwrap() {
         flag_bytes.push(new_state.solver.eval_to_u64(&input).unwrap() as u8);
     }

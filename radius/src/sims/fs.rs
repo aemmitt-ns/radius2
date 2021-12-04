@@ -7,32 +7,32 @@ use std::time::SystemTime;
 pub enum FileMode {
     Read,
     Write,
-    Append
+    Append,
 }
 
 /// Stat structure from kernel_stat64
 #[derive(Default, Debug, Clone)]
 pub struct Stat {
-    pub st_dev:     u64,
-    pub st_ino:     u64,
-    pub st_mode:    u32,
-    pub st_nlink:   u32,
-    pub st_uid:     u32,
-    pub st_gid:     u32,
+    pub st_dev: u64,
+    pub st_ino: u64,
+    pub st_mode: u32,
+    pub st_nlink: u32,
+    pub st_uid: u32,
+    pub st_gid: u32,
 
-    pub __pad0:     u32,
-    pub st_rdev:    u64,
-    pub st_size:    i64,
+    pub __pad0: u32,
+    pub st_rdev: u64,
+    pub st_size: i64,
     pub st_blksize: i32,
     pub st_blocks: i64,
 
-    pub st_atime:     u64,
+    pub st_atime: u64,
     pub st_atimensec: u64,
-    pub st_mtime:     u64,
+    pub st_mtime: u64,
     pub st_mtimensec: u64,
-    pub st_ctime:     u64,
+    pub st_ctime: u64,
     pub st_ctimensec: u64,
-    
+
     pub __glibc_reserved: [i32; 2],
 }
 
@@ -43,12 +43,12 @@ pub struct SimFile {
     pub position: usize,
     pub mode: FileMode,
     pub content: Vec<Value>,
-    pub metadata: Option<fs::Metadata>
+    pub metadata: Option<fs::Metadata>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SimFilesytem {
-    pub files: Vec<SimFile>
+    pub files: Vec<SimFile>,
 }
 
 impl Default for SimFilesytem {
@@ -58,16 +58,12 @@ impl Default for SimFilesytem {
 }
 
 impl SimFilesytem {
-
     pub fn new() -> Self {
         let files = SimFilesytem::get_stdio();
-        SimFilesytem {
-            files,
-        }
+        SimFilesytem { files }
     }
 
     pub fn open(&mut self, path: &str, mode: FileMode) -> Option<usize> {
-
         for file in &self.files {
             if file.path == path {
                 return Some(file.fd);
@@ -80,10 +76,10 @@ impl SimFilesytem {
         if data.is_ok() {
             let metadata = fs::metadata(path).unwrap();
 
-            let mut content = vec!();
+            let mut content = vec![];
             for d in data.unwrap() {
                 content.push(Value::Concrete(d as u64, 0));
-            } 
+            }
 
             let file = SimFile {
                 path: path.to_owned(),
@@ -91,7 +87,7 @@ impl SimFilesytem {
                 position: 0,
                 mode,
                 content,
-                metadata: Some(metadata)
+                metadata: Some(metadata),
             };
 
             self.files.push(file);
@@ -143,7 +139,10 @@ impl SimFilesytem {
     }
 
     pub fn getpath(&mut self, fd: usize) -> Option<String> {
-        self.files.iter().find(|f| f.fd == fd).map(|f| f.path.clone())
+        self.files
+            .iter()
+            .find(|f| f.fd == fd)
+            .map(|f| f.path.clone())
     }
 
     pub fn access(&mut self, path: &str) -> Value {
@@ -163,29 +162,41 @@ impl SimFilesytem {
         let metadata = fs::metadata(path);
         if let Ok(meta) = metadata {
             Some(Stat {
-                st_dev:     16777234,
-                st_ino:     3334575,
-                st_mode:    33188,
-                st_nlink:   0,
-                st_uid:     0,
-                st_gid:     0,
-                st_rdev:    0,
-                __pad0:     0,
-            
-                st_size:    meta.len() as i64,
-                st_blksize: 0x1000,            
+                st_dev: 16777234,
+                st_ino: 3334575,
+                st_mode: 33188,
+                st_nlink: 0,
+                st_uid: 0,
+                st_gid: 0,
+                st_rdev: 0,
+                __pad0: 0,
+
+                st_size: meta.len() as i64,
+                st_blksize: 0x1000,
                 st_blocks: 8,
-            
-                st_atime:     meta.accessed().unwrap()
-                    .duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs(),
+
+                st_atime: meta
+                    .accessed()
+                    .unwrap()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
                 st_atimensec: 0,
-                st_mtime:     meta.modified().unwrap()
-                    .duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs(),
+                st_mtime: meta
+                    .modified()
+                    .unwrap()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
                 st_mtimensec: 0,
-                st_ctime:     meta.created().unwrap()
-                    .duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs(),
+                st_ctime: meta
+                    .created()
+                    .unwrap()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
                 st_ctimensec: 0,
-                
+
                 __glibc_reserved: [0, 0],
             })
         } else {
@@ -201,8 +212,8 @@ impl SimFilesytem {
             fd,
             position: 0,
             mode,
-            content: vec!(),
-            metadata: None
+            content: vec![],
+            metadata: None,
         };
 
         self.files.push(file);
@@ -219,7 +230,7 @@ impl SimFilesytem {
             position: 0,
             mode: FileMode::Read,
             content: data.to_owned(),
-            metadata: None
+            metadata: None,
         });
     }
 
@@ -227,35 +238,35 @@ impl SimFilesytem {
         let f = self.files.iter().find(|f| f.path == path).map(|f| f.fd);
         if let Some(fd) = f {
             self.files.remove(fd);
-        } 
+        }
     }
 
     pub fn get_stdio() -> Vec<SimFile> {
-        vec!(
+        vec![
             SimFile {
                 path: "STDIN".to_owned(), // idk
                 fd: 0,
                 position: 0,
                 mode: FileMode::Read,
-                content: vec!(),
-                metadata: None
+                content: vec![],
+                metadata: None,
             },
             SimFile {
                 path: "STDOUT".to_owned(),
                 fd: 1,
                 position: 0,
                 mode: FileMode::Write,
-                content: vec!(),
-                metadata: None
+                content: vec![],
+                metadata: None,
             },
             SimFile {
                 path: "STDERR".to_owned(),
                 fd: 2,
                 position: 0,
                 mode: FileMode::Write,
-                content: vec!(),
-                metadata: None
-            }
-        )
+                content: vec![],
+                metadata: None,
+            },
+        ]
     }
 }

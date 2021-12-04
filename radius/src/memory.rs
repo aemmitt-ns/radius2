@@ -2,9 +2,9 @@
 use ahash::AHashMap;
 type HashMap<P, Q> = AHashMap<P, Q>;
 
-use crate::r2_api::{R2Api, Endian, STACK_START, STACK_SIZE};
-use crate::value::Value;
+use crate::r2_api::{Endian, R2Api, STACK_SIZE, STACK_START};
 use crate::solver::Solver;
+use crate::value::Value;
 use std::mem;
 
 // const CHUNK: u64 = 8;
@@ -14,66 +14,66 @@ const READ_CACHE: usize = 64;
 // one day I will make a reasonable heap impl
 // today is not that day
 const HEAP_START: u64 = 0x40000000;
-const HEAP_SIZE:  u64 = 0x04000000;
+const HEAP_SIZE: u64 = 0x04000000;
 // const HEAP_CHUNK: u64 = 0x100;
 
 // pub const CHECK_PERMS: bool = false;
 
 // i think these are different on darwin
-const PROT_NONE:  u64 = 0x0;
-const PROT_READ:  u64 = 0x1;
+const PROT_NONE: u64 = 0x0;
+const PROT_READ: u64 = 0x1;
 const PROT_WRITE: u64 = 0x2;
-const PROT_EXEC:  u64 = 0x4;
+const PROT_EXEC: u64 = 0x4;
 
 #[derive(Clone)]
 pub struct Memory {
     pub solver: Solver,
-    pub r2api:  R2Api,
-    pub mem:    HashMap<u64, Value>,
-    pub heap:   Heap,
-    pub bits:   u64,
+    pub r2api: R2Api,
+    pub mem: HashMap<u64, Value>,
+    pub heap: Heap,
+    pub bits: u64,
     pub endian: Endian,
-    pub segs:   Vec<MemorySegment>,
-    pub blank:  bool,
-    pub check:  bool
+    pub segs: Vec<MemorySegment>,
+    pub blank: bool,
+    pub check: bool,
 }
 
 pub enum Permission {
-    Read, 
-    Write, 
-    Execute
+    Read,
+    Write,
+    Execute,
 }
 
 #[derive(Debug, Clone)]
 pub struct MemorySegment {
-    pub name:  String,
-    pub addr:  u64,
-    pub size:  u64,
-    pub read:  bool,
+    pub name: String,
+    pub addr: u64,
+    pub size: u64,
+    pub read: bool,
     pub write: bool,
-    pub exec:  bool,
-    pub init:  bool
+    pub exec: bool,
+    pub init: bool,
 }
 
 impl Memory {
     pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool, check: bool) -> Memory {
         let segments = r2api.get_segments().unwrap();
-        let mut segs = vec!();
+        let mut segs = vec![];
 
         for seg in segments {
             segs.push(MemorySegment {
-                name:  seg.name,
-                addr:  seg.vaddr,
-                size:  seg.size,
-                read:  seg.perm.contains('r'),
+                name: seg.name,
+                addr: seg.vaddr,
+                size: seg.size,
+                read: seg.perm.contains('r'),
                 write: seg.perm.contains('w'),
-                exec:  seg.perm.contains('x'),
-                init:  true
+                exec: seg.perm.contains('x'),
+                init: true,
             });
         }
 
         let endian = r2api.info.bin.endian.as_str();
-    
+
         Memory {
             solver: btor,
             r2api: r2api.clone(),
@@ -83,12 +83,12 @@ impl Memory {
             endian: Endian::from_string(endian),
             segs,
             blank,
-            check
+            check,
         }
     }
 
     pub fn alloc(&mut self, length: &Value) -> u64 {
-        let len = length.as_u64().unwrap(); 
+        let len = length.as_u64().unwrap();
         self.heap.alloc(len)
     }
 
@@ -116,13 +116,13 @@ impl Memory {
     #[inline]
     pub fn check_permission(&self, addr: u64, length: u64, perm: char) -> bool {
         for seg in &self.segs {
-            if addr >= seg.addr && addr + length <= seg.addr+seg.size {
+            if addr >= seg.addr && addr + length <= seg.addr + seg.size {
                 match perm {
                     'r' => return seg.read,
                     'w' => return seg.write,
                     'x' => return seg.exec,
                     'i' => return seg.init,
-                     _  => return false // uhhh shouldnt happen
+                    _ => return false, // uhhh shouldnt happen
                 }
             }
         }
@@ -132,13 +132,13 @@ impl Memory {
 
     pub fn add_segment(&mut self, name: &str, addr: u64, size: u64, perms: &str) {
         self.segs.push(MemorySegment {
-            name:  name.to_owned(),
+            name: name.to_owned(),
             addr,
             size,
-            read:  perms.contains('r'),
+            read: perms.contains('r'),
             write: perms.contains('w'),
-            exec:  perms.contains('x'),
-            init:  perms.contains('i')
+            exec: perms.contains('x'),
+            init: perms.contains('i'),
         });
     }
 
@@ -157,15 +157,22 @@ impl Memory {
             let mut addr = self.r2api.get_address(&("obj.".to_owned() + std)).unwrap();
             let mut offset = 112; // linux
             if addr == 0 {
-                addr = self.r2api.get_address(&("reloc.__".to_owned() + std + "p")).unwrap();
+                addr = self
+                    .r2api
+                    .get_address(&("reloc.__".to_owned() + std + "p"))
+                    .unwrap();
                 offset = 18; // macos, this is jank af
             }
 
             if addr != 0 {
                 // from libc.rs should be in a common place
                 let file_struct = self.alloc(&Value::Concrete(216, 0));
-                self.write_value(file_struct+offset, &Value::Concrete(fd, 0), 4);
-                self.write_value(addr, &Value::Concrete(file_struct, 0), (self.bits/8) as usize); 
+                self.write_value(file_struct + offset, &Value::Concrete(fd, 0), 4);
+                self.write_value(
+                    addr,
+                    &Value::Concrete(file_struct, 0),
+                    (self.bits / 8) as usize,
+                );
                 fd += 1;
             }
         }
@@ -175,9 +182,9 @@ impl Memory {
         if stk_chk != 0 {
             let chk_value_addr = self.heap.alloc(8);
             self.write_value(
-                chk_value_addr, 
-                &(Value::Symbolic(self.solver.bv("radius_canary", 64), 0)), 
-                (self.bits/8) as usize
+                chk_value_addr,
+                &(Value::Symbolic(self.solver.bv("radius_canary", 64), 0)),
+                (self.bits / 8) as usize,
             );
         }
     }
@@ -190,13 +197,13 @@ impl Memory {
             if seg.name == ".data" {
                 if avail {
                     // set size and return new break
-                    seg.size = address-seg.addr;
+                    seg.size = address - seg.addr;
                     return address;
                 } else {
                     // return previous break
-                    return seg.addr+seg.size;
+                    return seg.addr + seg.size;
                 }
-            } 
+            }
         }
         0
     }
@@ -205,7 +212,7 @@ impl Memory {
         for seg in &mut self.segs {
             if seg.name == ".data" {
                 seg.size += inc;
-                return seg.addr+seg.size-inc; // returns previous
+                return seg.addr + seg.size - inc; // returns previous
             }
         }
         -1i64 as u64
@@ -214,9 +221,7 @@ impl Memory {
     #[inline]
     pub fn read_sym(&mut self, address: &Value, len: usize, solver: &mut Solver) -> Value {
         match address {
-            Value::Concrete(addr, _t) => {
-                self.read_value(*addr, len)
-            },
+            Value::Concrete(addr, _t) => self.read_value(*addr, len),
             Value::Symbolic(addr, t) => {
                 let addrs = solver.evaluate_many(addr);
                 let mut value = Value::Symbolic(solver.bvv(0, 64), 0);
@@ -235,9 +240,7 @@ impl Memory {
     #[inline]
     pub fn write_sym(&mut self, address: &Value, value: &Value, len: usize, solver: &mut Solver) {
         match address {
-            Value::Concrete(addr, _t) => {
-                self.write_value(*addr, value, len)
-            },
+            Value::Concrete(addr, _t) => self.write_value(*addr, value, len),
             Value::Symbolic(addr, t) => {
                 let addrs = solver.evaluate_many(addr);
                 for a in addrs {
@@ -251,28 +254,31 @@ impl Memory {
         }
     }
 
-    pub fn read_sym_len(&mut self, address: &Value, length: &Value, solver: &mut Solver) -> Vec<Value> {
+    pub fn read_sym_len(
+        &mut self,
+        address: &Value,
+        length: &Value,
+        solver: &mut Solver,
+    ) -> Vec<Value> {
         let len = solver.max_value(length) as usize;
 
         match address {
-            Value::Concrete(addr, _t) => {
-                self.read(*addr, len)
-            },
+            Value::Concrete(addr, _t) => self.read(*addr, len),
             Value::Symbolic(addr, t) => {
                 let addrs = solver.evaluate_many(addr);
-                let mut values = vec!();
+                let mut values = vec![];
                 for a in addrs {
                     let read_vals = self.read(a, len);
-                    let mut new_vals = vec!();
+                    let mut new_vals = vec![];
                     if values.is_empty() {
                         new_vals = read_vals;
                     } else {
                         for count in 0..len {
                             let bv = solver.bvv(a, 64);
                             let cond = Value::Symbolic(addr._eq(&bv), *t);
-                            let value = solver.conditional(&cond, 
-                                &read_vals[count], &values[count]);
-                            
+                            let value =
+                                solver.conditional(&cond, &read_vals[count], &values[count]);
+
                             new_vals.push(value);
                         }
                     }
@@ -283,7 +289,13 @@ impl Memory {
         }
     }
 
-    pub fn write_sym_len(&mut self, address: &Value, values: &[Value], length: &Value, solver: &mut Solver) {
+    pub fn write_sym_len(
+        &mut self,
+        address: &Value,
+        values: &[Value],
+        length: &Value,
+        solver: &mut Solver,
+    ) {
         let mut len = solver.max_value(length) as usize;
         // hopefully this doesn't occur
         if len > values.len() {
@@ -294,27 +306,34 @@ impl Memory {
         let t = address.get_taint();
         match address {
             Value::Concrete(addr, _t) => addrs.push(*addr),
-            Value::Symbolic(addr, _t) => addrs.extend(solver.evaluate_many(addr))
+            Value::Symbolic(addr, _t) => addrs.extend(solver.evaluate_many(addr)),
         };
 
         for addr in addrs {
             let read_vals = self.read(addr, len);
             for count in 0..len {
                 let addr_val = Value::Concrete(addr, t);
-                let count_val = Value::Concrete(count as u64, 0); 
+                let count_val = Value::Concrete(count as u64, 0);
                 let cond = address.eq(&addr_val) & count_val.ult(&length);
                 let value = solver.conditional(&cond, &values[count], &read_vals[count]);
-                self.write(addr+count as u64, &mut [value]);
+                self.write(addr + count as u64, &mut [value]);
             }
         }
     }
 
     pub fn memmove(&mut self, dst: &Value, src: &Value, length: &Value, solver: &mut Solver) {
         let data = self.read_sym_len(src, length, solver);
-        self.write_sym_len(dst, &data, length, solver);    
+        self.write_sym_len(dst, &data, length, solver);
     }
 
-    pub fn search(&mut self, addr: &Value, needle: &Value, length: &Value, reverse: bool, solver: &mut Solver) -> Value {
+    pub fn search(
+        &mut self,
+        addr: &Value,
+        needle: &Value,
+        length: &Value,
+        reverse: bool,
+        solver: &mut Solver,
+    ) -> Value {
         //let mut search_data = self.read_sym_len(addr, length);
         let len = solver.max_value(length) as usize;
 
@@ -331,8 +350,8 @@ impl Memory {
                     mask <<= 8;
                 }
                 l
-            },
-            Value::Symbolic(val, _t) => val.get_width()/8
+            }
+            Value::Symbolic(val, _t) => val.get_width() / 8,
         } as usize;
 
         let mut result = Value::Concrete(0, 0);
@@ -346,8 +365,7 @@ impl Memory {
                 pos_val = addr.clone() + length.clone() - Value::Concrete(pos as u64, 0);
             }
 
-            let pos_cond = pos_val.ult(&(addr.clone() + length.clone())) & 
-                !pos_val.ult(&addr);
+            let pos_cond = pos_val.ult(&(addr.clone() + length.clone())) & !pos_val.ult(&addr);
             let new_cond = value.eq(&needle) & pos_cond & !cond.clone();
             //println!("{:?}", new_cond);
             result = solver.conditional(&new_cond, &pos_val, &result);
@@ -362,20 +380,22 @@ impl Memory {
                 break;
             }
         }
-        
+
         result
     }
 
     pub fn strlen(&mut self, addr: &Value, length: &Value, solver: &mut Solver) -> Value {
         let end = self.search(addr, &Value::Concrete(0, 0), length, false, solver);
-        solver.conditional(
-            &(end.eq(&Value::Concrete(0, 0))), 
-            length,
-            &end.sub(addr)
-        )
+        solver.conditional(&(end.eq(&Value::Concrete(0, 0))), length, &end.sub(addr))
     }
 
-    pub fn compare(&mut self, addr1: &Value, addr2: &Value, length: &Value, solver: &mut Solver) -> Value {
+    pub fn compare(
+        &mut self,
+        addr1: &Value,
+        addr2: &Value,
+        length: &Value,
+        solver: &mut Solver,
+    ) -> Value {
         let len = solver.max_value(length);
         let data1 = self.read_sym_len(addr1, &Value::Concrete(len, length.get_taint()), solver);
         let data2 = self.read_sym_len(addr2, &Value::Concrete(len, length.get_taint()), solver);
@@ -393,12 +413,16 @@ impl Memory {
             let len_cond = ind_val.ult(&length);
 
             let lt_val = solver.conditional(
-                &(lt & same.clone() & len_cond.clone()), 
-                &Value::Concrete(-1i64 as u64, 0), &result);
+                &(lt & same.clone() & len_cond.clone()),
+                &Value::Concrete(-1i64 as u64, 0),
+                &result,
+            );
 
             result = solver.conditional(
-                &(gt & same.clone() & len_cond), 
-                &Value::Concrete(1, 0), &lt_val);
+                &(gt & same.clone() & len_cond),
+                &Value::Concrete(1, 0),
+                &lt_val,
+            );
 
             same = same & result.eq(&Value::Concrete(0, 0));
 
@@ -425,16 +449,15 @@ impl Memory {
     }
 
     pub fn read(&mut self, addr: u64, length: usize) -> Vec<Value> {
-
         if length == 0 {
-            return vec!();
+            return vec![];
         }
 
         if self.check && !self.check_permission(addr, length as u64, 'r') {
-            // everything needs to be reworked to have Result<...> 
+            // everything needs to be reworked to have Result<...>
             // so that we can properly handle things like this
             self.handle_segfault(addr, length as u64, 'r');
-        } 
+        }
 
         let make_sym = self.blank && !self.check_permission(addr, length as u64, 'i');
 
@@ -446,7 +469,7 @@ impl Memory {
             match mem {
                 Some(byte) => {
                     data.push(byte.to_owned());
-                },
+                }
                 None => {
                     if make_sym {
                         let sym_name = format!("mem_{:08x}", caddr);
@@ -479,7 +502,7 @@ impl Memory {
             prot_str += "-";
         }
         if prot & PROT_WRITE != 0 {
-            prot_str +=  "w";
+            prot_str += "w";
         } else {
             prot_str += "-";
         }
@@ -488,14 +511,17 @@ impl Memory {
         } else {
             prot_str += "-";
         }
-    
+
         prot_str
     }
 
     pub fn read_bytes(&mut self, addr: u64, length: usize, solver: &mut Solver) -> Vec<u8> {
         let data = self.read(addr, length);
         solver.push();
-        let data_u8 = data.iter().map(|d| solver.evalcon_to_u64(&d).unwrap() as u8).collect();
+        let data_u8 = data
+            .iter()
+            .map(|d| solver.evalcon_to_u64(&d).unwrap() as u8)
+            .collect();
         solver.pop();
         data_u8
     }
@@ -507,7 +533,7 @@ impl Memory {
 
     pub fn write_string(&mut self, addr: u64, string: &str) {
         let data = string.as_bytes();
-        let mut data_value = vec!();
+        let mut data_value = vec![];
         for d in data {
             data_value.push(Value::Concrete(*d as u64, 0));
         }
@@ -532,7 +558,10 @@ impl Memory {
     // this sucks, we need to properly do error handling to do this right
     // TODO make everything not suck
     pub fn handle_segfault(&self, addr: u64, length: u64, perm: char) {
-        panic!("addr {} length {} does not have perm \"{}\"", addr, length, perm);
+        panic!(
+            "addr {} length {} does not have perm \"{}\"",
+            addr, length, perm
+        );
     }
 
     // jesus this got huge
@@ -562,9 +591,9 @@ impl Memory {
                         } else {
                             sym_val = val.slice(7, 0).concat(&sym_val);
                         }
-                         
+
                         taint |= t;
-                    },
+                    }
                     Value::Concrete(val, t) => {
                         let new_val = self.solver.bvv(*val, 8);
 
@@ -583,7 +612,7 @@ impl Memory {
             let mut con_val: u64 = 0;
             for (count, datum) in new_data.iter().enumerate() {
                 if let Value::Concrete(val, t) = datum {
-                    con_val += val << (8*count);
+                    con_val += val << (8 * count);
                     taint |= t;
                 }
             }
@@ -597,13 +626,13 @@ impl Memory {
         match value {
             Value::Concrete(val, t) => {
                 for count in 0..length {
-                    data.push(Value::Concrete((*val >> (8*count)) & 0xff, *t));
+                    data.push(Value::Concrete((*val >> (8 * count)) & 0xff, *t));
                 }
-            },
+            }
             Value::Symbolic(val, t) => {
                 for count in 0..length {
                     //let trans_val = self.solver.translate(&val).unwrap();
-                    let bv = val.slice(((count as u32)+1)*8-1, (count as u32)*8);
+                    let bv = val.slice(((count as u32) + 1) * 8 - 1, (count as u32) * 8);
                     data.push(Value::Symbolic(bv, *t));
                 }
             }
@@ -623,14 +652,14 @@ impl Memory {
 #[derive(Clone)]
 pub struct Heap {
     pub start: u64,
-    pub size:  u64,
-    pub chunks: Vec<Chunk>
+    pub size: u64,
+    pub chunks: Vec<Chunk>,
 }
 
 #[derive(Clone, PartialEq)]
-pub struct Chunk { 
+pub struct Chunk {
     pub addr: u64,
-    pub size: u64
+    pub size: u64,
 }
 
 // still a dumb af heap implementation
@@ -639,19 +668,22 @@ impl Heap {
         Heap {
             start,
             size,
-            chunks: vec!(Chunk { addr: start, size: 0 })
+            chunks: vec![Chunk {
+                addr: start,
+                size: 0,
+            }],
         }
     }
 
     pub fn alloc(&mut self, size: u64) -> u64 {
-        let last = &self.chunks[self.chunks.len()-1];
-        let addr = last.addr+last.size;
+        let last = &self.chunks[self.chunks.len() - 1];
+        let addr = last.addr + last.size;
         self.chunks.push(Chunk { addr, size });
         addr
     }
 
     pub fn free(&mut self, addr: u64) -> Option<u64> {
-        let last = &self.chunks[self.chunks.len()-1];
+        let last = &self.chunks[self.chunks.len() - 1];
         if addr == last.addr {
             self.chunks.pop();
             Some(addr)

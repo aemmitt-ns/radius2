@@ -1,8 +1,8 @@
 use crate::value::Value;
-use boolector::{Btor, BV, SolverResult};
 use boolector::option::{BtorOption, ModelGen, NumberFormat};
-use std::sync::Arc;
+use boolector::{Btor, SolverResult, BV};
 use std::cmp::Ordering;
+use std::sync::Arc;
 
 const EVAL_MAX: usize = 256;
 
@@ -13,7 +13,7 @@ pub struct Solver {
     pub btor: Arc<Btor>,
     pub assertions: Vec<BitVec>,
     pub indexes: Vec<usize>,
-    pub eval_max: usize
+    pub eval_max: usize,
 }
 
 impl Default for Solver {
@@ -23,7 +23,6 @@ impl Default for Solver {
 }
 
 impl Solver {
-
     pub fn new(eval_max: usize) -> Self {
         let btor = Arc::new(Btor::new());
         btor.set_opt(BtorOption::ModelGen(ModelGen::Disabled));
@@ -33,9 +32,9 @@ impl Solver {
 
         Solver {
             btor,
-            assertions: vec!(),
-            indexes: vec!(),
-            eval_max
+            assertions: vec![],
+            indexes: vec![],
+            eval_max,
         }
     }
 
@@ -44,13 +43,16 @@ impl Solver {
 
         let mut solver = Solver {
             btor,
-            assertions: vec!(),
+            assertions: vec![],
             indexes: self.indexes.clone(),
-            eval_max: self.eval_max
+            eval_max: self.eval_max,
         };
 
-        solver.assertions = self.assertions.iter()
-            .map(|a| solver.translate(a).unwrap()).collect();
+        solver.assertions = self
+            .assertions
+            .iter()
+            .map(|a| solver.translate(a).unwrap())
+            .collect();
 
         solver
     }
@@ -79,23 +81,20 @@ impl Solver {
     pub fn translate_value(&self, value: &Value) -> Value {
         match value {
             Value::Concrete(val, t) => Value::Concrete(*val, *t),
-            Value::Symbolic(val, t) => Value::Symbolic(
-                self.translate(val).unwrap(), *t)
+            Value::Symbolic(val, t) => Value::Symbolic(self.translate(val).unwrap(), *t),
         }
     }
 
     pub fn to_bv(&self, value: &Value, length: u32) -> BitVec {
         match value {
-            Value::Concrete(val, _t) => {
-                self.bvv(*val, length)
-            },
+            Value::Concrete(val, _t) => self.bvv(*val, length),
             Value::Symbolic(val, _t) => {
                 //let new_val = self.translate(val).unwrap();
                 let szdiff = val.get_width() as i32 - length as i32;
                 match szdiff.cmp(&0) {
                     Ordering::Equal => val.to_owned(),
-                    Ordering::Greater => val.slice(length-1, 0),
-                    Ordering::Less => val.uext((-szdiff) as u32)
+                    Ordering::Greater => val.slice(length - 1, 0),
+                    Ordering::Less => val.uext((-szdiff) as u32),
                 }
             }
         }
@@ -124,12 +123,14 @@ impl Solver {
                 } else {
                     else_val.with_taint(*t)
                 }
-            },
+            }
             Value::Symbolic(val, t) => {
                 let taint = if_val.get_taint() | else_val.get_taint();
-                Value::Symbolic(val.slice(0, 0).cond_bv(
-                    &self.to_bv(if_val, max_bit),
-                    &self.to_bv(else_val, max_bit)), taint | t)
+                Value::Symbolic(
+                    val.slice(0, 0)
+                        .cond_bv(&self.to_bv(if_val, max_bit), &self.to_bv(else_val, max_bit)),
+                    taint | t,
+                )
             }
         }
     }
@@ -161,11 +162,8 @@ impl Solver {
     }
 
     pub fn eval(&self, value: &Value) -> Option<Value> {
-        
         match value {
-            Value::Concrete(val, t) => {
-                Some(Value::Concrete(*val, *t))
-            },
+            Value::Concrete(val, t) => Some(Value::Concrete(*val, *t)),
             Value::Symbolic(bv, t) => {
                 self.enable_model(true);
 
@@ -178,7 +176,7 @@ impl Solver {
                     None
                 };
                 self.btor.pop(1);
-                
+
                 self.enable_model(false);
 
                 sol
@@ -196,9 +194,7 @@ impl Solver {
 
     pub fn eval_to_bv(&mut self, value: &Value) -> Option<BitVec> {
         match value {
-            Value::Concrete(val, _t) => {
-                Some(self.bvv(*val, 64))
-            },
+            Value::Concrete(val, _t) => Some(self.bvv(*val, 64)),
             Value::Symbolic(bv, _t) => {
                 self.enable_model(true);
 
@@ -222,12 +218,8 @@ impl Solver {
 
     pub fn evalcon_to_u64(&mut self, value: &Value) -> Option<u64> {
         match value {
-            Value::Concrete(val, _t) => {
-                Some(*val)
-            },
-            Value::Symbolic(bv, _t) => {
-                self.evalcon(&bv)
-            }
+            Value::Concrete(val, _t) => Some(*val),
+            Value::Symbolic(bv, _t) => self.evalcon(&bv),
         }
     }
 
@@ -245,7 +237,8 @@ impl Solver {
     }
 
     #[inline]
-    pub fn reset(&mut self) { // uhhh this might work?
+    pub fn reset(&mut self) {
+        // uhhh this might work?
         self.assertions.clear();
         self.indexes.clear();
     }
@@ -285,7 +278,8 @@ impl Solver {
 
     #[inline]
     pub fn assert_value(&mut self, value: &Value) {
-        self.assertions.push(self.to_bv(&!value.eq(&Value::Concrete(0,0)), 1));
+        self.assertions
+            .push(self.to_bv(&!value.eq(&Value::Concrete(0, 0)), 1));
     }
 
     #[inline]
@@ -323,12 +317,11 @@ impl Solver {
             if self.btor.sat() == SolverResult::Sat {
                 let sol = bv.get_a_solution().as_u64().unwrap();
                 solutions.push(sol);
-                let sol_bv = BV::from_u64(
-                    self.btor.clone(), sol, bv.get_width());
+                let sol_bv = BV::from_u64(self.btor.clone(), sol, bv.get_width());
 
                 bv._eq(&sol_bv).not().assert();
             } else {
-                break
+                break;
             }
         }
         self.btor.pop(1);
@@ -339,7 +332,7 @@ impl Solver {
             self.assert_in(bv, &solutions);
         }
         self.enable_model(false);
-        solutions 
+        solutions
     }
 
     pub fn solution(&self, bv: &BitVec) -> Option<String> {
@@ -349,7 +342,7 @@ impl Solver {
         self.apply_assertions();
         let sol = if self.btor.sat() == SolverResult::Sat {
             let solution = bv.get_a_solution().disambiguate();
-            let sol_str = solution.as_01x_str(); 
+            let sol_str = solution.as_01x_str();
             Some(sol_str.to_string())
         } else {
             None
@@ -382,8 +375,8 @@ impl Solver {
         self.apply_assertions();
 
         let len = bv.get_width();
-        let mut low = 0; 
-        let mut high = 1 << (len-1);
+        let mut low = 0;
+        let mut high = 1 << (len - 1);
 
         while high != low {
             bv.ugte(&self.bvv(high, len)).assume();
@@ -406,9 +399,9 @@ impl Solver {
         self.apply_assertions();
 
         let len = bv.get_width();
-        let mut low = 0; 
-        let mut high = 1 << (len-1);
-        
+        let mut low = 0;
+        let mut high = 1 << (len - 1);
+
         while high != low {
             bv.ult(&self.bvv(high, len)).assume();
             while self.btor.sat() == SolverResult::Sat && high != low {
@@ -427,14 +420,14 @@ impl Solver {
     pub fn max_value(&self, value: &Value) -> u64 {
         match value {
             Value::Concrete(val, _t) => *val,
-            Value::Symbolic(val, _t) => self.max(val)
+            Value::Symbolic(val, _t) => self.max(val),
         }
     }
 
     pub fn min_value(&self, value: &Value) -> u64 {
         match value {
             Value::Concrete(val, _t) => *val,
-            Value::Symbolic(val, _t) => self.min(val)
+            Value::Symbolic(val, _t) => self.min(val),
         }
     }
 }
