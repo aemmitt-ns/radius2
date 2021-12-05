@@ -592,7 +592,7 @@ impl Value {
     pub fn slice(&self, high: u64, low: u64) -> Value {
         match self {
             Value::Concrete(a, t) => {
-                Value::Concrete((*a >> low) & (((1 << (high - low + 1)) - 1)), *t)
+                Value::Concrete((*a >> low) & ((1 << (high - low + 1)) - 1), *t)
             }
             Value::Symbolic(a, t) => Value::Symbolic(a.slice(high as u32, low as u32), *t),
         }
