@@ -126,18 +126,18 @@ impl Processor {
                 tokens.push(operator);
 
             // all this garbage is for the combo ones like ++=[8] ...
-            } else if l > 1 && &s[l - 1..] == "=" && OPS.contains(&&s[0..l - 1]) {
+            } else if l > 1 && &s[l - 1..] == "=" && OPS.contains(&&s[..l - 1]) {
                 let reg_word = tokens.pop().unwrap();
                 tokens.push(reg_word.to_owned());
-                let operator = self.get_operator(&s[0..l - 1]).unwrap();
+                let operator = self.get_operator(&s[..l - 1]).unwrap();
                 tokens.push(operator);
                 tokens.push(reg_word);
                 tokens.push(Word::Operator(Operations::Equal));
-            } else if l > 4 && &s[l - 1..] == "]" && OPS.contains(&&s[0..l - 4]) {
+            } else if l > 4 && &s[l - 1..] == "]" && OPS.contains(&&s[..l - 4]) {
                 tokens.push(Word::Operator(Operations::AddressStore));
                 let peek = self.get_operator(&s[l - 3..]).unwrap();
                 tokens.push(peek);
-                let operator = self.get_operator(&s[0..l - 4]).unwrap();
+                let operator = self.get_operator(&s[..l - 4]).unwrap();
                 tokens.push(operator);
                 let poke = self.get_operator(&s[l - 4..]).unwrap();
                 tokens.push(Word::Operator(Operations::AddressRestore));

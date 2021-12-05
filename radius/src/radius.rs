@@ -151,13 +151,13 @@ impl Radius {
 
         let lazy = !options.contains(&RadiusOption::Lazy(false));
         let force = options.contains(&RadiusOption::Force(true));
-        let topological = options.contains(&RadiusOption::Topological(true));
+        let topo = options.contains(&RadiusOption::Topological(true));
         let check = options.contains(&RadiusOption::Permissions(true));
         let sim_all = options.contains(&RadiusOption::SimAll(true));
         let selfmod = options.contains(&RadiusOption::SelfModify(true));
         let strict = options.contains(&RadiusOption::Strict(true));
 
-        let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topological);
+        let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topo);
         let processors = Arc::new(Mutex::new(vec![]));
 
         if !options.contains(&RadiusOption::Syscalls(false)) {

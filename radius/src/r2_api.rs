@@ -70,7 +70,7 @@ pub struct Instruction {
     #[serde(default = "invalid")]
     pub disasm: String,
 
-    #[serde(default = "blank")]
+    #[serde(default)]
     pub esil: String,
 
     pub bytes: String,
@@ -78,13 +78,13 @@ pub struct Instruction {
     #[serde(default = "invalid")]
     pub r#type: String,
 
-    #[serde(default = "zero")]
+    #[serde(default)]
     pub type_num: i64,
 
-    #[serde(default = "zero")]
+    #[serde(default)]
     pub jump: i64,
 
-    #[serde(default = "zero")]
+    #[serde(default)]
     pub fail: i64,
 }
 
@@ -144,7 +144,7 @@ pub struct RegisterInformation {
 pub struct CoreInfo {
     pub file: String,
 
-    #[serde(default = "zero")]
+    #[serde(default)]
     pub size: i64,
     pub mode: String,
     pub format: String,
@@ -479,6 +479,11 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }
 
+    pub fn get_shellcode(&mut self, cmd: &str) -> R2Result<Vec<u8>> {
+        let result = self.cmd(&format!("gr;gi exec;gc cmd={};g", cmd))?;
+        Ok(hex_decode(&result))
+    }
+
     /*
         arch/ABI      arg1  arg2  arg3  arg4  arg5  arg6  arg7  Notes
     ──────────────────────────────────────────────────────────────
@@ -594,6 +599,17 @@ impl R2Api {
                     "r9".to_string(),
                 ],
                 ret: "r3".to_string(), // TODO errors are in r0
+            }),
+            ("xtensa", _) => Ok(CallingConvention {
+                args: vec![
+                    "a6".to_string(),
+                    "a3".to_string(),
+                    "a4".to_string(),
+                    "a5".to_string(),
+                    "a8".to_string(),
+                    "a9".to_string(),
+                ],
+                ret: "a2".to_string(),
             }),
             _ => Err("calling convention not found".to_owned()),
         }
