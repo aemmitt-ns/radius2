@@ -327,7 +327,7 @@ fn ioscrackme() {
     // add "[a-zA-Z]" constraint
     state.constrain_bytes(&bv, "[a-zA-Z]");
 
-    let buf_addr: u64 = 0xff000000;
+    let buf_addr: u64 = 0xfff00000;
     state.registers.set("x0", Value::Concrete(buf_addr, 0));
     state
         .memory

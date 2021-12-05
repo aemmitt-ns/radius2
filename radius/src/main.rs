@@ -64,17 +64,15 @@ fn main() {
                 .help("Add a symbolic file"),
         )
         .arg(
-            Arg::with_name("libs")
-                .short("L")
-                .long("libs")
-                .takes_value(true)
-                .help("Load libraries from path"),
-        )
-        .arg(
             Arg::with_name("verbose")
                 .short("v")
                 .long("verbose")
                 .help("Show verbose / debugging output"),
+        )
+        .arg(
+            Arg::with_name("plugins")
+                .long("plugins")
+                .help("Load r2 plugins"),
         )
         .arg(
             Arg::with_name("lazy")
@@ -262,6 +260,12 @@ fn main() {
     let profile = occurs!(matches, "profile");
     let all_sims = !no_sims && libpaths.is_empty();
 
+    let plugins = occurs!(matches, "plugins")
+        || matches
+            .value_of("path")
+            .unwrap_or_default()
+            .starts_with("frida:"); // load plugins for r2frida
+
     let mut options = vec![
         RadiusOption::Debug(occurs!(matches, "verbose")),
         RadiusOption::Lazy(occurs!(matches, "lazy")),
@@ -270,6 +274,7 @@ fn main() {
         RadiusOption::Sims(!no_sims),
         RadiusOption::SimAll(all_sims),
         RadiusOption::LoadLibs(!libpaths.is_empty()),
+        RadiusOption::LoadPlugins(plugins),
     ];
 
     for lib in libpaths {
@@ -407,7 +412,8 @@ fn main() {
         let ind = 3 * i;
         let length: u32 = sets[ind + 2].parse().unwrap();
 
-        let value = if let Some(Word::Literal(val)) = radius.processor.get_literal(sets[ind + 1]) {
+        let lit = radius.processor.get_literal(sets[ind + 1]);
+        let value = if let Some(Word::Literal(val)) = lit {
             val
         } else if let Some(bv) = symbol_map.get(sets[ind + 1]) {
             Value::Symbolic(bv.slice(length - 1, 0), 0)
@@ -424,7 +430,8 @@ fn main() {
             Value::Symbolic(bv, 0)
         };
 
-        if let Some(Word::Literal(address)) = radius.processor.get_literal(sets[ind]) {
+        let lit = radius.processor.get_literal(sets[ind]);
+        if let Some(Word::Literal(address)) = lit {
             state.memory_write_value(&address, &value, (length / 8) as usize);
         } else if let Some(Word::Register(index)) =
             radius.processor.get_register(&mut state, sets[ind])
@@ -538,7 +545,7 @@ fn main() {
                     println!("  {} : {:?}", symbol, str_opt.unwrap());
                 } else {
                     let hex = &format!("{:?}", bv)[2..];
-                    println!("  {} : {}", symbol, hex);
+                    println!("  {} : 0x{}", symbol, hex);
                 }
             } else {
                 println!("{} : no satisfiable value", symbol);

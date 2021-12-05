@@ -13,3 +13,5 @@ pub mod solver;
 pub mod state;
 pub mod test;
 pub mod value;
+
+pub use crate::radius::{Radius, RadiusOption};

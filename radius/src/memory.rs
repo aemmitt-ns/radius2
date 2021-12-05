@@ -263,12 +263,18 @@ impl Memory {
         let len = solver.max_value(length) as usize;
 
         match address {
-            Value::Concrete(addr, _t) => self.read(*addr, len),
+            Value::Concrete(addr, _t) => {
+                let mut data = vec![Value::Concrete(0, 0); len];
+                self.read(*addr, len, &mut data);
+                data
+            }
             Value::Symbolic(addr, t) => {
                 let addrs = solver.evaluate_many(addr);
                 let mut values = vec![];
                 for a in addrs {
-                    let read_vals = self.read(a, len);
+                    let mut read_vals = vec![Value::Concrete(0, 0); len];
+                    self.read(a, len, &mut read_vals);
+
                     let mut new_vals = vec![];
                     if values.is_empty() {
                         new_vals = read_vals;
@@ -302,7 +308,7 @@ impl Memory {
             len = values.len();
         }
 
-        let mut addrs = Vec::with_capacity(128);
+        let mut addrs = Vec::with_capacity(256);
         let t = address.get_taint();
         match address {
             Value::Concrete(addr, _t) => addrs.push(*addr),
@@ -310,7 +316,9 @@ impl Memory {
         };
 
         for addr in addrs {
-            let read_vals = self.read(addr, len);
+            let mut read_vals = vec![Value::Concrete(0, 0); len];
+            self.read(addr, len, &mut read_vals);
+
             for count in 0..len {
                 let addr_val = Value::Concrete(addr, t);
                 let count_val = Value::Concrete(count as u64, 0);
@@ -438,8 +446,15 @@ impl Memory {
 
     #[inline]
     pub fn read_value(&mut self, addr: u64, length: usize) -> Value {
-        let data = self.read(addr, length);
-        self.pack(&data)
+        if length <= 32 {
+            let mut data: [Value; 32] = Default::default();
+            self.read(addr, length, &mut data[..length]);
+            self.pack(&data[..length])
+        } else {
+            let mut data = vec![Value::Concrete(0, 0); length];
+            self.read(addr, length, &mut data);
+            self.pack(&data)
+        }
     }
 
     #[inline]
@@ -448,9 +463,10 @@ impl Memory {
         self.write(addr, &mut data)
     }
 
-    pub fn read(&mut self, addr: u64, length: usize) -> Vec<Value> {
+    pub fn read(&mut self, addr: u64, length: usize, data: &mut [Value]) {
+        //println!("length {} data len {}", length, data.());
         if length == 0 {
-            return vec![];
+            return;
         }
 
         if self.check && !self.check_permission(addr, length as u64, 'r') {
@@ -461,22 +477,23 @@ impl Memory {
 
         let make_sym = self.blank && !self.check_permission(addr, length as u64, 'i');
 
-        let mut data: Vec<Value> = Vec::with_capacity(length);
+        //let mut data: Vec<Value> = Vec::with_capacity(length);
         for count in 0..length as u64 {
             let caddr = addr + count;
             let mem = self.mem.get(&caddr);
 
             match mem {
                 Some(byte) => {
-                    data.push(byte.to_owned());
+                    data[count as usize] = byte.to_owned();
                 }
                 None => {
                     if make_sym {
                         let sym_name = format!("mem_{:08x}", caddr);
-                        data.push(Value::Symbolic(self.solver.bv(sym_name.as_str(), 8), 0))
+                        data[count as usize] =
+                            Value::Symbolic(self.solver.bv(sym_name.as_str(), 8), 0);
                     } else {
                         let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
-                        data.push(Value::Concrete(bytes[0] as u64, 0));
+                        data[count as usize] = Value::Concrete(bytes[0] as u64, 0);
                         for (c, byte) in bytes.into_iter().enumerate() {
                             let new_data = Value::Concrete(byte as u64, 0);
                             self.mem.entry(caddr + c as u64).or_insert(new_data);
@@ -486,7 +503,7 @@ impl Memory {
             }
         }
         //println!("read {:?}", data);
-        data
+        //data
     }
 
     pub fn prot_to_str(&self, prot: u64) -> String {
@@ -516,7 +533,8 @@ impl Memory {
     }
 
     pub fn read_bytes(&mut self, addr: u64, length: usize, solver: &mut Solver) -> Vec<u8> {
-        let data = self.read(addr, length);
+        let mut data = vec![Value::Concrete(0, 0); length];
+        self.read(addr, length, &mut data);
         solver.push();
         let data_u8 = data
             .iter()

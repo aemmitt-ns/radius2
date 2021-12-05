@@ -1,4 +1,4 @@
-use radius2::radius::{Radius, RadiusOption};
+use radius2::{Radius, RadiusOption};
 
 fn main() {
     let options = [RadiusOption::Debug(true), RadiusOption::Sims(false)];

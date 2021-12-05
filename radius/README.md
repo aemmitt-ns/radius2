@@ -1,6 +1,6 @@
 ## radius - fast symbolic execution with r2
 
-radius is a rust rewrite of ESILSolve with some architectural improvements. It uses boolector as the SMT solver rather than z3. It executes about 1000x faster than ESILSolve on average. radius gains additional speed over other rust based symbex tools by using u64 primitives for concrete values instead of constant valued bitvectors which incur significant overhead for all operations. 
+radius is symbolic execution and taint analysis framework using radare2 and its ESIL intermediate representation. It is essentially a rust rewrite of ESILSolve with some architectural improvements. It uses boolector as the SMT solver rather than z3. It executes about 1000x faster than ESILSolve on average. radius gains additional speed over other rust based symbex tools by using u64 primitives for concrete values instead of constant valued bitvectors which incur significant overhead for all operations. 
 
 ### Building
 
@@ -9,12 +9,30 @@ Install radare2 with
 git clone https://github.com/radareorg/radare2.git
 radare2/sys/install.sh 
 ```
-Then clone and build radius with `cargo build --release`
+
+Include radius as a dependency using `radius2 = "1.0.8"` or build locally with `cargo build --release`
+
+### Supported Architectures
+
+- **x86**
+- **amd64**
+- **ARM**
+- **AArch64**
+
+### "Supported" Architectures
+
+radius also "supports" **MIPS**, **PowerPC**, and **Gameboy** but they are almost entirely untested. 
+
+radius can execute **Dalvik** bytecode only involving static methods and variables. 
+
+Finally there is also a varying amount of support for **6502**, **8051**, **AVR**, **h8300**, **PIC**, **RISCV**, **SH-4**, **V810**, **V850**, **Xtensa**.
+
+Also PCode can be translated to ESIL with r2ghidra with `pdga` so potentially more archs could be supported that way. 
 
 ### Example
 
 ```rust
-use radius2::radius::Radius;
+use radius2::Radius;
 
 fn main() {
     let mut radius = Radius::new("tests/r100");
@@ -38,7 +56,7 @@ fn main() {
 radius can also be installed from crates.io and easily included in packages. radius also has a CLI tool that can be installed with `cargo install radius2`
 
 ```
-radius2 1.0.7
+radius2 1.0.8
 Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>
 Symbolic Execution tool using r2 and boolector
 
@@ -50,6 +68,7 @@ FLAGS:
     -h, --help          Prints help information
     -z, --lazy          Evaluate symbolic PC values lazily
         --no-sims       Do not simulate imports
+        --plugins       Load r2 plugins
     -P, --profile       Get performance and runtime information
     -M, --selfmodify    Allow selfmodifying code (slower)
     -2, --stderr        Show stderr output
@@ -84,12 +103,12 @@ OPTIONS:
 This tool can be used to solve the same `r100` crackme as above like 
 
 ```
-$ radius2 -p tests/r100 -a 0x4006fd -x 0x400790 -s flag 96 --set A0 0x100000 64 --set 0x100000 flag 96
-flag : #x7372656b6c61545f65646f43 "Code_Talkers"
+$ radius2 -p tests/r100 -a 0x4006fd -x 0x400790 -s flag 96 str -S A0 0x100000 64 -S 0x100000 flag 96
+  flag : "Code_Talkers"
 ```
 Or even more quickly with strings using 
 
 ```
 $ radius2 -p tests/r100 -s stdin 96 -X Incorrect
-stdin : #x7372656b6c61545f65646f43 "Code_Talkers"
+  stdin : "Code_Talkers"
 ```

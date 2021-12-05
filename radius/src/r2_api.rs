@@ -1,4 +1,4 @@
-use r2pipe::{R2Pipe, R2PipeSpawnOptions};
+use r2pipe::{Error, R2Pipe, R2PipeSpawnOptions};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::u64;
@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::{thread, time};
 
-pub const STACK_START: u64 = 0xff000000;
-pub const STACK_SIZE: u64 = 0x780000 * 2;
+pub const STACK_START: u64 = 0xfff00000;
+pub const STACK_SIZE: u64 = 0x78000 * 2;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Endian {
@@ -433,7 +433,7 @@ impl R2Api {
         let r2pipe = match (&filename, &opts) {
             (None, None) => R2Pipe::open(),
             (Some(name), _) => R2Pipe::spawn(name, options.to_owned()),
-            _ => Err("cannot have options for non-spawned"),
+            _ => Err(Error::NoSession),
         };
 
         let mut r2api = R2Api {
@@ -461,7 +461,7 @@ impl R2Api {
     }
 
     pub fn cmd(&mut self, cmd: &str) -> R2Result<String> {
-        self.r2p.lock().unwrap().cmd(cmd)
+        Ok(self.r2p.lock().unwrap().cmd(cmd).unwrap_or_default())
     }
 
     pub fn get_info(&mut self) -> R2Result<Information> {

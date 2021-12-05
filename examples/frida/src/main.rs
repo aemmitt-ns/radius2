@@ -1,8 +1,13 @@
-use radius2::radius::{Radius, RadiusOption};
 use radius2::value::Value;
+use radius2::{Radius, RadiusOption};
 
 fn main() {
-    let options = [RadiusOption::Debug(true), RadiusOption::Sims(false)];
+    let options = [
+        RadiusOption::Debug(true),
+        RadiusOption::Sims(false),
+        RadiusOption::LoadPlugins(true),
+    ];
+
     let mut radius = Radius::new_with_options(Some("frida://attach/usb//iOSCrackMe"), &options);
 
     // turn off cache to write value back to real mem

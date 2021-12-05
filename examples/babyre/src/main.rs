@@ -1,6 +1,6 @@
-use radius2::radius::{Radius, RadiusOption};
 use radius2::state::State;
 use radius2::value::Value;
+use radius2::{Radius, RadiusOption};
 
 // simulates the scanf("%d", dst) calls with sym inputs
 fn scanf_sim(state: &mut State, args: &[Value]) -> Value {

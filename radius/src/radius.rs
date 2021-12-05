@@ -41,6 +41,8 @@ pub enum RadiusOption {
     R2Argument(&'static str),
     /// Handle self-modifying code (poorly)
     SelfModify(bool),
+    /// Load plugins
+    LoadPlugins(bool),
     /// Load libraries
     LoadLibs(bool),
     /// Path to load library from
@@ -125,6 +127,10 @@ impl Radius {
         }
 
         argv.push("-2");
+
+        if !options.contains(&RadiusOption::LoadPlugins(true)) {
+            argv.push("-NN");
+        }
 
         // need this for sims
         if use_sims {
@@ -416,8 +422,7 @@ impl Radius {
     }
 
     pub fn get_steps(&self) -> u64 {
-        let steps = self.processor.steps;
-        steps
+        self.processor.steps
             + self
                 .processors
                 .lock()

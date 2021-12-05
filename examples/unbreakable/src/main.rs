@@ -1,5 +1,5 @@
-use radius2::radius::Radius;
 use radius2::value::Value;
+use radius2::Radius;
 
 fn main() {
     let mut radius = Radius::new("tests/unbreakable");
