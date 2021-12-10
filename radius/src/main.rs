@@ -97,10 +97,10 @@ fn main() {
                 .help("Do not simulate imports"),
         )
         .arg(
-            Arg::with_name("frida")
+            Arg::with_name("fuzz")
                 .short("F")
-                .long("frida")
-                .help("Create initial state from frida hook"),
+                .long("fuzz")
+                .help("Generate testcases for each new address found"),
         )
         .arg(
             Arg::with_name("profile")
@@ -289,6 +289,7 @@ fn main() {
 
     let start = Instant::now();
 
+    let path = matches.value_of("path").unwrap_or_default();
     let mut radius = Radius::new_with_options(matches.value_of("path"), &options);
 
     // execute provided r2 commands
@@ -302,8 +303,10 @@ fn main() {
 
     let mut state = if let Some(address) = matches.value_of("address") {
         let addr = radius.get_address(address).unwrap();
-        if occurs!(matches, "frida") {
+        if path.starts_with("frida:") {
             radius.frida_state(addr)
+        //} else if path.starts_with("gdb:") || path.starts_with("dbg:") {
+            //radius.debug_state(addr)
         } else {
             radius.call_state(addr)
         }
@@ -454,10 +457,12 @@ fn main() {
         .map(|x| radius.get_address(x).unwrap())
         .collect();
 
+    let mut analyzed = false;
     // get code references to strings and add them to the avoid list
     if occurs!(matches, "avoid_strings") {
         // need to analyze to get string refs
         radius.analyze(3);
+        analyzed = true;
         for string in collect!(matches, "avoid_strings") {
             for location in radius.r2api.search_strings(string).unwrap() {
                 avoid.extend(
@@ -475,14 +480,14 @@ fn main() {
     // get code references to strings and add them to the breakpoints
     if occurs!(matches, "break_strings") {
         // need to analyze to get string refs
-        radius.analyze(3);
+        if !analyzed { radius.analyze(3); }
         for string in collect!(matches, "break_strings") {
             for location in radius.r2api.search_strings(string).unwrap() {
                 bps.extend(
                     radius
                         .r2api
                         .get_references(location)
-                        .unwrap()
+                        .unwrap_or_default()
                         .iter()
                         .map(|x| x.from),
                 );
@@ -548,7 +553,7 @@ fn main() {
                     println!("  {} : 0x{}", symbol, hex);
                 }
             } else {
-                println!("{} : no satisfiable value", symbol);
+                println!("  {} : no satisfiable value", symbol);
             }
         }
 

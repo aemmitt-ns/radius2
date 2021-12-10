@@ -81,6 +81,7 @@ pub enum Operations {
     NoOperation,
     Print, // Tool for cli hooks
     Constrain,
+    Terminate,
 
     // flag ops
     Zero,
@@ -183,6 +184,7 @@ impl Operations {
             // hax for use in the cli / plugin
             "." => Operations::Print,
             "_" => Operations::Constrain,
+            "!!" => Operations::Terminate,
 
             "$z" => Operations::Zero,
             "$c" => Operations::Carry,
@@ -794,18 +796,23 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
 
         Operations::Print => {
             let value = pop_value(state, false, false);
+            let ip = state.registers.get_pc().as_u64().unwrap_or_default();
             if let Some(bv) = state.solver.eval_to_bv(&value) {
-                let ip = state.registers.get_pc().as_u64().unwrap_or_default();
                 if let Some(string) = state.evaluate_string(&bv) {
                     println!("{:016x}: {:?} {:?}", ip, bv, string);
                 } else {
                     println!("{:016x}: {:?}", ip, bv);
                 }
+            } else {
+                println!("{:016x}: unsat", ip);
             }
         }
         Operations::Constrain => {
             let value = pop_value(state, false, false);
             state.assert_value(&value);
+        }
+        Operations::Terminate => {
+            state.set_break();
         }
 
         Operations::ToDo => {

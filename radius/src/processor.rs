@@ -43,7 +43,7 @@ pub struct Processor {
     pub breakpoints: AHashSet<u64>,
     pub mergepoints: AHashSet<u64>,
     pub avoidpoints: AHashSet<u64>,
-    //pub visited: AHashSet<u64>,
+    pub visited: AHashSet<u64>,
     pub merges: HashMap<u64, State>,
     pub selfmodify: bool,
     pub optimized: bool,
@@ -98,7 +98,7 @@ impl Processor {
             breakpoints: AHashSet::new(),
             mergepoints: AHashSet::new(),
             avoidpoints: AHashSet::new(),
-            //visited:      AHashSet::new(),
+            visited: AHashSet::new(),
             merges: HashMap::new(),
             selfmodify,
             optimized,
@@ -539,10 +539,12 @@ impl Processor {
             RETN_TYPE => {
                 if state.backtrace.is_empty() && new_status == &InstructionStatus::None {
                     // try to avoid returning outside valid context
-                    if !self.breakpoints.is_empty() {
+                    if !self.breakpoints.is_empty() 
+                        || !self.esil_hooks.is_empty() {
+
                         new_status = &InstructionStatus::Avoid;
                     } else {
-                        // break if there are no other breakpoints
+                        // break if there are no other breakpoints/hooks
                         new_status = &InstructionStatus::Break;
                     }
                 } else {
@@ -735,7 +737,7 @@ impl Processor {
             if DO_EVENT_HOOKS && state.has_event_hooks {
                 state.do_hooked(
                     &Event::SymbolicExec(EventTrigger::Before),
-                    &EventContext::ExecContext(new_pc.clone()),
+                    &EventContext::ExecContext(new_pc.clone(), vec![]),
                 );
             }
 
@@ -755,7 +757,10 @@ impl Processor {
             if DO_EVENT_HOOKS && state.has_event_hooks {
                 state.do_hooked(
                     &Event::SymbolicExec(EventTrigger::After),
-                    &EventContext::ExecContext(new_pc.clone()),
+                    &EventContext::ExecContext(
+                        new_pc.clone(), 
+                        state.esil.pcs.clone()
+                    ),
                 );
             }
         }
@@ -812,11 +817,25 @@ impl Processor {
             match current_state.status {
                 StateStatus::Active | StateStatus::PostMerge => {
                     let new_states = self.step(current_state);
+
+                    let pc = current_state
+                        .registers
+                        .get_pc()
+                        .as_u64()
+                        .unwrap_or_default();
+
                     for s in new_states {
                         states.push_front(s);
                         index += 1;
                     }
-                    index += 1;
+                    
+                    // if the current address has not been
+                    // seen before, keep executing it 
+                    if self.visited.contains(&pc) {
+                        index += 1;
+                    } else {
+                        self.visited.insert(pc);
+                    }
                 }
                 StateStatus::Merge => {
                     self.merge(states.remove(index).unwrap());

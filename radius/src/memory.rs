@@ -551,7 +551,7 @@ impl Memory {
 
     pub fn write_string(&mut self, addr: u64, string: &str) {
         let data = string.as_bytes();
-        let mut data_value = vec![];
+        let mut data_value = Vec::with_capacity(string.len());
         for d in data {
             data_value.push(Value::Concrete(*d as u64, 0));
         }

@@ -46,8 +46,7 @@ pub enum Event {
 pub enum EventContext {
     ReadContext(Value, Value),
     WriteContext(Value, Value),
-    ExecContext(Value),
-    AfterExecContext(Value, Vec<Value>), // eh idk maybe ill do something else
+    ExecContext(Value, Vec<u64>),
     AllocContext(Value),
     FreeContext(Value),
     SearchContext(Value, Value, Value),
@@ -581,7 +580,6 @@ impl State {
         String::from_utf8(bytes).ok()
     }
 
-    // TODO do this in a way that isn't a global maximum of stupidity
     /// Apply this state to the radare2 instance. This writes all the values
     /// in the states memory back to the memory in r2 as well as the register
     /// values, evaluating any symbolic expressions.
@@ -596,10 +594,22 @@ impl State {
             }
         }
 
-        for addr in self.memory.addresses() {
-            let bval = self.memory.read_value(addr, 1);
+        let mut addrs = self.memory.addresses();
+        addrs.sort();
+
+        let mut chunk: Vec<u8> = Vec::with_capacity(256);
+        for (i, addr) in addrs.iter().enumerate() {
+            let bval = self.memory.read_value(*addr, 1);
             let b = self.solver.evalcon_to_u64(&bval).unwrap() as u8;
-            self.r2api.write(addr, vec![b]);
+            chunk.push(b);
+
+            if chunk.len() > 255 
+                || i >= addrs.len()-1
+                || addrs[i+1] != addrs[i]+1 
+            {
+                self.r2api.write(1+addr-chunk.len() as u64, chunk.clone());
+                chunk.clear();
+            }
         }
     }
 

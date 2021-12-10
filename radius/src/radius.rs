@@ -291,7 +291,6 @@ impl Radius {
                 );
 
                 state.memory_write_value(&current, &Value::Concrete(addr, 0), ptrlen);
-
                 current = current + Value::Concrete(ptrlen as u64, 0);
             }
             state.memory_write_value(&current, &Value::Concrete(0, 0), ptrlen);
@@ -454,11 +453,12 @@ impl Radius {
         }
 
         let mut handles = Vec::with_capacity(threads);
-        let statevector = Arc::new(Mutex::new(VecDeque::with_capacity(self.eval_max)));
+        let statevector = Arc::new(Mutex::new(VecDeque::with_capacity(threads*self.eval_max)));
         statevector.lock().unwrap().push_back(state);
 
         loop {
             let mut count = 0;
+            let state_count = statevector.lock().unwrap().len();
             while count < threads && !statevector.lock().unwrap().is_empty() {
                 //println!("on thread {}!", thread_count);
                 let procs = self.processors.clone();
@@ -472,7 +472,7 @@ impl Radius {
                 };
 
                 let handle = thread::spawn(move || {
-                    let new_states = processor.run(state, true);
+                    let new_states = processor.run(state, state_count < threads);
                     states.lock().unwrap().extend(new_states);
                     procs.lock().unwrap().push(processor);
                 });
