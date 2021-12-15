@@ -305,8 +305,8 @@ fn main() {
         let addr = radius.get_address(address).unwrap();
         if path.starts_with("frida:") {
             radius.frida_state(addr)
-        //} else if path.starts_with("gdb:") || path.starts_with("dbg:") {
-            //radius.debug_state(addr)
+        } else if path.starts_with("gdb:") || path.starts_with("dbg:") {
+            radius.debug_state(addr)
         } else {
             radius.call_state(addr)
         }

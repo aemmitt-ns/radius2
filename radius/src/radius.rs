@@ -214,6 +214,16 @@ impl Radius {
         state
     }
 
+    /// Initialize state from a debugger breakpoint
+    /// the program will block until bp is hit
+    pub fn debug_state(&mut self, addr: u64) -> State {
+        self.r2api.seek(addr);
+        self.r2api.init_debug(addr);
+        self.init_state()
+    }
+
+    /// Initialize state from a frida hook
+    /// the program will block until the hook is hit
     pub fn frida_state(&mut self, addr: u64) -> State {
         self.r2api.seek(addr);
         let mut state = self.init_state();

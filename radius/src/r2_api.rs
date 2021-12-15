@@ -665,7 +665,7 @@ impl R2Api {
     }
 
     pub fn search_bytes(&mut self, data: &[u8]) -> R2Result<Vec<SearchResult>> {
-        let json = self.cmd(&format!("/x {}", hex_encode(data)))?;
+        let json = self.cmd(&format!("/xj {}", hex_encode(data)))?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
@@ -693,9 +693,7 @@ impl R2Api {
     }
 
     pub fn get_register_value(&mut self, reg: &str) -> R2Result<u64> {
-        let cmd = format!("aer {}", reg);
-        let val = self.cmd(cmd.as_str())?;
-        // println!("val: {}", val);
+        let val = self.cmd(&format!("aer {}", reg))?;
         Ok(u64::from_str_radix(&val[2..val.len() - 1], 16).unwrap())
     }
 
@@ -741,8 +739,12 @@ impl R2Api {
         }
     }
 
+    pub fn init_debug(&mut self, addr: u64) {
+        self.cmd(&format!("db {};dc", addr)).unwrap();
+    }
+
     pub fn init_vm(&mut self) {
-        let _r = self.cmd(format!("aei; aeim {} {}", STACK_START, STACK_SIZE).as_str());
+        let _r = self.cmd(&format!("aei; aeim {} {}", STACK_START, STACK_SIZE));
     }
 
     pub fn init_entry(&mut self, args: &[String], vars: &[String]) {
@@ -751,7 +753,7 @@ impl R2Api {
         let env = vars.join(" ");
         self.init_vm();
         // this is very weird but this is how it works
-        let _r = self.cmd(format!(".aeis {} {} {} @ SP", argc, argv, env).as_str());
+        let _r = self.cmd(&format!(".aeis {} {} {} @ SP", argc, argv, env));
     }
 
     pub fn init_frida(&mut self, addr: u64) -> R2Result<HashMap<String, String>> {
