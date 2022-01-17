@@ -128,6 +128,10 @@ impl Radius {
 
         argv.push("-2");
 
+        // always make it writeable 
+        // io.cache will prevent writing, when desirable
+        argv.push("-w");
+
         if !options.contains(&RadiusOption::LoadPlugins(true)) {
             argv.push("-NN");
         }
