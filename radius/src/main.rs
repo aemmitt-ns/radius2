@@ -4,12 +4,14 @@ use crate::radius::{Radius, RadiusOption};
 use boolector::BV;
 use clap::{App, Arg};
 use std::time::Instant;
+use std::fs;
 
-// use crate::state::State;
+use crate::state::StateStatus;
 use crate::value::Value;
 
 use ahash::AHashMap;
 type HashMap<P, Q> = AHashMap<P, Q>;
+use std::collections::VecDeque;
 
 pub mod memory;
 pub mod operations;
@@ -125,6 +127,13 @@ fn main() {
                 .short("2")
                 .long("stderr")
                 .help("Show stderr output"),
+        )
+        .arg(
+            Arg::with_name("directory")
+                .short("d")
+                .long("directory")
+                .takes_value(true)
+                .help("Directory to write output files"),
         )
         .arg(
             Arg::with_name("address")
@@ -258,6 +267,7 @@ fn main() {
 
     let no_sims = occurs!(matches, "no_sims");
     let profile = occurs!(matches, "profile");
+    let fuzz    = occurs!(matches, "fuzz");
     let all_sims = !no_sims && libpaths.is_empty();
 
     let plugins = occurs!(matches, "plugins")
@@ -290,6 +300,7 @@ fn main() {
     let start = Instant::now();
 
     let path = matches.value_of("path").unwrap_or_default();
+    let dir = String::from(matches.value_of("directory").unwrap_or(".")) + "/";
     let mut radius = Radius::new_with_options(matches.value_of("path"), &options);
 
     // execute provided r2 commands
@@ -517,56 +528,110 @@ fn main() {
     // run the thing
     let run_start = Instant::now();
 
-    let result = radius.run(state, threads);
-
-    if profile {
-        let usecs = run_start.elapsed().as_micros();
-        let steps = radius.get_steps();
-        println!(
-            "run time: {} ins: {} ins/usec: {}",
-            usecs,
-            steps,
-            (steps as f64 / usecs as f64)
-        );
-    }
-
-    if let Some(mut end_state) = result {
-        // collect the ESIL strings to evaluate after running
-        let evals: Vec<&str> = collect!(matches, "evaluate_after");
-
-        for eval in evals {
-            radius.processor.parse_expression(&mut end_state, eval);
-        }
-
-        let solve_start = Instant::now();
-
-        for symbol in symbol_map.keys() {
-            let val = Value::Symbolic(end_state.translate(&symbol_map[symbol]).unwrap(), 0);
-
-            if let Some(bv) = end_state.solver.eval_to_bv(&val) {
-                let str_opt = end_state.evaluate_string(&bv);
-                let sym_type = symbol_types[symbol];
-                if sym_type == "str" && str_opt.is_some() {
-                    println!("  {} : {:?}", symbol, str_opt.unwrap());
-                } else {
-                    let hex = &format!("{:?}", bv)[2..];
-                    println!("  {} : 0x{}", symbol, hex);
-                }
-            } else {
-                println!("  {} : no satisfiable value", symbol);
-            }
-        }
+    if !fuzz {
+        let result = radius.run(state, threads);
 
         if profile {
-            println!("solve time: {}", solve_start.elapsed().as_micros());
+            let usecs = run_start.elapsed().as_micros();
+            let steps = radius.get_steps();
+            println!(
+                "run time: {} ins: {} ins/usec: {}",
+                usecs,
+                steps,
+                (steps as f64 / usecs as f64)
+            );
         }
 
-        // dump program output
-        if occurs!(matches, "stdout") {
-            print!("{}", end_state.dump_file_string(1).unwrap_or_default());
+        if let Some(mut end_state) = result {
+            // collect the ESIL strings to evaluate after running
+            let evals: Vec<&str> = collect!(matches, "evaluate_after");
+
+            for eval in evals {
+                radius.processor.parse_expression(&mut end_state, eval);
+            }
+
+            let solve_start = Instant::now();
+
+            for symbol in symbol_map.keys() {
+                let val = Value::Symbolic(end_state.translate(&symbol_map[symbol]).unwrap(), 0);
+
+                if let Some(bv) = end_state.solver.eval_to_bv(&val) {
+                    let str_opt = end_state.evaluate_string(&bv);
+                    let sym_type = symbol_types[symbol];
+                    if sym_type == "str" && str_opt.is_some() {
+                        println!("  {} : {:?}", symbol, str_opt.unwrap());
+                    } else {
+                        let hex = &format!("{:?}", bv)[2..];
+                        println!("  {} : 0x{}", symbol, hex);
+                    }
+                } else {
+                    println!("  {} : no satisfiable value", symbol);
+                }
+            }
+
+            if profile {
+                println!("solve time: {}", solve_start.elapsed().as_micros());
+            }
+
+            // dump program output
+            if occurs!(matches, "stdout") {
+                print!("{}", end_state.dump_file_string(1).unwrap_or_default());
+            }
+            if occurs!(matches, "stderr") {
+                print!("{}", end_state.dump_file_string(2).unwrap_or_default());
+            }
         }
-        if occurs!(matches, "stderr") {
-            print!("{}", end_state.dump_file_string(2).unwrap_or_default());
+    } else {
+        radius.breakpoint(0); // hack to prevent breaking on ret idk
+
+        let mut pcs: HashMap<u64, usize> = HashMap::new();
+        let mut states = VecDeque::new();
+        let mut solutions: HashMap<Vec<u8>, usize> = HashMap::new();
+        states.push_back(state);
+
+        let mut file_counts: HashMap<&str, usize> = HashMap::new();
+            
+        for symbol in symbol_map.keys() {
+            file_counts.insert(symbol, 0);
+        }
+
+        while !states.is_empty() {
+            let mut s = states.pop_front().unwrap();
+            let mut new_states = radius.processor.step(&mut s);
+            new_states.push(s);
+
+            for mut new_state in new_states {
+                if let Some(pc) = new_state.registers.get_pc().as_u64() {
+                    let active = new_state.status == StateStatus::Active;
+                    if pcs.contains_key(&pc) {
+                        let count = pcs[&pc];
+                        pcs.insert(pc, count + 1);
+                        if active {
+                            states.push_back(new_state);
+                        }
+                    } else {
+                        pcs.insert(pc, 1);
+                        for symbol in symbol_map.keys() {
+                            let val = new_state
+                                .translate(&symbol_map[symbol])
+                                .unwrap();
+                            
+                            if let Some(bytes) = new_state.evaluate_bytes(&val) {
+                                if !solutions.contains_key(&bytes) {
+                                    let c = file_counts[symbol];
+                                    let filename = &format!("{}{:04}", symbol, c);
+                                    fs::write(dir.clone()+filename, bytes.clone()).unwrap();
+                                    file_counts.insert(symbol, c + 1);
+                                    solutions.insert(bytes, 1);
+                                } 
+                            }
+                        }
+                        if active {
+                            states.push_front(new_state);
+                        }
+                    }
+                }
+            }
         }
     }
 
