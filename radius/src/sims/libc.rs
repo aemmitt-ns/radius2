@@ -162,7 +162,6 @@ pub fn gets(state: &mut State, args: &[Value]) -> Value {
             Value::Concrete(1024, 0),
         ],
     ); // idk
-
     args[0].to_owned()
 }
 
@@ -176,8 +175,48 @@ pub fn fgets(state: &mut State, args: &[Value]) -> Value {
             args[1].to_owned() - Value::Concrete(1, 0),
         ],
     );
-
     args[0].to_owned()
+}
+
+pub fn fputs(state: &mut State, args: &[Value]) -> Value {
+    let fd = fileno(state, &args[1..2]);
+    let length = strlen(state, &args[0..1]);
+    syscall::write(
+        state,
+        &[
+            fd,
+            args[0].to_owned(),
+            length
+        ],
+    );
+    Value::Concrete(0, 0)
+}
+
+pub fn perror(state: &mut State, args: &[Value]) -> Value {
+    let length = strlen(state, &args[0..1]);
+    syscall::write(
+        state,
+        &[
+            vc(2),
+            args[0].to_owned(),
+            length
+        ],
+    );
+    Value::Concrete(0, 0)
+}
+
+pub fn fputc(state: &mut State, args: &[Value]) -> Value {
+    let fd = fileno(state, &args[1..2]);
+    let fdn = state.solver.evalcon_to_u64(&fd).unwrap_or_default() as usize;
+    state.filesystem.write(fdn, vec![args[0].to_owned()]);
+    Value::Concrete(0, 0)
+}
+
+pub fn feof(state: &mut State, args: &[Value]) -> Value {
+    let fd = fileno(state, &args[1..2]);
+    let fdn = state.solver.evalcon_to_u64(&fd).unwrap_or_default() as usize;
+    let f = &state.filesystem.files[fdn];
+    Value::Concrete(!(f.position == f.content.len()-1) as u64, 0)
 }
 
 pub fn strcpy(state: &mut State, args: &[Value]) -> Value {
@@ -470,6 +509,12 @@ pub fn fwrite(state: &mut State, args: &[Value]) -> Value {
 pub fn fseek(state: &mut State, args: &[Value]) -> Value {
     let fd = fileno(state, &[args[0].to_owned()]);
     syscall::lseek(state, &[fd, args[1].to_owned(), args[2].to_owned()])
+}
+
+pub fn ftell(state: &mut State, args: &[Value]) -> Value {
+    let fd = fileno(state, &[args[0].to_owned()]);
+    let fdn = state.solver.evalcon_to_u64(&fd).unwrap_or_default() as usize;
+    vc(state.filesystem.files[fdn].position as u64)
 }
 
 /*

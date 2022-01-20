@@ -17,7 +17,7 @@ use std::mem;
 type HashMap<P, Q> = AHashMap<P, Q>;
 
 const INSTR_NUM: usize = 64;
-const COLOR: bool = false;
+// const COLOR: bool = true;
 const CALL_TYPE: i64 = 3;
 const RETN_TYPE: i64 = 5;
 // const NOP_TYPE: i64 = 8;
@@ -50,6 +50,7 @@ pub struct Processor {
     pub debug: bool,
     pub lazy: bool,
     pub force: bool,
+    pub color: bool,
     pub topological: bool, // execute blocks in topological sort order
     pub steps: u64,        // number of state steps
 }
@@ -67,9 +68,9 @@ pub enum InstructionStatus {
 
 #[derive(Debug, Clone)]
 pub struct InstructionEntry {
-    instruction: Instruction,
-    tokens: Vec<Word>,
-    status: InstructionStatus, // next: Option<Arc<InstructionEntry>>
+    pub instruction: Instruction,
+    pub tokens: Vec<Word>,
+    pub status: InstructionStatus, // next: Option<Arc<InstructionEntry>>
 }
 
 //const DEBUG: bool = false; // show instructions
@@ -87,6 +88,7 @@ impl Processor {
         lazy: bool,
         force: bool,
         topological: bool,
+        color: bool
     ) -> Self {
         Processor {
             instructions: HashMap::new(),
@@ -106,6 +108,7 @@ impl Processor {
             lazy,
             force,
             topological,
+            color,
             steps: 0, //states: vec!()
         }
     }
@@ -193,7 +196,7 @@ impl Processor {
 
     /// print instruction if debug output is enabled
     pub fn print_instr(&self, state: &mut State, instr: &Instruction) {
-        if !COLOR {
+        if !self.color {
             println!(
                 "{:016x}:  {:<40} |  {}",
                 instr.offset, instr.disasm, instr.esil

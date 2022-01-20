@@ -908,7 +908,12 @@ impl R2Api {
 
         for lib in &libs {
             for path in &paths {
-                let lib_path = path.to_owned() + lib;
+                let lib_path = Path::new(path)
+                    .join(lib)
+                    .to_str()
+                    .unwrap_or_default()
+                    .to_owned();
+                    
                 let loaded = full_paths.iter().any(|x| x == &lib_path);
                 if !loaded && Path::new(&lib_path).exists() {
                     let load_addr = (high_addr & 0xfffffffffffff000) + 0x3000; // idk

@@ -45,6 +45,8 @@ pub enum RadiusOption {
     LoadPlugins(bool),
     /// Load libraries
     LoadLibs(bool),
+    /// use color output from r2
+    ColorOutput(bool),
     /// Path to load library from
     LibPath(String),
 }
@@ -102,7 +104,7 @@ impl Radius {
      * ```
      */
     pub fn new_with_options<T: AsRef<str>>(filename: Option<T>, options: &[RadiusOption]) -> Self {
-        let mut argv = vec![];
+        let mut argv = vec!["-2"];
         let mut eval_max = 256;
         let mut paths = vec![];
         for o in options {
@@ -118,33 +120,28 @@ impl Radius {
         let debug = options.contains(&RadiusOption::Debug(true));
         let use_sims = !options.contains(&RadiusOption::Sims(false));
 
+        if !options.contains(&RadiusOption::LoadPlugins(true)) {
+            argv.push("-NN");
+        }
+
         if debug {
             // pretty print disasm + esil
             argv.push("-e scr.color=3");
             argv.push("-e asm.cmt.esil=true");
             argv.push("-e asm.lines=false");
             argv.push("-e asm.emu=false");
-        }
-
-        argv.push("-2");
-
-        // always make it writeable 
-        // io.cache will prevent writing, when desirable
-        argv.push("-w");
-
-        if !options.contains(&RadiusOption::LoadPlugins(true)) {
-            argv.push("-NN");
-        }
-
-        // need this for sims
-        if use_sims {
-            argv.push("-e io.cache=true");
-            argv.push("-e bin.cache=true");
+            argv.push("-e asm.xrefs=false");
+            argv.push("-e asm.functions=false");
         }
 
         let args = if !argv.is_empty() { Some(argv) } else { None };
 
         let mut r2api = R2Api::new(filename, args);
+        r2api.set_option("io.cache", "true").unwrap();
+        r2api.cmd("eco darkda").unwrap(); // i like darkda
+
+        // doesnt work with io.cache? and not needed?
+        // r2api.set_option("bin.cache", "true").unwrap();
 
         let arch = &r2api.info.bin.arch;
 
@@ -160,8 +157,9 @@ impl Radius {
         let sim_all = options.contains(&RadiusOption::SimAll(true));
         let selfmod = options.contains(&RadiusOption::SelfModify(true));
         let strict = options.contains(&RadiusOption::Strict(true));
+        let color = options.contains(&RadiusOption::ColorOutput(true));
 
-        let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topo);
+        let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topo, color);
         let processors = Arc::new(Mutex::new(vec![]));
 
         if !options.contains(&RadiusOption::Syscalls(false)) {

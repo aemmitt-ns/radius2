@@ -504,8 +504,6 @@ impl Memory {
                 }
             }
         }
-        //println!("read {:?}", data);
-        //data
     }
 
     pub fn prot_to_str(&self, prot: u64) -> String {
@@ -708,14 +706,7 @@ impl Heap {
             self.chunks.pop();
             Some(addr)
         } else {
-            let mut rem = 0;
-            for (i, chunk) in self.chunks.iter().enumerate() {
-                if chunk.addr == addr {
-                    rem = i;
-                    break;
-                }
-            }
-            if rem != 0 {
+            if let Some(rem) = self.chunks.iter().position(|x| x.addr == addr) {
                 self.chunks.remove(rem);
                 Some(addr)
             } else {

@@ -5,6 +5,7 @@ use boolector::BV;
 use clap::{App, Arg};
 use std::time::Instant;
 use std::fs;
+use std::path::Path;
 
 use crate::state::StateStatus;
 use crate::value::Value;
@@ -102,13 +103,26 @@ fn main() {
             Arg::with_name("fuzz")
                 .short("F")
                 .long("fuzz")
-                .help("Generate testcases for each new address found"),
+                .takes_value(true)
+                .help("Generate testcases and write to supplied dir"),
+        )
+        .arg(
+            Arg::with_name("max")
+                .long("max")
+                .takes_value(true)
+                .help("Maximum number of states to keep at a time"),
         )
         .arg(
             Arg::with_name("profile")
                 .short("P")
                 .long("profile")
                 .help("Get performance and runtime information"),
+        )
+        .arg(
+            Arg::with_name("color")
+                .short("C")
+                .long("color")
+                .help("Use color output"),
         )
         .arg(
             Arg::with_name("stdin")
@@ -127,13 +141,6 @@ fn main() {
                 .short("2")
                 .long("stderr")
                 .help("Show stderr output"),
-        )
-        .arg(
-            Arg::with_name("directory")
-                .short("d")
-                .long("directory")
-                .takes_value(true)
-                .help("Directory to write output files"),
         )
         .arg(
             Arg::with_name("address")
@@ -265,6 +272,7 @@ fn main() {
 
     let libpaths: Vec<&str> = collect!(matches, "libs");
 
+    let debug = occurs!(matches, "verbose") || occurs!(matches, "color");
     let no_sims = occurs!(matches, "no_sims");
     let profile = occurs!(matches, "profile");
     let fuzz    = occurs!(matches, "fuzz");
@@ -277,10 +285,11 @@ fn main() {
             .starts_with("frida:"); // load plugins for r2frida
 
     let mut options = vec![
-        RadiusOption::Debug(occurs!(matches, "verbose")),
+        RadiusOption::Debug(debug),
         RadiusOption::Lazy(occurs!(matches, "lazy")),
         RadiusOption::Strict(occurs!(matches, "strict")),
         RadiusOption::SelfModify(occurs!(matches, "selfmodify")),
+        RadiusOption::ColorOutput(occurs!(matches, "color")),
         RadiusOption::Sims(!no_sims),
         RadiusOption::SimAll(all_sims),
         RadiusOption::LoadLibs(!libpaths.is_empty()),
@@ -300,8 +309,18 @@ fn main() {
     let start = Instant::now();
 
     let path = matches.value_of("path").unwrap_or_default();
-    let dir = String::from(matches.value_of("directory").unwrap_or(".")) + "/";
+    let dir = Path::new(matches.value_of("fuzz").unwrap_or("."));
     let mut radius = Radius::new_with_options(matches.value_of("path"), &options);
+
+    if !dir.exists() {
+        fs::create_dir(&dir).unwrap();
+    }
+
+    let max_states = matches
+        .value_of("max")
+        .unwrap_or("256")
+        .parse()
+        .unwrap_or(256);
 
     // execute provided r2 commands
     let cmds: Vec<&str> = collect!(matches, "r2_command");
@@ -355,7 +374,14 @@ fn main() {
                 let value = if let Some(sym) = symbol_map.get(arg) {
                     Value::Symbolic(sym.clone(), 0)
                 } else {
-                    let bytes: Vec<Value> = arg
+                    // @ signs to prevent parsing as radius args
+                    let narg = if arg.starts_with("@") {
+                        &arg[1..]
+                    } else {
+                        &arg[..]
+                    };
+
+                    let bytes: Vec<Value> = narg
                         .as_bytes()
                         .iter()
                         .map(|b| Value::Concrete(*b as u64, 0))
@@ -523,7 +549,7 @@ fn main() {
     }
 
     if profile {
-        println!("init time: {}", start.elapsed().as_micros());
+        println!("init time:\t{}", start.elapsed().as_micros());
     }
     // run the thing
     let run_start = Instant::now();
@@ -535,7 +561,7 @@ fn main() {
             let usecs = run_start.elapsed().as_micros();
             let steps = radius.get_steps();
             println!(
-                "run time: {} ins: {} ins/usec: {}",
+                "run time:\t{}\ninstructions:\t{}\ninstr/usec:\t{:0.6}",
                 usecs,
                 steps,
                 (steps as f64 / usecs as f64)
@@ -570,7 +596,7 @@ fn main() {
             }
 
             if profile {
-                println!("solve time: {}", solve_start.elapsed().as_micros());
+                println!("solve time:\t{}", solve_start.elapsed().as_micros());
             }
 
             // dump program output
@@ -582,8 +608,6 @@ fn main() {
             }
         }
     } else {
-        radius.breakpoint(0); // hack to prevent breaking on ret idk
-
         let mut pcs: HashMap<u64, usize> = HashMap::new();
         let mut states = VecDeque::new();
         let mut solutions: HashMap<Vec<u8>, usize> = HashMap::new();
@@ -596,47 +620,67 @@ fn main() {
         }
 
         while !states.is_empty() {
+            let num_states = states.len();
             let mut s = states.pop_front().unwrap();
+            let cpc = s.registers.get_pc().as_u64().unwrap();
+
+            radius.processor.fetch_instruction(&mut s, cpc);
+            let tn = radius.processor.instructions[&cpc].instruction.type_num;
+
             let mut new_states = radius.processor.step(&mut s);
             new_states.push(s);
 
             for mut new_state in new_states {
-                if let Some(pc) = new_state.registers.get_pc().as_u64() {
-                    let active = new_state.status == StateStatus::Active;
-                    if pcs.contains_key(&pc) {
-                        let count = pcs[&pc];
-                        pcs.insert(pc, count + 1);
-                        if active {
-                            states.push_back(new_state);
-                        }
-                    } else {
-                        pcs.insert(pc, 1);
-                        for symbol in symbol_map.keys() {
-                            let val = new_state
-                                .translate(&symbol_map[symbol])
-                                .unwrap();
-                            
-                            if let Some(bytes) = new_state.evaluate_bytes(&val) {
-                                if !solutions.contains_key(&bytes) {
-                                    let c = file_counts[symbol];
-                                    let filename = &format!("{}{:04}", symbol, c);
-                                    fs::write(dir.clone()+filename, bytes.clone()).unwrap();
-                                    file_counts.insert(symbol, c + 1);
-                                    solutions.insert(bytes, 1);
-                                } 
+                let pc = new_state.registers.get_pc().as_u64().unwrap();
+                let active = new_state.status == StateStatus::Active;
+                if pcs.contains_key(&pc) {
+                    let count = pcs[&pc];
+                    pcs.insert(pc, count + 1);
+                    if active && num_states <= max_states {
+                        states.push_back(new_state);
+                    }
+                    continue;
+                }
+                pcs.insert(pc, 1);
+                // after (conditional) calls and jumps
+                if tn & 0xf == 1 || tn & 0xf == 4 {
+                    for symbol in symbol_map.keys() {
+                        let val = new_state
+                            .translate(&symbol_map[symbol])
+                            .unwrap();
+                        
+                        if let Some(bytes) = new_state.evaluate_bytes(&val) {
+                            if !solutions.contains_key(&bytes) {
+                                let c = file_counts[symbol];
+                                let filename = &format!("{}{:04}", symbol, c);
+                                fs::write(dir.join(filename), &bytes).unwrap();
+                                file_counts.insert(symbol, c + 1);
+                                solutions.insert(bytes, 1);
                             }
-                        }
-                        if active {
-                            states.push_front(new_state);
                         }
                     }
                 }
+                if active {
+                    states.push_front(new_state);
+                }
             }
+        }
+
+        if profile {
+            let usecs = run_start.elapsed().as_micros();
+            let steps = radius.get_steps();
+            println!(
+                "run time:\t{}\ninstructions:\t{}\ninstr/usec:\t{:0.6}\ngenerated:\t{}",
+                usecs,
+                steps,
+                (steps as f64 / usecs as f64),
+                file_counts.values().sum::<usize>()
+            );
         }
     }
 
     if profile {
-        println!("total time: {}", start.elapsed().as_micros());
+        println!("total time:\t{}", start.elapsed().as_micros());
     }
 
     radius.close();
