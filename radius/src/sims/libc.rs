@@ -375,6 +375,10 @@ pub fn malloc(state: &mut State, args: &[Value]) -> Value {
     state.memory_alloc(&args[0])
 }
 
+pub fn realloc(state: &mut State, args: &[Value]) -> Value {
+    malloc(state, &args[1..])
+}
+
 pub fn calloc(state: &mut State, args: &[Value]) -> Value {
     state.memory_alloc(&args[0].mul(&args[1]))
 }

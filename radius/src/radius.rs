@@ -118,13 +118,14 @@ impl Radius {
         }
 
         let debug = options.contains(&RadiusOption::Debug(true));
+        let color = options.contains(&RadiusOption::ColorOutput(true));
         let use_sims = !options.contains(&RadiusOption::Sims(false));
 
         if !options.contains(&RadiusOption::LoadPlugins(true)) {
             argv.push("-NN");
         }
 
-        if debug {
+        if debug && color {
             // pretty print disasm + esil
             argv.push("-e scr.color=3");
             argv.push("-e asm.cmt.esil=true");
@@ -140,9 +141,6 @@ impl Radius {
         r2api.set_option("io.cache", "true").unwrap();
         r2api.cmd("eco darkda").unwrap(); // i like darkda
 
-        // doesnt work with io.cache? and not needed?
-        // r2api.set_option("bin.cache", "true").unwrap();
-
         let arch = &r2api.info.bin.arch;
 
         // don't optimize dalvik & arm
@@ -157,7 +155,6 @@ impl Radius {
         let sim_all = options.contains(&RadiusOption::SimAll(true));
         let selfmod = options.contains(&RadiusOption::SelfModify(true));
         let strict = options.contains(&RadiusOption::Strict(true));
-        let color = options.contains(&RadiusOption::ColorOutput(true));
 
         let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topo, color);
         let processors = Arc::new(Mutex::new(vec![]));

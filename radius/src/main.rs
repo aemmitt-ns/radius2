@@ -332,7 +332,7 @@ fn main() {
     }
 
     let mut state = if let Some(address) = matches.value_of("address") {
-        let addr = radius.get_address(address).unwrap();
+        let addr = radius.get_address(address).unwrap_or_default();
         if path.starts_with("frida:") {
             radius.frida_state(addr)
         } else if path.starts_with("gdb:") || path.starts_with("dbg:") {

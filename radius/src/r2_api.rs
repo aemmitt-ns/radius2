@@ -842,7 +842,11 @@ impl R2Api {
         };
 
         let val = self.cmd(cmd.as_str())?;
-        r2_result(u64::from_str_radix(&val[2..val.len() - 1], 16))
+        if val.len() > 3 {
+            r2_result(u64::from_str_radix(&val[2..val.len() - 1], 16))
+        } else {
+            Ok(0) // to be consistent with r2?
+        }
     }
 
     pub fn get_files(&mut self) -> R2Result<Vec<File>> {
