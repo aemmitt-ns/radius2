@@ -11,9 +11,11 @@ use crate::state::{
 use crate::sims::syscall::syscall;
 use crate::sims::SimMethod;
 
-use ahash::{AHashMap, AHashSet};
-use std::collections::VecDeque;
+use std::collections::BinaryHeap;
 use std::mem;
+use std::rc::Rc;
+
+use ahash::{AHashMap, AHashSet};
 type HashMap<P, Q> = AHashMap<P, Q>;
 
 const INSTR_NUM: usize = 64;
@@ -28,6 +30,14 @@ pub enum Word {
     Register(usize),
     Operator(Operations),
     Unknown(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RunMode {
+    Single,
+    Step,
+    Parallel,
+    Multiple
 }
 
 pub type HookMethod = fn(&mut State) -> bool;
@@ -713,6 +723,7 @@ impl Processor {
     /// Take single step with the state provided
     pub fn step(&mut self, state: &mut State) -> Vec<State> {
         self.steps += 1;
+        state.visit();
 
         let pc_allocs = 32;
         let pc_value = state.registers.get_pc();
@@ -795,73 +806,65 @@ impl Processor {
         }
     }
 
-    /// run the state until a breakpoint is hit or state split
-    pub fn run(&mut self, state: State, split: bool) -> VecDeque<State> {
-        let mut states = VecDeque::with_capacity(state.solver.eval_max);
-        states.push_back(state);
+    /// run the state until completion based on mode
+    pub fn run(&mut self, state: State, mode: RunMode) -> Vec<State> {
+        // use binary heap as priority queue to prioritize states
+        // that have the lowest number of visits for the current PC
+        let mut states = BinaryHeap::new();
+        let mut results = vec![];
+        states.push(Rc::new(state));
 
-        // run until empty for single threaded, until split for multi
-        let mut index = 0;
-        while !split || (states.len() == 1) {
+        // run until empty for single, until split for parallel
+        // or until every state is at the breakpoint for multiple
+        let split = mode == RunMode::Parallel;
+        let step = mode == RunMode::Step;
+
+        loop {
             if states.is_empty() {
                 if self.merges.is_empty() {
-                    return VecDeque::new();
+                    return results;
                 } else {
                     // pop one out of mergers
                     let key = *self.merges.keys().next().unwrap();
                     let mut merge = self.merges.remove(&key).unwrap();
                     merge.status = StateStatus::PostMerge;
-                    states.push_back(merge)
+                    states.push(Rc::new(merge));
                 }
             }
 
-            let current_state = &mut states[index];
+            let mut current_rc = states.pop().unwrap();
+            let current_state = Rc::make_mut(&mut current_rc);
 
             match current_state.status {
                 StateStatus::Active | StateStatus::PostMerge => {
                     let new_states = self.step(current_state);
-
-                    let pc = current_state
-                        .registers
-                        .get_pc()
-                        .as_u64()
-                        .unwrap_or_default();
-
-                    for s in new_states {
-                        states.push_front(s);
-                        index += 1;
+                    for state in new_states {
+                        states.push(Rc::new(state));
                     }
-                    
-                    // if the current address has not been
-                    // seen before, keep executing it 
-                    if self.visited.contains(&pc) {
-                        index += 1;
-                    } else {
-                        self.visited.insert(pc);
-                    }
+                    states.push(current_rc);
                 }
                 StateStatus::Merge => {
-                    self.merge(states.remove(index).unwrap());
+                    self.merge(current_state.to_owned());
                 }
                 StateStatus::Break => {
                     if current_state.is_sat() {
-                        return VecDeque::from(vec![states.remove(index).unwrap()]);
-                    } else {
-                        states.remove(index).unwrap();
-                    }
+                        results.push(current_state.to_owned());
+                        if mode != RunMode::Multiple {
+                            return results;
+                        } 
+                    } 
                 }
-                _ => {
-                    states.remove(index).unwrap();
-                }
+                _ => {}
             }
-            index = if states.is_empty() {
-                0
-            } else {
-                index % states.len()
-            };
-        }
 
-        states
+            // single step mode always returns states
+            if step || (split && states.len() > 1) {
+                while let Some(mut state) = states.pop() {
+                    results.push(Rc::make_mut(&mut state).to_owned());
+                }
+                return results;
+            }
+        }
     }
 
     pub fn merge(&mut self, mut state: State) {
