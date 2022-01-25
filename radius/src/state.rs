@@ -5,6 +5,7 @@ use crate::sims::fs::SimFilesytem;
 use crate::solver::{BitVec, Solver};
 use crate::value::Value;
 
+use std::cmp::Ordering;
 use std::u8;
 //use std::collections::HashMap;
 use ahash::AHashMap;
@@ -14,7 +15,7 @@ type HashMap<P, Q> = AHashMap<P, Q>;
 
 // event hooks could be a performance issue at some point
 // prolly not now cuz there are 10000 slower things
-pub const DO_EVENT_HOOKS: bool = true;
+pub const DO_EVENT_HOOKS: bool = false;
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum EventTrigger {
@@ -116,12 +117,35 @@ pub struct State {
     pub context: HashMap<String, Vec<Value>>,
     pub taints: HashMap<String, u64>,
     pub hooks: HashMap<Event, EventHook>,
+    pub visits: HashMap<u64, usize>,
     pub pid: u64,
     pub backtrace: Vec<(u64, u64)>,
     pub blank: bool,
     pub debug: bool,
     pub strict: bool,
     pub has_event_hooks: bool,
+}
+
+// state equality is based on PC visit count
+// in order to use a priority queue to manage states
+impl PartialEq for State {
+    fn eq(&self, other: &Self) -> bool {
+        other.get_visit() == self.get_visit()
+    }
+}
+
+impl Eq for State {}
+
+impl Ord for State {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.get_visit().cmp(&self.get_visit())
+    }
+}
+
+impl PartialOrd for State {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl State {
@@ -163,6 +187,7 @@ impl State {
             context: HashMap::new(),
             taints: HashMap::new(),
             hooks: HashMap::new(),
+            visits: HashMap::new(),
             backtrace: Vec::with_capacity(128),
             pid: 1337, // sup3rh4x0r
             blank,
@@ -231,6 +256,7 @@ impl State {
             context,
             taints: self.taints.clone(),
             hooks: self.hooks.clone(),
+            visits: self.visits.clone(),
             backtrace: self.backtrace.clone(),
             pid: self.pid,
             blank: self.blank,
@@ -755,6 +781,22 @@ impl State {
         } else {
             self.status = StateStatus::Unsat;
             false
+        }
+    }
+
+    /// increment visit counter
+    pub fn visit(&mut self) {
+        if let Some(pc) = self.registers.get_pc().as_u64() {
+            self.visits.entry(pc).and_modify(|c| *c += 1).or_insert(1);
+        }
+    }
+
+    /// get visit counter
+    pub fn get_visit(&self) -> usize {
+        if let Some(pc) = self.registers.get_pc().as_u64() {
+            *self.visits.get(&pc).unwrap_or(&0)
+        } else {
+            0
         }
     }
 

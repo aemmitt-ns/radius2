@@ -1,6 +1,6 @@
 use crate::processor::Word;
 use crate::r2_api::hex_encode;
-use crate::radius::{Radius, RadiusOption};
+use crate::radius::{Radius, RadiusOption, RunMode};
 use boolector::BV;
 use clap::{App, Arg};
 use std::time::Instant;
@@ -627,21 +627,18 @@ fn main() {
             radius.processor.fetch_instruction(&mut s, cpc);
             let tn = radius.processor.instructions[&cpc].instruction.type_num;
 
-            let mut new_states = radius.processor.step(&mut s);
-            new_states.push(s);
+            let new_states = radius.processor.run(s, RunMode::Step);
+            //new_states.push(s);
 
             for mut new_state in new_states {
                 let pc = new_state.registers.get_pc().as_u64().unwrap();
                 let active = new_state.status == StateStatus::Active;
-                if pcs.contains_key(&pc) {
-                    let count = pcs[&pc];
-                    pcs.insert(pc, count + 1);
+                if pcs.entry(pc).and_modify(|c| *c += 1).or_insert(1) > &mut 1 {
                     if active && num_states <= max_states {
                         states.push_back(new_state);
                     }
                     continue;
                 }
-                pcs.insert(pc, 1);
                 // after (conditional) calls and jumps
                 if tn & 0xf == 1 || tn & 0xf == 4 {
                     for symbol in symbol_map.keys() {

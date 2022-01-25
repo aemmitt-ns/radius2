@@ -1,4 +1,4 @@
-use crate::processor::{HookMethod, Processor};
+pub use crate::processor::{HookMethod, Processor, RunMode};
 use crate::r2_api::{BasicBlock, FunctionInfo, Information, Instruction, R2Api, R2Result};
 use crate::state::{State, StateStatus};
 //use crate::value::Value;
@@ -444,7 +444,12 @@ impl Radius {
     pub fn run_until(&mut self, state: State, target: u64, avoid: &[u64]) -> Option<State> {
         self.breakpoint(target);
         self.avoid(avoid);
-        self.processor.run(state, false).pop_front()
+        self.processor.run(state, RunMode::Single).pop()
+    }
+
+    /// execute until every state has reached an end
+    pub fn run_all(&mut self, state: State) -> Vec<State> {
+        self.processor.run(state, RunMode::Multiple)
     }
 
     /**
@@ -458,7 +463,7 @@ impl Radius {
         // else there will be race conditions. Unfortunately this
         // will prevent mergers from happening. this sucks
         if threads == 1 || !self.processor.mergepoints.is_empty() {
-            return self.processor.run(state, false).pop_front();
+            return self.processor.run(state, RunMode::Single).pop();
         }
 
         let mut handles = Vec::with_capacity(threads);
@@ -467,7 +472,7 @@ impl Radius {
 
         loop {
             let mut count = 0;
-            let state_count = statevector.lock().unwrap().len();
+            let _state_count = statevector.lock().unwrap().len();
             while count < threads && !statevector.lock().unwrap().is_empty() {
                 //println!("on thread {}!", thread_count);
                 let procs = self.processors.clone();
@@ -481,7 +486,7 @@ impl Radius {
                 };
 
                 let handle = thread::spawn(move || {
-                    let new_states = processor.run(state, state_count < threads);
+                    let new_states = processor.run(state, RunMode::Single);
                     states.lock().unwrap().extend(new_states);
                     procs.lock().unwrap().push(processor);
                 });
