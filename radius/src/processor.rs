@@ -868,25 +868,20 @@ impl Processor {
     }
 
     pub fn merge(&mut self, mut state: State) {
-        let pc = state.registers.get_with_alias("PC").as_u64().unwrap();
+        let pc = state.registers.get_pc().as_u64().unwrap();
 
-        let has_pc = self.merges.contains_key(&pc);
-        if !has_pc {
-            // trick clippy idk
-            self.merges.insert(pc, state);
-        } else {
-            let mut merge_state = self.merges.remove(&pc).unwrap();
-            let state_asserts = state.solver.assertions.clone();
+        if let Some(mut merge_state) = self.merges.remove(&pc) {
+            let state_asserts = &state.solver.assertions;
             let assertion = state.solver.and_all(&state_asserts);
-            let asserted = Value::Symbolic(assertion.clone(), 0);
+            let asserted = Value::Symbolic(assertion, 0);
 
             // merge registers
             let mut new_regs = Vec::with_capacity(256);
             let reg_count = state.registers.values.len();
             for index in 0..reg_count {
                 let reg = &merge_state.registers.values[index];
-                let curr_reg = state.registers.values[index].clone();
-                new_regs.push(state.solver.conditional(&asserted, &curr_reg, &reg));
+                let curr_reg = &state.registers.values[index];
+                new_regs.push(state.solver.conditional(&asserted, curr_reg, reg));
             }
             merge_state.registers.values = new_regs;
 
@@ -906,11 +901,13 @@ impl Processor {
             merge_state.memory.mem = new_mem;
 
             // merge solvers
-            let assertions = merge_state.solver.assertions.clone();
-            let current = state.solver.and_all(&assertions);
+            let assertions = &merge_state.solver.assertions;
+            let current = state.solver.and_all(assertions);
             merge_state.solver.reset();
-            merge_state.assert(&current.or(&assertion));
+            merge_state.assert(&current.or(&asserted.as_bv().unwrap()));
             self.merges.insert(pc, merge_state);
+        } else {
+            self.merges.insert(pc, state);
         }
     }
 }
