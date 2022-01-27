@@ -129,6 +129,8 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("stat", libc::stat, 2),
         make_sim("fstat", libc::fstat, 2),
         make_sim("lstat", libc::lstat, 2),
+        make_sim("getopt", libc::getopt, 3),
+        make_sim("getopt_long", libc::getopt, 4),
         make_sim("getuid", libc::getuid, 0),
         make_sim("getgid", libc::getgid, 0),
         make_sim("geteuid", libc::geteuid, 0),

@@ -7,7 +7,6 @@ use crate::solver::Solver;
 use crate::value::Value;
 use std::mem;
 
-// const CHUNK: u64 = 8;
 const READ_CACHE: usize = 64;
 // const LEN_MAX: u64 = 65536;
 
@@ -16,8 +15,6 @@ const READ_CACHE: usize = 64;
 const HEAP_START: u64 = 0x40000000;
 const HEAP_SIZE: u64 = 0x04000000;
 // const HEAP_CHUNK: u64 = 0x100;
-
-// pub const CHECK_PERMS: bool = false;
 
 // i think these are different on darwin
 const PROT_NONE: u64 = 0x0;
@@ -76,12 +73,19 @@ impl Memory {
 
         let endian = r2api.info.bin.endian.as_str();
 
+        let bin = &r2api.info.bin;
+        let bits = if bin.arch == "arm" && bin.bits == 16 {
+            32 // says "16" for 32 bit arm cuz thumb
+        } else {
+            bin.bits
+        };
+
         Memory {
             solver: btor,
             r2api: r2api.clone(),
             mem: HashMap::new(),
             heap: Heap::new(HEAP_START, HEAP_SIZE),
-            bits: r2api.info.bin.bits,
+            bits,
             endian: Endian::from_string(endian),
             segs,
             blank,
@@ -546,7 +550,7 @@ impl Memory {
 
     //read utf8 string
     pub fn read_string(&mut self, addr: u64, length: usize, solver: &mut Solver) -> String {
-        String::from_utf8(self.read_bytes(addr, length, solver)).unwrap()
+        String::from_utf8(self.read_bytes(addr, length, solver)).unwrap_or_default()
     }
 
     pub fn write_string(&mut self, addr: u64, string: &str) {

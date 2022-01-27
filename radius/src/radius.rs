@@ -4,7 +4,7 @@ use crate::state::{State, StateStatus};
 //use crate::value::Value;
 use crate::sims::syscall::indirect;
 use crate::sims::{get_sims, zero, SimMethod};
-use crate::value::Value;
+use crate::value::{Value, vc};
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -604,9 +604,4 @@ pub fn __libc_start_main(state: &mut State) -> bool {
     state.set_args(args);
 
     false
-}
-
-/// convenience method for making an untainted `Value::Concrete`
-pub fn vc(v: u64) -> Value {
-    Value::Concrete(v, 0)
 }

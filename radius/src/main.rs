@@ -405,7 +405,13 @@ fn main() {
     let cons: Vec<&str> = collect!(matches, "constrain");
     for i in 0..matches.occurrences_of("constrain") as usize {
         let bv = &symbol_map[cons[2 * i]];
-        state.constrain_bytes(bv, cons[2 * i + 1]);
+        let cons = if cons[2 * i + 1].starts_with('@') {
+            &cons[2 * i + 1][1..]
+        } else {
+            &cons[2 * i + 1]
+        };
+
+        state.constrain_bytes(bv, cons);
     }
 
     // collect the ESIL hooks

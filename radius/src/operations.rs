@@ -799,12 +799,12 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let ip = state.registers.get_pc().as_u64().unwrap_or_default();
             if let Some(bv) = state.solver.eval_to_bv(&value) {
                 if let Some(string) = state.evaluate_string(&bv) {
-                    println!("{:016x}: {:?} {:?}", ip, bv, string);
+                    println!("\n{:016x}: {:?} {:?}\n", ip, bv, string);
                 } else {
-                    println!("{:016x}: {:?}", ip, bv);
+                    println!("\n{:016x}: {:?}\n", ip, bv);
                 }
             } else {
-                println!("{:016x}: unsat", ip);
+                println!("\n{:016x}: unsat\n", ip);
             }
         }
         Operations::Constrain => {

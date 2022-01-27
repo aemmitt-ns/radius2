@@ -421,6 +421,8 @@ pub struct R2Api {
     //pub permissions: HashMap<u64, Permission>,
     pub info: Information,
     pub mode: Mode,
+    do_cache: bool,
+    cache: HashMap<String, String>
 }
 
 impl R2Api {
@@ -440,6 +442,8 @@ impl R2Api {
             r2p: Arc::new(Mutex::new(r2pipe.unwrap())),
             info: Information::default(),
             mode: Mode::Default,
+            do_cache: false,
+            cache: HashMap::new()
         };
 
         r2api.info = r2api.get_info().unwrap();
@@ -462,6 +466,21 @@ impl R2Api {
 
     pub fn cmd(&mut self, cmd: &str) -> R2Result<String> {
         Ok(self.r2p.lock().unwrap().cmd(cmd).unwrap_or_default())
+    }
+
+    // cached command 
+    pub fn ccmd(&mut self, cmd: &str) -> R2Result<String> {
+        if self.do_cache {
+            if let Some(result) = self.cache.get(cmd) {
+                Ok(result.to_owned())
+            } else {
+                let result = self.cmd(cmd)?;
+                self.cache.insert(cmd.to_owned(), result.clone());
+                Ok(result)
+            }
+        } else {
+            self.cmd(cmd)
+        }
     }
 
     pub fn get_info(&mut self) -> R2Result<Information> {

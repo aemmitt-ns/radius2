@@ -704,3 +704,9 @@ impl Value {
         }
     }
 }
+
+/// convenience method for making an untainted `Value::Concrete`
+#[inline]
+pub fn vc(v: u64) -> Value {
+    Value::Concrete(v, 0)
+}

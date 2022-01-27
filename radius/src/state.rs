@@ -3,7 +3,7 @@ use crate::r2_api::{Endian, Information, R2Api};
 use crate::registers::Registers;
 use crate::sims::fs::SimFilesytem;
 use crate::solver::{BitVec, Solver};
-use crate::value::Value;
+use crate::value::{Value, vc};
 
 use std::cmp::Ordering;
 use std::u8;
@@ -233,8 +233,8 @@ impl State {
 
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
-            previous: Value::Concrete(0, 0),
-            current: Value::Concrete(0, 0),
+            previous: vc(0),
+            current: vc(0),
             last_sz: 64,
             stored_address: None,
             temp1: Vec::with_capacity(128),
@@ -553,6 +553,18 @@ impl State {
         }
     }
 
+    /// Read pointer from `address`
+    pub fn memory_read_ptr(&mut self, address: &Value) -> Value {
+        let ptr_len = self.memory.bits as usize / 8;
+        self.memory_read_value(address, ptr_len)
+    }
+
+    /// Read pointer from `address`
+    pub fn memory_write_ptr(&mut self, address: &Value, value: &Value) {
+        let ptr_len = self.memory.bits as usize / 8;
+        self.memory_write_value(address, value, ptr_len)
+    }
+
     /// Read `length` bytes from `address`
     pub fn memory_read_bytes(&mut self, address: u64, length: usize) -> Vec<u8> {
         self.memory.read_bytes(address, length, &mut self.solver)
@@ -561,6 +573,13 @@ impl State {
     /// Read a string from `address` up to `length` bytes long
     pub fn memory_read_string(&mut self, address: u64, length: usize) -> String {
         self.memory.read_string(address, length, &mut self.solver)
+    }
+
+    /// Read a concrete c string from `address`
+    pub fn memory_read_cstring(&mut self, address: u64) -> String {
+        let length = self.memory_strlen(&vc(address), &vc(4096));
+        let len = self.solver.evalcon_to_u64(&length).unwrap_or(0);
+        self.memory.read_string(address, len as usize, &mut self.solver)
     }
 
     // this doesnt need to be here, just for consistency sake

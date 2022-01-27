@@ -1,6 +1,6 @@
 use crate::sims::syscall;
 use crate::state::State;
-use crate::value::Value;
+use crate::value::{Value, vc};
 use rand::Rng;
 
 const MAX_LEN: u64 = 8192;
@@ -528,10 +528,6 @@ pub fn ftell(state: &mut State, args: &[Value]) -> Value {
  * or a '+' or a '-' before it has seen any digits (which it uses to select the
  * appropriate sign for the result). It returns 0 if it saw no digits.
  */
-#[inline]
-fn vc(n: u64) -> Value {
-    Value::Concrete(n, 0)
-}
 
 // is digit
 #[inline]
@@ -579,11 +575,15 @@ fn tonum(state: &State, c: &Value) -> Value {
 }
 
 fn atoi_concrete(state: &mut State, addr: &Value, base: &Value, len: usize) -> Value {
+    // TODO fix this no not use string because 123\xff will be 0 right now
     let numstr = state.memory_read_string(addr.as_u64().unwrap(), len);
     let numstr = numstr.trim_start(); // trim whitespace
 
-    let start = if &numstr[0..2] == "0x" { 2 } else { 0 }; // offset
-                                                           // oof this is rough, atoi / strtol stop at first nondigit, from_str_radix gives 0
+    if numstr.len() == 0 {
+        return vc(0);
+    }
+
+    let start = if numstr.len() > 1 && &numstr[0..2] == "0x" { 2 } else { 0 }; // offset
     let end = if let Some(n) = numstr[start + 1..]
         .chars()
         .position(|c| isbasedigit(state, &vc(c as u64), base).as_u64().unwrap() != 1)
@@ -872,6 +872,99 @@ pub fn gethostname(state: &mut State, args: &[Value]) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap();
     state.memory_write_string(addr, "radius");
     Value::Concrete(0, 0)
+}
+
+// hardcode these for now idk
+const OPTIND: u64 = 0xf7000000;
+const OPTARG: u64 = 0xf7000004;
+
+fn getopt_setup(state: &mut State) {
+    let relocs = state.r2api.get_relocations().unwrap_or_default();
+
+    let optind_addr = relocs
+        .iter()
+        .find(|r| r.name == "optind")
+        .map(|r| r.vaddr)
+        .unwrap_or(0);
+
+    let optarg_addr = relocs
+        .iter()
+        .find(|r| r.name == "optarg")
+        .map(|r| r.vaddr)
+        .unwrap_or(0);
+
+    let optind_ptr = state.memory_read_value(&vc(optind_addr), 4);
+
+    if let Some(ind) = optind_ptr.as_u64() {
+        if ind != OPTIND {
+            state.memory_write_ptr(&vc(optind_addr), &vc(OPTIND));
+            state.memory_write_ptr(&vc(optarg_addr), &vc(OPTARG));
+            state.memory_write_value(&vc(OPTIND), &vc(1), 4);
+            state.memory_write_ptr(&vc(OPTARG), &vc(0));
+        }
+    } 
+}
+
+/*
+from the man pages 
+
+By default, getopt() permutes the contents of argv as it scans,
+so that eventually all the nonoptions are at the end.
+
+uhhhh i am not gonna do that for right now? also wat
+*/
+
+// this is not even close to being a faithful representation 
+// of the actual (insane) semantics of getopt 
+pub fn getopt(state: &mut State, args: &[Value]) -> Value {
+    getopt_setup(state);
+
+    let ptr = state.memory.bits / 8;
+    // like -xfoo instead of -x foo
+    let optind_val = state.memory_read_value(&vc(OPTIND), 4);
+    let optind = state.solver.evalcon_to_u64(&optind_val).unwrap_or(1);
+    let argc = state.solver.evalcon_to_u64(&args[0]).unwrap_or(1);
+
+    if optind >= argc {
+        vc(-1i64 as u64)
+    } else {
+        let optstr_addr = state.solver.evalcon_to_u64(&args[2]).unwrap_or(0);
+        let optstr = state.memory_read_cstring(optstr_addr);
+        
+        let argv_addr = state.memory_read_ptr(&args[1].add(&vc(optind*ptr)));
+        let argv_len = strlen(state, &[argv_addr.clone()]);
+
+        let arg = state.memory_read(&argv_addr, &argv_len);
+        let mut result = vc(-1i64 as u64);
+        if arg.len() < 2 {
+            return result;
+        }
+
+        let is_opt = arg[0].eq(&vc('-' as u64));
+        result = state.solver.conditional(&is_opt, &vc('?' as u64), &result);
+        let mut optarg = state.memory_read_ptr(&vc(OPTARG));
+
+        for index in 0..optstr.len() {
+            let c = vc(optstr.as_bytes()[index] as u64);
+            let is_c = arg[1].eq(&c);
+            result = state.solver.conditional(&is_opt.and(&is_c), &c, &result);
+            
+            if arg.len() > 2 && index + 1 < optstr.len() && &optstr[index+1..index+2] == ":" {
+                // argument may be next argv, nvmd disallow
+                //let newarg_addr = args[1].add(&vc((optind+1)*ptr));
+
+                // if opt is c which has arg, arg must be in same argv (eg -xfoo)
+                let arg_cond = (!is_c.clone()).or(&is_c.and(&!arg[2].eq(&vc(0))));
+                state.assert_value(&arg_cond);
+
+                optarg = state.solver.conditional(&is_c, &argv_addr.add(&vc(2)), &optarg);
+                state.memory_write_ptr(&vc(OPTARG), &optarg);
+            }
+        }
+
+        state.memory_write_value(&vc(OPTIND), &vc(optind+1), 4);
+        result
+    }
 }
 
 // fully symbolic getenv
