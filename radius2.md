@@ -1,5 +1,5 @@
 
-`radius2` is  command line utility that can be installed with `cargo install radius2`. It allows users to solve reversing problems quickly and aims to be both user friendly and flexible enough to do nearly any symbolic execution task straight from the terminal. Running `radius2 -h` outputs the usage information
+`radius2` is a command line utility that can be installed with `cargo install radius2`. It allows users to solve reversing problems quickly using symbolic execution and aims to be both user friendly and flexible enough to do nearly any task straight from the terminal. Running `radius2 -h` outputs the usage information
 
 ```
 radius2 1.0.10
