@@ -56,6 +56,7 @@ fn main() {
                 .short("L")
                 .long("libs")
                 .takes_value(true)
+                .multiple(true)
                 .help("Load libraries from path"),
         )
         .arg(

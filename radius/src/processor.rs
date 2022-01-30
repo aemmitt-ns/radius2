@@ -65,9 +65,9 @@ pub struct Processor {
     pub steps: u64,        // number of state steps
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum InstructionStatus {
-    None,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum InstructionFlag {
+    //None,
     Hook,
     ESILHook,
     Sim,
@@ -80,7 +80,7 @@ pub enum InstructionStatus {
 pub struct InstructionEntry {
     pub instruction: Instruction,
     pub tokens: Vec<Word>,
-    pub status: InstructionStatus, // next: Option<Arc<InstructionEntry>>
+    pub flags: AHashSet<InstructionFlag>, // next: Option<Arc<InstructionEntry>>
 }
 
 //const DEBUG: bool = false; // show instructions
@@ -521,7 +521,7 @@ impl Processor {
         &self,
         state: &mut State,
         instr: &Instruction,
-        status: &InstructionStatus,
+        flags: &AHashSet<InstructionFlag>,
         words: &[Word],
     ) {
         if state.memory.check && !state.memory.check_permission(instr.offset, instr.size, 'x') {
@@ -541,24 +541,25 @@ impl Processor {
         }
 
         // shit is gettin messy
-        let mut new_status = status;
-        if state.status == StateStatus::PostMerge && *status == InstructionStatus::Merge {
+        //let mut new_status = status;
+        let mut new_flags = flags.clone();
+        if state.status == StateStatus::PostMerge && flags.contains(&InstructionFlag::Merge) {
             state.status = StateStatus::Active;
-            new_status = &InstructionStatus::None;
+            new_flags.remove(&InstructionFlag::Merge);
         }
 
         match instr.type_num {
             CALL_TYPE => state.backtrace.push((instr.jump as u64, new_pc)),
             RETN_TYPE => {
-                if state.backtrace.is_empty() && new_status == &InstructionStatus::None {
+                if state.backtrace.is_empty() && new_flags.is_empty() {
                     // try to avoid returning outside valid context
                     if !self.breakpoints.is_empty() 
                         || !self.esil_hooks.is_empty() {
 
-                        new_status = &InstructionStatus::Avoid;
+                        new_flags.insert(InstructionFlag::Avoid);
                     } else {
                         // break if there are no other breakpoints/hooks
-                        new_status = &InstructionStatus::Break;
+                        new_flags.insert(InstructionFlag::Break);
                     }
                 } else {
                     state.backtrace.pop();
@@ -567,67 +568,63 @@ impl Processor {
             _ => {}
         }
 
-        match new_status {
-            InstructionStatus::None => {
-                let pc_val = Value::Concrete(new_pc, 0);
-                state.registers.set_pc(pc_val);
-                self.parse(state, words);
-            }
-            InstructionStatus::Hook => {
-                let mut skip = false;
-                let pc_val = Value::Concrete(new_pc, 0);
-                state.registers.set_pc(pc_val);
-
-                let hooks = &self.hooks[&pc];
-                for hook in hooks {
-                    skip = !hook(state) || skip;
-                }
-
-                if !skip {
-                    self.parse(state, words);
-                }
-            }
-            InstructionStatus::ESILHook => {
-                let mut skip = false;
-                let pc_val = Value::Concrete(new_pc, 0);
-                state.registers.set_pc(pc_val);
-
-                let esils = &self.esil_hooks[&pc];
-                for esil in esils {
-                    self.parse_expression(state, esil);
-                    let val = pop_concrete(state, false, false);
-                    skip = (val != 0) || skip;
-                }
-
-                if !skip {
-                    self.parse(state, words);
-                }
-            }
-            InstructionStatus::Sim => {
-                let sim = &self.sims[&pc];
-                let cc = state.r2api.get_cc(pc).unwrap_or_default();
-                let args = self.get_args(state, &cc);
-
-                let pc_val = Value::Concrete(new_pc, 0);
-                state.registers.set_pc(pc_val);
-
-                let ret = sim(state, &args);
-                state.registers.set_with_alias(cc.ret.as_str(), ret);
-                state.backtrace.pop();
-
-                // don't ret if sim changes the PC value
-                // this is bad hax because thats all i do
-                let newer_pc_val = state.registers.get_pc();
-                if let Some(newer_pc) = newer_pc_val.as_u64() {
-                    if newer_pc == new_pc {
-                        self.ret(state);
+        // skip executing this instruction
+        let mut skip = false;
+        for status in new_flags.iter() {
+            match status {
+                InstructionFlag::Hook => {
+                    let hooks = &self.hooks[&pc];
+                    for hook in hooks {
+                        skip = !hook(state) || skip;
                     }
                 }
-            }
-            InstructionStatus::Break => state.status = StateStatus::Break,
-            InstructionStatus::Merge => state.status = StateStatus::Merge,
-            InstructionStatus::Avoid => state.status = StateStatus::Inactive,
-        };
+                InstructionFlag::ESILHook => {
+                    let esils = &self.esil_hooks[&pc];
+                    for esil in esils {
+                        self.parse_expression(state, esil);
+                        let val = pop_concrete(state, false, false);
+                        skip = (val != 0) || skip;
+                    }
+                }
+                InstructionFlag::Sim => {
+                    let sim = &self.sims[&pc];
+                    let cc = state.r2api.get_cc(pc).unwrap_or_default();
+                    let args = self.get_args(state, &cc);
+
+                    let ret = sim(state, &args);
+                    state.registers.set_with_alias(cc.ret.as_str(), ret);
+                    state.backtrace.pop();
+
+                    // don't ret if sim changes the PC value
+                    // this is bad hax because thats all i do
+                    let newer_pc_val = state.registers.get_pc();
+                    if let Some(newer_pc) = newer_pc_val.as_u64() {
+                        if newer_pc == pc {
+                            self.ret(state);
+                        }
+                    }
+                    skip = true;
+                }
+                InstructionFlag::Break => {
+                    state.status = StateStatus::Break;
+                    skip = true;
+                }
+                InstructionFlag::Merge => {
+                    state.status = StateStatus::Merge;
+                    skip = true;
+                }
+                InstructionFlag::Avoid => {
+                    state.status = StateStatus::Inactive;
+                    skip = true; 
+                }
+            };
+        }
+
+        if !skip {
+            let pc_val = Value::Concrete(new_pc, 0);
+            state.registers.set_pc(pc_val);
+            self.parse(state, words);
+        }
     }
 
     // weird method that just performs a return
@@ -665,31 +662,36 @@ impl Processor {
                 let size = instr.size;
                 let words = self.tokenize(state, &instr.esil);
 
-                let mut status = InstructionStatus::None;
+                let mut flags = AHashSet::new();
                 let mut opt = self.optimized && !self.selfmodify;
                 if self.hooks.contains_key(&pc_tmp) {
-                    status = InstructionStatus::Hook;
-                } else if self.esil_hooks.contains_key(&pc_tmp) {
-                    status = InstructionStatus::ESILHook;
-                } else if self.breakpoints.contains(&pc_tmp) {
-                    status = InstructionStatus::Break;
-                } else if self.mergepoints.contains(&pc_tmp) {
-                    status = InstructionStatus::Merge;
-                } else if self.avoidpoints.contains(&pc_tmp) {
-                    status = InstructionStatus::Avoid;
-                } else if self.sims.contains_key(&pc_tmp) {
-                    status = InstructionStatus::Sim;
+                    flags.insert(InstructionFlag::Hook);
+                } 
+                if self.esil_hooks.contains_key(&pc_tmp) {
+                    flags.insert(InstructionFlag::ESILHook);
+                }
+                if self.breakpoints.contains(&pc_tmp) {
+                    flags.insert(InstructionFlag::Break);
+                } 
+                if self.mergepoints.contains(&pc_tmp) {
+                    flags.insert(InstructionFlag::Merge);
+                }
+                if self.avoidpoints.contains(&pc_tmp) {
+                    flags.insert(InstructionFlag::Avoid);
+                } 
+                if self.sims.contains_key(&pc_tmp) {
+                    flags.insert(InstructionFlag::Sim);
                 }
 
                 // don't optimize if hooked / bp for accuracy
-                if status != InstructionStatus::None {
+                if !flags.is_empty() {
                     opt = false;
                 }
 
                 let instr_entry = InstructionEntry {
                     instruction: instr,
                     tokens: words,
-                    status,
+                    flags
                 };
 
                 if opt {
@@ -717,7 +719,7 @@ impl Processor {
             panic!("Executed invalid instruction");
         }
 
-        self.execute(state, &instr.instruction, &instr.status, &instr.tokens);
+        self.execute(state, &instr.instruction, &instr.flags, &instr.tokens);
     }
 
     /// Take single step with the state provided

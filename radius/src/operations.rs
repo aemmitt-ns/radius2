@@ -80,6 +80,7 @@ pub enum Operations {
     ToDo,
     NoOperation,
     Print, // Tool for cli hooks
+    PrintDebug, // Tool for cli hooks
     Constrain,
     Terminate,
 
@@ -183,6 +184,7 @@ impl Operations {
 
             // hax for use in the cli / plugin
             "." => Operations::Print,
+            ".." => Operations::PrintDebug,
             "_" => Operations::Constrain,
             "!!" => Operations::Terminate,
 
@@ -806,6 +808,11 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             } else {
                 println!("\n{:016x}: unsat\n", ip);
             }
+        }
+        Operations::PrintDebug => {
+            let value = pop_value(state, false, false);
+            let ip = state.registers.get_pc().as_u64().unwrap_or_default();
+            println!("\n{:016x}: {:?}\n", ip, value);
         }
         Operations::Constrain => {
             let value = pop_value(state, false, false);
