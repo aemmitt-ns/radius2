@@ -139,7 +139,7 @@ impl Radius {
 
         let mut r2api = R2Api::new(filename, args);
         r2api.set_option("io.cache", "true").unwrap();
-        r2api.cmd("eco darkda").unwrap(); // i like darkda
+        // r2api.cmd("eco darkda").unwrap(); // i like darkda
 
         let arch = &r2api.info.bin.arch;
 
