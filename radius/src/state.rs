@@ -173,7 +173,7 @@ impl State {
 
         let solver = Solver::new(eval_max);
         let registers = Registers::new(r2api, solver.clone(), blank);
-        let memory = Memory::new(r2api, solver.clone(), blank, check);
+        let memory = Memory::new(r2api, solver.clone(), blank);
 
         State {
             solver,

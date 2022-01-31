@@ -33,8 +33,7 @@ pub struct Memory {
     pub bits: u64,
     pub endian: Endian,
     pub segs: Vec<MemorySegment>,
-    pub blank: bool,
-    pub check: bool,
+    pub blank: bool
 }
 
 pub enum Permission {
@@ -55,7 +54,7 @@ pub struct MemorySegment {
 }
 
 impl Memory {
-    pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool, _check: bool) -> Memory {
+    pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool) -> Memory {
         let segments = r2api.get_segments().unwrap();
         let mut segs = vec![];
 
@@ -88,8 +87,7 @@ impl Memory {
             bits,
             endian: Endian::from_string(endian),
             segs,
-            blank,
-            check: false, // this is handled in state now
+            blank
         }
     }
 
@@ -470,17 +468,9 @@ impl Memory {
     }
 
     pub fn read(&mut self, addr: u64, length: usize, data: &mut [Value]) {
-        //println!("length {} data len {}", length, data.());
         if length == 0 {
             return;
         }
-
-        if self.check && !self.check_permission(addr, length as u64, 'r') {
-            // everything needs to be reworked to have Result<...>
-            // so that we can properly handle things like this
-            self.handle_segfault(addr, length as u64, 'r');
-        }
-
         let make_sym = self.blank && !self.check_permission(addr, length as u64, 'i');
 
         //let mut data: Vec<Value> = Vec::with_capacity(length);
@@ -564,13 +554,7 @@ impl Memory {
     }
 
     pub fn write(&mut self, addr: u64, data: &mut [Value]) {
-        //println!("write {:?}", data);
         let length = data.len();
-
-        if self.check && !self.check_permission(addr, length as u64, 'w') {
-            self.handle_segfault(addr, length as u64, 'w');
-        }
-
         for (count, mut item) in data.iter_mut().enumerate().take(length) {
             let caddr = addr + count as u64;
             self.mem.insert(caddr, mem::take(&mut item));

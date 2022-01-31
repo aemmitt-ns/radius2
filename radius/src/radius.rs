@@ -233,7 +233,6 @@ impl Radius {
             let val = u64::from_str_radix(&context[reg][2..], 16).unwrap();
             state.registers.set(reg, vc(val));
         }
-
         state
     }
 

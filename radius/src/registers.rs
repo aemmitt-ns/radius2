@@ -210,7 +210,6 @@ impl Registers {
                 (Value::Concrete(new, t1), Value::Concrete(old, _t2)) => {
                     let new_mask = (1 << size) - 1;
                     let mask = !(new_mask << offset);
-
                     let new_value = (old & mask) + ((new & new_mask) << offset);
                     self.values[register.value_index] = Value::Concrete(new_value, t1);
                     return;
