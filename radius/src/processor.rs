@@ -2,7 +2,7 @@ use crate::operations::{
     do_operation, pop_concrete, pop_stack_value, pop_value, push_value, Operations, OPS,
 };
 use crate::r2_api::{hex_decode, CallingConvention, Instruction, Syscall};
-use crate::value::Value;
+use crate::value::{Value, vc};
 
 use crate::state::{
     Event, EventContext, EventTrigger, ExecMode, StackItem, State, StateStatus, DO_EVENT_HOOKS,
@@ -55,6 +55,7 @@ pub struct Processor {
     pub avoidpoints: AHashSet<u64>,
     pub visited: AHashSet<u64>,
     pub merges: HashMap<u64, State>,
+    pub crashes: Vec<State>,
     pub selfmodify: bool,
     pub optimized: bool,
     pub debug: bool,
@@ -112,6 +113,7 @@ impl Processor {
             avoidpoints: AHashSet::new(),
             visited: AHashSet::new(),
             merges: HashMap::new(),
+            crashes: vec![],
             selfmodify,
             optimized,
             debug,
@@ -524,8 +526,8 @@ impl Processor {
         flags: &AHashSet<InstructionFlag>,
         words: &[Word],
     ) {
-        if state.memory.check && !state.memory.check_permission(instr.offset, instr.size, 'x') {
-            state.memory.handle_segfault(instr.offset, instr.size, 'x');
+        if state.check && state.check_crash(&vc(instr.offset), &vc(instr.size), 'x') {
+            return;
         }
 
         let pc = instr.offset;
@@ -855,6 +857,9 @@ impl Processor {
                             return results;
                         } 
                     } 
+                }
+                StateStatus::Crash(_addr, _len) => {
+                    self.crashes.push(current_state.to_owned());
                 }
                 _ => {}
             }

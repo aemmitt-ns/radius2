@@ -875,8 +875,8 @@ pub fn gethostname(state: &mut State, args: &[Value]) -> Value {
 }
 
 // hardcode these for now idk
-const OPTIND: u64 = 0xf7000000;
-const OPTARG: u64 = 0xf7000004;
+const OPTIND: u64 = 0xfffd0000;
+const OPTARG: u64 = 0xfffd0004;
 
 fn getopt_setup(state: &mut State) {
     let relocs = state.r2api.get_relocations().unwrap_or_default();

@@ -55,7 +55,7 @@ pub struct MemorySegment {
 }
 
 impl Memory {
-    pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool, check: bool) -> Memory {
+    pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool, _check: bool) -> Memory {
         let segments = r2api.get_segments().unwrap();
         let mut segs = vec![];
 
@@ -89,7 +89,7 @@ impl Memory {
             endian: Endian::from_string(endian),
             segs,
             blank,
-            check,
+            check: false, // this is handled in state now
         }
     }
 

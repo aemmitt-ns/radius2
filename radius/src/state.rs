@@ -99,7 +99,8 @@ pub enum StateStatus {
     PostMerge, // so we dont get caught in merge loop
     Unsat,
     Inactive,
-    Crash,
+    Crash(u64, char),
+    Exit
 }
 
 #[derive(Clone)]
@@ -122,6 +123,7 @@ pub struct State {
     pub backtrace: Vec<(u64, u64)>,
     pub blank: bool,
     pub debug: bool,
+    pub check: bool,
     pub strict: bool,
     pub has_event_hooks: bool,
 }
@@ -187,11 +189,12 @@ impl State {
             context: HashMap::new(),
             taints: HashMap::new(),
             hooks: HashMap::new(),
-            visits: HashMap::new(),
+            visits: HashMap::with_capacity(512),
             backtrace: Vec::with_capacity(128),
             pid: 1337, // sup3rh4x0r
             blank,
             debug,
+            check,
             strict,
             has_event_hooks: false,
         }
@@ -261,6 +264,7 @@ impl State {
             pid: self.pid,
             blank: self.blank,
             debug: self.debug,
+            check: self.check,
             strict: self.strict,
             has_event_hooks: self.has_event_hooks,
         }
@@ -313,6 +317,10 @@ impl State {
             self.do_hooked(&event, &EventContext::FreeContext(addr.to_owned()));
         }
 
+        if self.check && self.check_crash(addr, &vc(1), 'r') {
+            return vc(-1i64 as u64);
+        }
+
         let ret = self.memory.free_sym(addr, &mut self.solver);
 
         if DO_EVENT_HOOKS && self.has_event_hooks {
@@ -335,6 +343,10 @@ impl State {
                 &Event::SymbolicRead(EventTrigger::Before),
                 &EventContext::ReadContext(address.to_owned(), length.to_owned()),
             );
+        }
+
+        if self.check && self.check_crash(address, length, 'r') {
+            return vec![];
         }
 
         let ret = self.memory.read_sym_len(address, length, &mut self.solver);
@@ -360,6 +372,9 @@ impl State {
             );
         }
 
+        if self.check && self.check_crash(address, length, 'r') {
+            return;
+        }
         let ret = self
             .memory
             .write_sym_len(address, values, length, &mut self.solver);
@@ -385,6 +400,10 @@ impl State {
             );
         }
 
+        if self.check && self.check_crash(address, &vc(length as u64), 'r') {
+            return vc(-1i64 as u64);
+        }
+
         let ret = self.memory.read_sym(address, length, &mut self.solver);
 
         if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
@@ -405,6 +424,10 @@ impl State {
                 &Event::SymbolicRead(EventTrigger::Before),
                 &EventContext::ReadContext(address.to_owned(), Value::Concrete(length as u64, 0)),
             );
+        }
+
+        if self.check && self.check_crash(address, &vc(length as u64), 'w') {
+            return;
         }
 
         let ret = self
@@ -442,6 +465,10 @@ impl State {
             );
         }
 
+        if self.check && self.check_crash(addr, &vc(1), 'r') {
+            return vc(-1i64 as u64);
+        }
+
         let ret = self
             .memory
             .search(addr, needle, length, reverse, &mut self.solver);
@@ -476,6 +503,10 @@ impl State {
             );
         }
 
+        if self.check && (self.check_crash(src, &vc(1), 'r') ||self.check_crash(dst, &vc(1), 'r')) {
+            return vc(-1i64 as u64);
+        }
+
         let ret = self.memory.compare(dst, src, length, &mut self.solver);
 
         if DO_EVENT_HOOKS && self.has_event_hooks {
@@ -507,6 +538,11 @@ impl State {
             );
         }
 
+        // eh don't use the length here 
+        if self.check && self.check_crash(addr, &vc(1), 'r') {
+            return vc(-1i64 as u64);
+        }
+        
         let ret = self.memory.strlen(addr, length, &mut self.solver);
 
         if DO_EVENT_HOOKS && self.has_event_hooks {
@@ -536,6 +572,10 @@ impl State {
                 &event,
                 &EventContext::MoveContext(dst.to_owned(), src.to_owned(), length.to_owned()),
             );
+        }
+
+        if self.check && (self.check_crash(src, length, 'r') || self.check_crash(dst, length, 'w')) {
+            return;
         }
 
         self.memory.memmove(dst, src, length, &mut self.solver);
@@ -834,6 +874,36 @@ impl State {
         self.set_status(StateStatus::Inactive);
     }
 
+    /// convenience method to mark state crashed
+    pub fn set_crash(&mut self, addr: u64, perm: char) {
+        self.set_status(StateStatus::Crash(addr, perm));
+    }
+
+    pub fn check_crash(&mut self, addr: &Value, len: &Value, perm: char) -> bool {
+        let length = self.solver.max_value(len);
+        match addr {
+            Value::Concrete(address, _t) => {
+                let crash = !self.memory.check_permission(*address, length, perm);
+                if crash {
+                    self.set_crash(*address, perm);
+                }
+                crash
+            } 
+            Value::Symbolic(address, _t) => {
+                let min = self.solver.min(address);
+                let max = self.solver.max(address);
+                let min_crash = !self.memory.check_permission(min, length, perm);
+                let max_crash = !self.memory.check_permission(max, length, perm);
+                if min_crash {
+                    self.set_crash(min, perm);
+                } else if max_crash {
+                    self.set_crash(max, perm);
+                }
+                min_crash || max_crash
+            }
+        }
+    }
+
     /// convenience method to break
     pub fn set_break(&mut self) {
         self.set_status(StateStatus::Break);
@@ -901,7 +971,7 @@ impl State {
         self.solver.check_sat(val)
     }
 
-    /// Assert the truth of the given `Value` (lsb of value != 0)
+    /// Assert the truth of the given `Value` (value != 0)
     pub fn assert_value(&mut self, value: &Value) {
         self.solver.assert_value(value)
     }

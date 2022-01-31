@@ -193,3 +193,5 @@ As noted above ESIL is also what all instructions are lifted into so it can be i
 Uhhhhhhh what else? `radius2` can initialize states from a process running in a local or remote debugger so `radius2 -p dbg://192.168.1.123:5555 -a addr -s sym 64 num -S x0 sym 64` will place a breakpoint and once hit will initiallize the state with the current context of the debuggee, set the register `x0` to a symbolic value, and then start symbolic execution. This can also be done with frida so `radius2 -p frida://usb/attach//wpa_supplicant -a free ...` will set a hook on `free` and when the hook is hit will initialize an exact state of the current process. You can even use `radius2` on a process running in `qemu` or attached via JTAG with `gdb://`.
 
 In a blog post Trail of Bits described its symbolic execution tool `manticore` with the expression "there's more than one way to skin a cat" and called `manticore` a "cat skinning machine". As `radius2` is orders of magnitude faster, works on more architectures and file formats, and is even more flexible than `manticore`, `radius2` should be thought of as a Cat-Skinning Optimus Prime. 
+
+

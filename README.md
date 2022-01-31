@@ -10,7 +10,7 @@ git clone https://github.com/radareorg/radare2.git
 radare2/sys/install.sh 
 ```
 
-Include radius as a dependency using `radius2 = "1.0.8"` or build locally with `cargo build --release`
+Include radius as a dependency using `radius2 = "1.0.11"` or build locally with `cargo build --release`
 
 ### Supported Architectures
 
@@ -56,7 +56,7 @@ fn main() {
 radius can also be installed from crates.io and easily included in packages. radius also has a CLI tool that can be installed with `cargo install radius2`
 
 ```
-radius2 1.0.9
+radius2 1.0.11
 Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>
 Symbolic Execution tool using r2 and boolector
 
@@ -64,7 +64,7 @@ USAGE:
     radius2 [FLAGS] [OPTIONS] --path <path>
 
 FLAGS:
-    -F, --frida         Create initial state from frida hook
+    -C, --color         Use color output
     -h, --help          Prints help information
     -z, --lazy          Evaluate symbolic PC values lazily
         --no-sims       Do not simulate imports
@@ -90,8 +90,10 @@ OPTIONS:
     -e, --eval <ESIL>...                      Evaluate ESIL expression
     -E, --eval-after <ESIL>...                Evaluate ESIL expression after execution
     -f, --file <PATH> <SYMBOL>                Add a symbolic file
+    -F, --fuzz <fuzz>                         Generate testcases and write to supplied dir
     -H, --hook <ADDR> <EXPR>                  Hook the provided address with an ESIL expression
     -L, --libs <libs>                         Load libraries from path
+        --max <max>                           Maximum number of states to keep at a time
     -m, --merge <merge>...                    Set address as a mergepoint
     -p, --path <path>                         Path to the target binary
     -r, --r2-cmd <CMD>...                     Run r2 command on launch
@@ -109,6 +111,6 @@ $ radius2 -p tests/r100 -a 0x4006fd -x 0x400790 -s flag 96 str -S A0 0x100000 64
 Or even more quickly with strings using 
 
 ```
-$ radius2 -p tests/r100 -s stdin 96 -X Incorrect
+$ radius2 -p tests/r100 -s stdin 96 str -X Incorrect
   stdin : "Code_Talkers"
 ```
