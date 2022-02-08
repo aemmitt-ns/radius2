@@ -31,6 +31,7 @@ all: root
 root:
 	cd ../../ && cargo build --release
 	mkdir -p root/$(R2PLUGDIR)
+	cp -f ../../target/release/radius2 root/usr/bin/radius2
 	cp -f ../../target/release/libradius2.rlib root/$(R2PLUGDIR)/libradius2.$(R2_LIBEXT)
 
 purge: clean
