@@ -1,0 +1,10 @@
+PACKAGE=radius
+ARCH=amd64
+DEPENDS=radare2
+SECTION=user/shell
+PRIORITY=optional
+MAINTAINER=Austin Aemmitt <aemmitt@nowsecure.com>
+
+VERSION=$(shell cat ../../radius/Cargo.toml| grep ^version | cut -d '"' -f2)
+
+#include ../../config.mk
