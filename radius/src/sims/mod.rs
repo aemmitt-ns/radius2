@@ -53,9 +53,9 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("feof", libc::feof, 1),
         make_sim("fprintf", libc::fputs, 2), // fix
         make_sim("printf", libc::printf, 1), // fix
-        make_sim("perror", libc::perror, 1), 
+        make_sim("perror", libc::perror, 1),
         make_sim("fflush", libc::fflush, 0),
-        make_sim("scanf", libc::scanf, 1), // fix
+        make_sim("scanf", libc::scanf, 1),          // fix
         make_sim("__isoc99_scanf", libc::scanf, 1), // fix
         make_sim("fopen", libc::fopen, 2),
         make_sim("freopen", libc::fopen, 3),

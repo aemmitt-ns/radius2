@@ -26,14 +26,14 @@ const PROT_EXEC: u64 = 0x4;
 pub struct Memory {
     pub solver: Solver,
     pub r2api: R2Api,
-    
+
     // TODO refactor merge to make this private
     pub mem: HashMap<u64, Value>,
     heap: Heap,
     pub bits: u64,
     pub endian: Endian,
     pub segs: Vec<MemorySegment>,
-    pub blank: bool
+    pub blank: bool,
 }
 
 pub enum Permission {
@@ -87,7 +87,7 @@ impl Memory {
             bits,
             endian: Endian::from_string(endian),
             segs,
-            blank
+            blank,
         }
     }
 
@@ -103,7 +103,7 @@ impl Memory {
     }
 
     pub fn free(&mut self, addr: &Value) -> Value {
-        let address = addr.as_u64().unwrap(); 
+        let address = addr.as_u64().unwrap();
         if let Some(ret) = self.heap.free(address) {
             Value::Concrete(ret, addr.get_taint())
         } else {

@@ -1,6 +1,6 @@
 use crate::sims::syscall;
 use crate::state::State;
-use crate::value::{Value, vc};
+use crate::value::{vc, Value};
 use rand::Rng;
 
 const MAX_LEN: u64 = 8192;
@@ -181,27 +181,13 @@ pub fn fgets(state: &mut State, args: &[Value]) -> Value {
 pub fn fputs(state: &mut State, args: &[Value]) -> Value {
     let fd = fileno(state, &args[1..2]);
     let length = strlen(state, &args[0..1]);
-    syscall::write(
-        state,
-        &[
-            fd,
-            args[0].to_owned(),
-            length
-        ],
-    );
+    syscall::write(state, &[fd, args[0].to_owned(), length]);
     Value::Concrete(0, 0)
 }
 
 pub fn perror(state: &mut State, args: &[Value]) -> Value {
     let length = strlen(state, &args[0..1]);
-    syscall::write(
-        state,
-        &[
-            vc(2),
-            args[0].to_owned(),
-            length
-        ],
-    );
+    syscall::write(state, &[vc(2), args[0].to_owned(), length]);
     Value::Concrete(0, 0)
 }
 
@@ -216,7 +202,7 @@ pub fn feof(state: &mut State, args: &[Value]) -> Value {
     let fd = fileno(state, &args[1..2]);
     let fdn = state.solver.evalcon_to_u64(&fd).unwrap_or_default() as usize;
     let f = &state.filesystem.files[fdn];
-    Value::Concrete(!(f.position == f.content.len()-1) as u64, 0)
+    Value::Concrete(!(f.position == f.content.len() - 1) as u64, 0)
 }
 
 pub fn strcpy(state: &mut State, args: &[Value]) -> Value {
@@ -583,7 +569,11 @@ fn atoi_concrete(state: &mut State, addr: &Value, base: &Value, len: usize) -> V
         return vc(0);
     }
 
-    let start = if numstr.len() > 1 && &numstr[0..2] == "0x" { 2 } else { 0 }; // offset
+    let start = if numstr.len() > 1 && &numstr[0..2] == "0x" {
+        2
+    } else {
+        0
+    }; // offset
     let end = if let Some(n) = numstr[start + 1..]
         .chars()
         .position(|c| isbasedigit(state, &vc(c as u64), base).as_u64().unwrap() != 1)
@@ -902,11 +892,11 @@ fn getopt_setup(state: &mut State) {
             state.memory_write_value(&vc(OPTIND), &vc(1), 4);
             state.memory_write_ptr(&vc(OPTARG), &vc(0));
         }
-    } 
+    }
 }
 
 /*
-from the man pages 
+from the man pages
 
 By default, getopt() permutes the contents of argv as it scans,
 so that eventually all the nonoptions are at the end.
@@ -914,8 +904,8 @@ so that eventually all the nonoptions are at the end.
 uhhhh i am not gonna do that for right now? also wat
 */
 
-// this is not even close to being a faithful representation 
-// of the actual (insane) semantics of getopt 
+// this is not even close to being a faithful representation
+// of the actual (insane) semantics of getopt
 pub fn getopt(state: &mut State, args: &[Value]) -> Value {
     getopt_setup(state);
 
@@ -930,8 +920,8 @@ pub fn getopt(state: &mut State, args: &[Value]) -> Value {
     } else {
         let optstr_addr = state.solver.evalcon_to_u64(&args[2]).unwrap_or(0);
         let optstr = state.memory_read_cstring(optstr_addr);
-        
-        let argv_addr = state.memory_read_ptr(&args[1].add(&vc(optind*ptr)));
+
+        let argv_addr = state.memory_read_ptr(&args[1].add(&vc(optind * ptr)));
         let argv_len = strlen(state, &[argv_addr.clone()]);
 
         let arg = state.memory_read(&argv_addr, &argv_len);
@@ -948,8 +938,8 @@ pub fn getopt(state: &mut State, args: &[Value]) -> Value {
             let c = vc(optstr.as_bytes()[index] as u64);
             let is_c = arg[1].eq(&c);
             result = state.solver.conditional(&is_opt.and(&is_c), &c, &result);
-            
-            if arg.len() > 2 && index + 1 < optstr.len() && &optstr[index+1..index+2] == ":" {
+
+            if arg.len() > 2 && index + 1 < optstr.len() && &optstr[index + 1..index + 2] == ":" {
                 // argument may be next argv, nvmd disallow
                 //let newarg_addr = args[1].add(&vc((optind+1)*ptr));
 
@@ -957,12 +947,14 @@ pub fn getopt(state: &mut State, args: &[Value]) -> Value {
                 let arg_cond = (!is_c.clone()).or(&is_c.and(&!arg[2].eq(&vc(0))));
                 state.assert_value(&arg_cond);
 
-                optarg = state.solver.conditional(&is_c, &argv_addr.add(&vc(2)), &optarg);
+                optarg = state
+                    .solver
+                    .conditional(&is_c, &argv_addr.add(&vc(2)), &optarg);
                 state.memory_write_ptr(&vc(OPTARG), &optarg);
             }
         }
 
-        state.memory_write_value(&vc(OPTIND), &vc(optind+1), 4);
+        state.memory_write_value(&vc(OPTIND), &vc(optind + 1), 4);
         result
     }
 }

@@ -3,7 +3,7 @@ use crate::r2_api::{Endian, Information, R2Api};
 use crate::registers::Registers;
 use crate::sims::fs::SimFilesytem;
 use crate::solver::{BitVec, Solver};
-use crate::value::{Value, vc};
+use crate::value::{vc, Value};
 
 use std::cmp::Ordering;
 use std::u8;
@@ -100,7 +100,7 @@ pub enum StateStatus {
     Unsat,
     Inactive,
     Crash(u64, char),
-    Exit
+    Exit,
 }
 
 #[derive(Clone)]
@@ -503,7 +503,8 @@ impl State {
             );
         }
 
-        if self.check && (self.check_crash(src, &vc(1), 'r') ||self.check_crash(dst, &vc(1), 'r')) {
+        if self.check && (self.check_crash(src, &vc(1), 'r') || self.check_crash(dst, &vc(1), 'r'))
+        {
             return vc(-1i64 as u64);
         }
 
@@ -538,11 +539,11 @@ impl State {
             );
         }
 
-        // eh don't use the length here 
+        // eh don't use the length here
         if self.check && self.check_crash(addr, &vc(1), 'r') {
             return vc(-1i64 as u64);
         }
-        
+
         let ret = self.memory.strlen(addr, length, &mut self.solver);
 
         if DO_EVENT_HOOKS && self.has_event_hooks {
@@ -574,7 +575,8 @@ impl State {
             );
         }
 
-        if self.check && (self.check_crash(src, length, 'r') || self.check_crash(dst, length, 'w')) {
+        if self.check && (self.check_crash(src, length, 'r') || self.check_crash(dst, length, 'w'))
+        {
             return;
         }
 
@@ -619,7 +621,8 @@ impl State {
     pub fn memory_read_cstring(&mut self, address: u64) -> String {
         let length = self.memory_strlen(&vc(address), &vc(4096));
         let len = self.solver.evalcon_to_u64(&length).unwrap_or(0);
-        self.memory.read_string(address, len as usize, &mut self.solver)
+        self.memory
+            .read_string(address, len as usize, &mut self.solver)
     }
 
     // this doesnt need to be here, just for consistency sake
@@ -688,11 +691,9 @@ impl State {
             let b = self.solver.evalcon_to_u64(&bval).unwrap() as u8;
             chunk.push(b);
 
-            if chunk.len() > 255 
-                || i >= addrs.len()-1
-                || addrs[i+1] != addrs[i]+1 
-            {
-                self.r2api.write(1+addr-chunk.len() as u64, chunk.clone());
+            if chunk.len() > 255 || i >= addrs.len() - 1 || addrs[i + 1] != addrs[i] + 1 {
+                self.r2api
+                    .write(1 + addr - chunk.len() as u64, chunk.clone());
                 chunk.clear();
             }
         }
@@ -888,7 +889,7 @@ impl State {
                     self.set_crash(*address, perm);
                 }
                 crash
-            } 
+            }
             Value::Symbolic(address, _t) => {
                 let min = self.solver.min(address);
                 let max = self.solver.max(address);

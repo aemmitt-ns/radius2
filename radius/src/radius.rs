@@ -4,7 +4,7 @@ use crate::state::{State, StateStatus};
 //use crate::value::Value;
 use crate::sims::syscall::indirect;
 use crate::sims::{get_sims, zero, SimMethod};
-use crate::value::{Value, vc};
+use crate::value::{vc, Value};
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -466,7 +466,7 @@ impl Radius {
         }
 
         let mut handles = Vec::with_capacity(threads);
-        let statevector = Arc::new(Mutex::new(VecDeque::with_capacity(threads*self.eval_max)));
+        let statevector = Arc::new(Mutex::new(VecDeque::with_capacity(threads * self.eval_max)));
         statevector.lock().unwrap().push_back(state);
 
         loop {

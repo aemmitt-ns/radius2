@@ -3,9 +3,9 @@ use crate::r2_api::hex_encode;
 use crate::radius::{Radius, RadiusOption, RunMode};
 use boolector::BV;
 use clap::{App, Arg};
-use std::time::Instant;
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 
 use crate::state::StateStatus;
 use crate::value::Value;
@@ -83,6 +83,11 @@ fn main() {
                 .short("z")
                 .long("lazy")
                 .help("Evaluate symbolic PC values lazily"),
+        )
+        .arg(
+            Arg::with_name("crash")
+                .long("crash")
+                .help("Execution stops on invalid memory access"),
         )
         .arg(
             Arg::with_name("selfmodify")
@@ -276,7 +281,7 @@ fn main() {
     let debug = occurs!(matches, "verbose") || occurs!(matches, "color");
     let no_sims = occurs!(matches, "no_sims");
     let profile = occurs!(matches, "profile");
-    let fuzz    = occurs!(matches, "fuzz");
+    let fuzz = occurs!(matches, "fuzz");
     let all_sims = !no_sims && libpaths.is_empty();
 
     let plugins = occurs!(matches, "plugins")
@@ -291,6 +296,7 @@ fn main() {
         RadiusOption::Strict(occurs!(matches, "strict")),
         RadiusOption::SelfModify(occurs!(matches, "selfmodify")),
         RadiusOption::ColorOutput(occurs!(matches, "color")),
+        RadiusOption::Permissions(occurs!(matches, "crash")),
         RadiusOption::Sims(!no_sims),
         RadiusOption::SimAll(all_sims),
         RadiusOption::LoadLibs(!libpaths.is_empty()),
@@ -524,7 +530,9 @@ fn main() {
     // get code references to strings and add them to the breakpoints
     if occurs!(matches, "break_strings") {
         // need to analyze to get string refs
-        if !analyzed { radius.analyze(3); }
+        if !analyzed {
+            radius.analyze(3);
+        }
         for string in collect!(matches, "break_strings") {
             for location in radius.r2api.search_strings(string).unwrap() {
                 bps.extend(
@@ -621,7 +629,7 @@ fn main() {
         states.push_back(state);
 
         let mut file_counts: HashMap<&str, usize> = HashMap::new();
-            
+
         for symbol in symbol_map.keys() {
             file_counts.insert(symbol, 0);
         }
@@ -649,10 +657,8 @@ fn main() {
                 // after (conditional) calls and jumps
                 if tn & 0xf == 1 || tn & 0xf == 4 {
                     for symbol in symbol_map.keys() {
-                        let val = new_state
-                            .translate(&symbol_map[symbol])
-                            .unwrap();
-                        
+                        let val = new_state.translate(&symbol_map[symbol]).unwrap();
+
                         if let Some(bytes) = new_state.evaluate_bytes(&val) {
                             if !solutions.contains_key(&bytes) {
                                 let c = file_counts[symbol];

@@ -79,7 +79,7 @@ pub enum Operations {
     GoTo,
     ToDo,
     NoOperation,
-    Print, // Tool for cli hooks
+    Print,      // Tool for cli hooks
     PrintDebug, // Tool for cli hooks
     Constrain,
     Terminate,
@@ -865,6 +865,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                 let cur = state.esil.current.to_owned();
                 let lsb = cur & Value::Concrete(0xff, 0);
                 let pf = !((((lsb * c1) & c2) % c3) & Value::Concrete(1, 0));
+                //let pf = Value::Symbolic(val.redxor(), *t); this is 2x slower wtf
                 push_value(state, pf);
             }
         },

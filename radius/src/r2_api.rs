@@ -422,7 +422,7 @@ pub struct R2Api {
     pub info: Information,
     pub mode: Mode,
     do_cache: bool,
-    cache: HashMap<String, String>
+    cache: HashMap<String, String>,
 }
 
 impl R2Api {
@@ -443,7 +443,7 @@ impl R2Api {
             info: Information::default(),
             mode: Mode::Default,
             do_cache: false,
-            cache: HashMap::new()
+            cache: HashMap::new(),
         };
 
         r2api.info = r2api.get_info().unwrap();
@@ -468,7 +468,7 @@ impl R2Api {
         Ok(self.r2p.lock().unwrap().cmd(cmd).unwrap_or_default())
     }
 
-    // cached command 
+    // cached command
     pub fn ccmd(&mut self, cmd: &str) -> R2Result<String> {
         if self.do_cache {
             if let Some(result) = self.cache.get(cmd) {
@@ -936,7 +936,7 @@ impl R2Api {
                     .to_str()
                     .unwrap_or_default()
                     .to_owned();
-                    
+
                 let loaded = full_paths.iter().any(|x| x == &lib_path);
                 if !loaded && Path::new(&lib_path).exists() {
                     let load_addr = (high_addr & 0xfffffffffffff000) + 0x3000; // idk

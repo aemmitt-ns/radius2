@@ -2,7 +2,7 @@ use crate::operations::{
     do_operation, pop_concrete, pop_stack_value, pop_value, push_value, Operations, OPS,
 };
 use crate::r2_api::{hex_decode, CallingConvention, Instruction, Syscall};
-use crate::value::{Value, vc};
+use crate::value::{vc, Value};
 
 use crate::state::{
     Event, EventContext, EventTrigger, ExecMode, StackItem, State, StateStatus, DO_EVENT_HOOKS,
@@ -37,7 +37,7 @@ pub enum RunMode {
     Single,
     Step,
     Parallel,
-    Multiple
+    Multiple,
 }
 
 pub type HookMethod = fn(&mut State) -> bool;
@@ -99,7 +99,7 @@ impl Processor {
         lazy: bool,
         force: bool,
         topological: bool,
-        color: bool
+        color: bool,
     ) -> Self {
         Processor {
             instructions: HashMap::new(),
@@ -555,9 +555,7 @@ impl Processor {
             RETN_TYPE => {
                 if state.backtrace.is_empty() && new_flags.is_empty() {
                     // try to avoid returning outside valid context
-                    if !self.breakpoints.is_empty() 
-                        || !self.esil_hooks.is_empty() {
-
+                    if !self.breakpoints.is_empty() || !self.esil_hooks.is_empty() {
                         new_flags.insert(InstructionFlag::Avoid);
                     } else {
                         // break if there are no other breakpoints/hooks
@@ -617,7 +615,7 @@ impl Processor {
                 }
                 InstructionFlag::Avoid => {
                     state.status = StateStatus::Inactive;
-                    skip = true; 
+                    skip = true;
                 }
             };
         }
@@ -668,19 +666,19 @@ impl Processor {
                 let mut opt = self.optimized && !self.selfmodify;
                 if self.hooks.contains_key(&pc_tmp) {
                     flags.insert(InstructionFlag::Hook);
-                } 
+                }
                 if self.esil_hooks.contains_key(&pc_tmp) {
                     flags.insert(InstructionFlag::ESILHook);
                 }
                 if self.breakpoints.contains(&pc_tmp) {
                     flags.insert(InstructionFlag::Break);
-                } 
+                }
                 if self.mergepoints.contains(&pc_tmp) {
                     flags.insert(InstructionFlag::Merge);
                 }
                 if self.avoidpoints.contains(&pc_tmp) {
                     flags.insert(InstructionFlag::Avoid);
-                } 
+                }
                 if self.sims.contains_key(&pc_tmp) {
                     flags.insert(InstructionFlag::Sim);
                 }
@@ -693,7 +691,7 @@ impl Processor {
                 let instr_entry = InstructionEntry {
                     instruction: instr,
                     tokens: words,
-                    flags
+                    flags,
                 };
 
                 if opt {
@@ -775,10 +773,7 @@ impl Processor {
             if DO_EVENT_HOOKS && state.has_event_hooks {
                 state.do_hooked(
                     &Event::SymbolicExec(EventTrigger::After),
-                    &EventContext::ExecContext(
-                        new_pc.clone(), 
-                        state.esil.pcs.clone()
-                    ),
+                    &EventContext::ExecContext(new_pc.clone(), state.esil.pcs.clone()),
                 );
             }
         }
@@ -855,8 +850,8 @@ impl Processor {
                         results.push(current_state.to_owned());
                         if mode != RunMode::Multiple {
                             return results;
-                        } 
-                    } 
+                        }
+                    }
                 }
                 StateStatus::Crash(_addr, _len) => {
                     self.crashes.push(current_state.to_owned());
