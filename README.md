@@ -106,12 +106,12 @@ OPTIONS:
 This tool can be used to solve the same `r100` crackme as above like 
 
 ```
-$ radius2 -p tests/r100 -a 0x4006fd -x 0x400790 -s flag 96 str -S A0 0x100000 64 -S 0x100000 flag 96
+$ radius2 -p tests/r100 -a 0x4006fd -x 0x400790 -s flag 96 -S A0 0x100000 64 -S 0x100000 flag 96
   flag : "Code_Talkers"
 ```
 Or even more quickly with strings using 
 
 ```
-$ radius2 -p tests/r100 -s stdin 96 str -X Incorrect
+$ radius2 -p tests/r100 -s stdin 96 -X Incorrect
   stdin : "Code_Talkers"
 ```
