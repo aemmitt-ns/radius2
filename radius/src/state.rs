@@ -967,9 +967,14 @@ impl State {
         self.solver.assert(bv)
     }
 
-    /// Check the truth of the given value
+    /// Check the satisfiability of the given value
     pub fn check(&mut self, val: &Value) -> bool {
         self.solver.check_sat(val)
+    }
+
+    /// Get a conditional value
+    pub fn cond(&self, condition: &Value, if_val: &Value, else_val: &Value) -> Value {
+        self.solver.conditional(condition, if_val, else_val)
     }
 
     /// Assert the truth of the given `Value` (value != 0)

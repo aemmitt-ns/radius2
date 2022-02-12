@@ -298,13 +298,18 @@ impl Solver {
     /// check the satisfiability of the assertion
     #[inline]
     pub fn check_sat(&mut self, assertion: &Value) -> bool {
-        self.btor.push(1);
-        self.assert_value(assertion);
-        self.apply_assertions();
-        let sat = self.btor.sat() == SolverResult::Sat;
-        self.assertions.pop();
-        self.btor.pop(1);
-        sat
+        match assertion {
+            Value::Concrete(v, _t) => *v != 0,
+            Value::Symbolic(_v, _t) => {
+                self.btor.push(1);
+                self.assert_value(assertion);
+                self.apply_assertions();
+                let sat = self.btor.sat() == SolverResult::Sat;
+                self.assertions.pop();
+                self.btor.pop(1);
+                sat
+            }
+        }
     }
 
     pub fn evaluate_many(&mut self, bv: &BitVec) -> Vec<u64> {

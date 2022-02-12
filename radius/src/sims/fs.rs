@@ -101,9 +101,9 @@ impl SimFilesytem {
         if let Some(file) = &mut self.files.get_mut(fd) {
             let start = file.position;
             let end = if file.content.len() - start < length {
-                file.content.len() - start
+                file.content.len()
             } else {
-                length
+                start + length
             };
 
             file.position = end;

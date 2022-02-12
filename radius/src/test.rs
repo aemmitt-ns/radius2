@@ -200,7 +200,7 @@ fn fileread() {
 #[test]
 fn symmem() {
     use crate::radius::{Radius, RadiusOption};
-    use crate::sims::libc::{atoi_helper, itoa_helper};
+    use crate::sims::format::{atoi_helper, itoa_helper};
     use crate::state::{Event, EventContext, EventTrigger, State};
     use crate::value::Value;
 

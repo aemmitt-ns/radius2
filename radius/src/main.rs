@@ -222,7 +222,7 @@ fn main() {
             Arg::with_name("symbol")
                 .short("s")
                 .long("symbol")
-                .value_names(&["NAME", "BITS", "num|str"])
+                .value_names(&["NAME", "BITS"])
                 .multiple(true)
                 .help("Create a symbolic value"),
         )
@@ -358,10 +358,19 @@ fn main() {
     let symbols: Vec<&str> = collect!(matches, "symbol");
     for i in 0..matches.occurrences_of("symbol") as usize {
         // use get_address so hex / simple ops can be used
-        let length = radius.get_address(symbols[3 * i + 1]).unwrap_or(8) as u32;
-        let sym_value = state.symbolic_value(symbols[3 * i], length);
-        let sym_name = symbols[3 * i];
-        symbol_types.insert(sym_name, symbols[3 * i + 2]);
+        let sym_name = symbols[2 * i];
+        let mut len = symbols[2 * i + 1];
+
+        if len.ends_with("n") {
+            len = &len[..len.len()-1];
+            symbol_types.insert(sym_name, "num");
+        } else {
+            symbol_types.insert(sym_name, "str");
+        }
+
+        let length = radius.get_address(len).unwrap_or(8) as u32;
+        let sym_value = state.symbolic_value(sym_name, length);
+        //symbol_types.insert(sym_name, symbols[3 * i + 2]);
         symbol_map.insert(sym_name, sym_value.as_bv().unwrap());
         state.context.insert(sym_name.to_owned(), vec![sym_value]);
 
@@ -593,6 +602,7 @@ fn main() {
 
             let solve_start = Instant::now();
 
+            println!();
             for symbol in symbol_map.keys() {
                 let val = Value::Symbolic(end_state.translate(&symbol_map[symbol]).unwrap(), 0);
 
@@ -609,17 +619,21 @@ fn main() {
                     println!("  {} : no satisfiable value", symbol);
                 }
             }
+            println!();
 
             if profile {
                 println!("solve time:\t{}", solve_start.elapsed().as_micros());
             }
 
             // dump program output
+            let head = "=".repeat(37);
             if occurs!(matches, "stdout") {
-                print!("{}", end_state.dump_file_string(1).unwrap_or_default());
+                let out = end_state.dump_file_string(1).unwrap_or_default();
+                println!("{}stdout{}\n{}\n{}======{}", head, head, out, head, head);
             }
             if occurs!(matches, "stderr") {
-                print!("{}", end_state.dump_file_string(2).unwrap_or_default());
+                let out = end_state.dump_file_string(2).unwrap_or_default();
+                println!("\n{}stderr{}\n{}\n{}======{}", head, head, out, head, head);
             }
         }
     } else {

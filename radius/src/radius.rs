@@ -21,7 +21,7 @@ pub enum RadiusOption {
     Sims(bool),
     /// Sim all imports, with stub if missing        
     SimAll(bool),
-    /// Optimize executed ESIL expressions      
+    /// Optimize executed ESIL expressions
     Optimize(bool),
     /// Enable debug output
     Debug(bool),
@@ -230,7 +230,7 @@ impl Radius {
         let context = self.r2api.init_frida(addr).unwrap();
 
         for reg in context.keys() {
-            let val = u64::from_str_radix(&context[reg][2..], 16).unwrap();
+            let val = u64::from_str_radix(&context[reg][2..], 16).unwrap_or(0);
             state.registers.set(reg, vc(val));
         }
         state

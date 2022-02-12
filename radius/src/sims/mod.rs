@@ -3,6 +3,7 @@ use crate::value::Value;
 
 pub mod fs;
 pub mod libc;
+pub mod format;
 pub mod syscall;
 
 pub type SimMethod = fn(&mut State, &[Value]) -> Value;
@@ -51,11 +52,15 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("fputs", libc::fputs, 2),
         make_sim("fputc", libc::fputc, 2),
         make_sim("feof", libc::feof, 1),
-        make_sim("fprintf", libc::fputs, 2), // fix
-        make_sim("printf", libc::printf, 1), // fix
+        make_sim("fprintf", libc::fputs, 2), 
+        make_sim("printf", libc::printf, 1), 
+        make_sim("sprintf", libc::sprintf, 1), 
+        make_sim("vprintf", libc::printf, 1), // fix
+        make_sim("vsprintf", libc::sprintf, 1), // fix
         make_sim("perror", libc::perror, 1),
         make_sim("fflush", libc::fflush, 0),
-        make_sim("scanf", libc::scanf, 1),          // fix
+        make_sim("scanf", libc::scanf, 1),
+        make_sim("sscanf", libc::sscanf, 1),             
         make_sim("__isoc99_scanf", libc::scanf, 1), // fix
         make_sim("fopen", libc::fopen, 2),
         make_sim("freopen", libc::fopen, 3),

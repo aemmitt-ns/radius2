@@ -830,6 +830,7 @@ impl R2Api {
         data: &[u8],
         num: usize,
     ) -> R2Result<Vec<Instruction>> {
+        // this is unfortunately necessary as there is no padj @, i need to make one
         let cmd = format!("wx {} @ {}; pij {} @ {}", hex_encode(data), addr, num, addr);
 
         let json = self.cmd(cmd.as_str())?;

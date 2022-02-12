@@ -65,6 +65,7 @@ USAGE:
 
 FLAGS:
     -C, --color         Use color output
+        --crash         Execution stops on invalid memory access
     -h, --help          Prints help information
     -z, --lazy          Evaluate symbolic PC values lazily
         --no-sims       Do not simulate imports
@@ -92,13 +93,13 @@ OPTIONS:
     -f, --file <PATH> <SYMBOL>                Add a symbolic file
     -F, --fuzz <fuzz>                         Generate testcases and write to supplied dir
     -H, --hook <ADDR> <EXPR>                  Hook the provided address with an ESIL expression
-    -L, --libs <libs>                         Load libraries from path
+    -L, --libs <libs>...                      Load libraries from path
         --max <max>                           Maximum number of states to keep at a time
     -m, --merge <merge>...                    Set address as a mergepoint
     -p, --path <path>                         Path to the target binary
     -r, --r2-cmd <CMD>...                     Run r2 command on launch
     -S, --set <REG/ADDR> <VALUE> <BITS>       Set memory or register values
-    -s, --symbol <NAME> <BITS> <num|str>      Create a symbolic value
+    -s, --symbol <NAME> <BITS>                Create a symbolic value
     -t, --threads <threads>                   Number of threads to execute [default: 1]
 ```
 
