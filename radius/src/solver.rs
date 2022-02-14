@@ -25,6 +25,7 @@ impl Default for Solver {
 impl Solver {
     pub fn new(eval_max: usize) -> Self {
         let btor = Arc::new(Btor::new());
+        //btor.set_opt(BtorOption::SatEngine(SatEngine::CaDiCaL));
         btor.set_opt(BtorOption::ModelGen(ModelGen::Disabled));
         btor.set_opt(BtorOption::Incremental(true));
         btor.set_opt(BtorOption::OutputNumberFormat(NumberFormat::Hexadecimal));

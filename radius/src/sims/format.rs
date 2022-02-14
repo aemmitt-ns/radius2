@@ -21,7 +21,6 @@ pub fn format(state: &mut State, args: &[Value]) -> Vec<Value> {
             if formatstr[0].as_u64() != Some('%' as u64) { 
                 ind += 1; // jank fix cuz %% shouldnt increment
             }
-
             // if it can be % it *must* be %
             state.assert_value(&c.eq(&vc('%' as u64)));
             let formatted = format_one(state, &mut formatstr, &args[ind], count);
@@ -96,6 +95,16 @@ pub fn format_one(state: &mut State, formatstr: &mut Vec<Value>, arg: &Value, co
                     _ => {}
                 }
             }
+
+            // capitalize letters if format is uppercase (X, F, G etc)
+            let up = isupper(state, &[c]);
+            if up.as_u64() != Some(0) {
+                for i in 0..result.len() {
+                    let upper = toupper(state, &[result[i].clone()]);
+                    result[i] = state.cond(&up, &upper, &result[i]);
+                }
+            }
+
             break;
         } else {
             preformat.push(c);
@@ -115,7 +124,7 @@ fn format_to_base(state: &mut State, c: &Value) -> Value {
 fn format_uint(state: &mut State, c: &Value, arg: &Value, pre: &str) -> Vec<Value> {
     let base = format_to_base(state, c);
     let temp = vc(state.memory.alloc(&vc(MAXLEN as u64)));
-    itoa_helper(state, arg, &temp, &base, false, 64);
+    itoa_helper(state, arg, &temp, &base, false, 32);
     let length = state.memory_strlen(&temp, &vc(MAXLEN as u64));
     let mut result = state.memory_read(&temp, &length);
     state.memory.free(&temp); // like it never happened
@@ -225,7 +234,8 @@ pub fn scan_one(state: &mut State, formatstr: &mut Vec<Value>, arg: &Value, data
                 scan_uint(state, &c, arg, data);
             } else {
                 must_be_formats(state, &c, &NONUINTS);
-                let cc = state.solver.evalcon_to_u64(&c).unwrap_or(0) as u8;
+                let cl = tolower(state, &[c]);
+                let cc = state.solver.evalcon_to_u64(&cl).unwrap_or(0) as u8;
 
                 match cc as char {
                     'c' => state.memory_write_value(arg, data, 1),

@@ -3,7 +3,7 @@ use crate::r2_api::hex_encode;
 use crate::radius::{Radius, RadiusOption, RunMode};
 use boolector::BV;
 use clap::{App, Arg};
-use std::fs;
+use std::{fs, process};
 use std::path::Path;
 use std::time::Instant;
 
@@ -317,6 +317,13 @@ fn main() {
 
     let path = matches.value_of("path").unwrap_or_default();
     let dir = Path::new(matches.value_of("fuzz").unwrap_or("."));
+
+    // just a guardrail cuz the error otherwise is vv unclear
+    if path != "-" && !path.contains(":") && fs::metadata(path).is_err() {
+        println!("'{}' not found", path);
+        process::exit(1);
+    }
+
     let mut radius = Radius::new_with_options(matches.value_of("path"), &options);
 
     if !dir.exists() {

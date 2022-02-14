@@ -198,6 +198,26 @@ fn fileread() {
 }
 
 #[test]
+fn format() {
+    use crate::radius::Radius;
+    use crate::sims::format;
+    use crate::value::vc;
+
+    let mut radius = Radius::new("../tests/hello");
+    let main = radius.r2api.get_address("main").unwrap();
+    let mut state = radius.call_state(main);
+
+    let _buf_addr = state.memory_alloc(&vc(100));
+    let fmt_addr = state.memory_alloc(&vc(100));
+
+    state.memory_write_string(fmt_addr.as_u64().unwrap(), "%02X\x00");
+    //state.memory_write_value(&buf_addr, &vc(17492), 4);
+    let data = format::format(&mut state, &[fmt_addr, vc(17499)]);
+    let value = state.pack(&data);
+    println!("{:?}, {:?}", state.evaluate_string_value(&value), data);
+}
+
+#[test]
 fn symmem() {
     use crate::radius::{Radius, RadiusOption};
     use crate::sims::format::{atoi_helper, itoa_helper};

@@ -534,7 +534,7 @@ impl R2Api {
     */
 
     pub fn get_syscall_cc(&mut self) -> R2Result<CallingConvention> {
-        // this sucks, need a central place for arch shit
+        // this sucks, need a central place for arch stuff
         match (self.info.bin.arch.as_str(), self.info.bin.bits) {
             ("x86", 32) => Ok(CallingConvention {
                 args: vec![

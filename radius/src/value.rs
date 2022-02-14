@@ -606,6 +606,19 @@ impl Value {
         }
     }
 
+    /// tries to convert to Concrete
+    #[inline]
+    pub fn try_con(&self) -> Self {
+        match self {
+            Value::Concrete(_a, _t) => self.to_owned(),
+            Value::Symbolic(a, t) => if let Some(v) = a.as_u64() {
+                Value::Concrete(v, *t)
+            } else {
+                self.to_owned()
+            },
+        }
+    }
+
     #[inline]
     pub fn as_bv(&self) -> Option<BitVec> {
         match self {
