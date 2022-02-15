@@ -611,11 +611,13 @@ impl Value {
     pub fn try_con(&self) -> Self {
         match self {
             Value::Concrete(_a, _t) => self.to_owned(),
-            Value::Symbolic(a, t) => if let Some(v) = a.as_u64() {
-                Value::Concrete(v, *t)
-            } else {
-                self.to_owned()
-            },
+            Value::Symbolic(a, t) => {
+                if let Some(v) = a.as_u64() {
+                    Value::Concrete(v, *t)
+                } else {
+                    self.to_owned()
+                }
+            }
         }
     }
 
@@ -722,4 +724,10 @@ impl Value {
 #[inline]
 pub fn vc(v: u64) -> Value {
     Value::Concrete(v, 0)
+}
+
+/// convert strings into vecs of values
+#[inline]
+pub fn byte_values<T: AsRef<str>>(string: T) -> Vec<Value> {
+    string.as_ref().chars().map(|c| vc(c as u64)).collect()
 }

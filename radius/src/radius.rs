@@ -1,14 +1,16 @@
 pub use crate::processor::{HookMethod, Processor, RunMode};
 use crate::r2_api::{BasicBlock, FunctionInfo, Information, Instruction, R2Api, R2Result};
-use crate::state::{State, StateStatus};
+use crate::state::State;
 //use crate::value::Value;
 use crate::sims::syscall::indirect;
 use crate::sims::{get_sims, zero, SimMethod};
 use crate::value::{vc, Value};
 
-use std::collections::VecDeque;
+// use std::collections::VecDeque;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::thread;
+
+// use std::thread;
 
 use ahash::AHashMap;
 type HashMap<P, Q> = AHashMap<P, Q>;
@@ -259,7 +261,7 @@ impl Radius {
 
         let start_main_reloc = self.r2api.get_address("reloc.__libc_start_main").unwrap();
 
-        self.hook(start_main_reloc, __libc_start_main);
+        self.hook(start_main_reloc, Rc::new(__libc_start_main));
         state
     }
 
@@ -345,21 +347,25 @@ impl Radius {
     }
 
     /// Hook an address with a callback that is passed the `State`
-    pub fn hook(&mut self, addr: u64, hook_callback: HookMethod) {
-        let mut hooks = self.processor.hooks.remove(&addr).unwrap_or_default();
-        hooks.push(hook_callback);
-        self.processor.hooks.insert(addr, hooks);
+    pub fn hook(&mut self, addr: u64, hook_callback: Rc<HookMethod>) {
+        self.processor
+            .hooks
+            .entry(addr)
+            .or_insert(vec![hook_callback.clone()])
+            .push(hook_callback);
     }
 
     /// Hook an address with an esil expression
     pub fn esil_hook(&mut self, addr: u64, esil: &str) {
-        let mut esils = self.processor.esil_hooks.remove(&addr).unwrap_or_default();
-        esils.push(esil.to_owned());
-        self.processor.esil_hooks.insert(addr, esils);
+        self.processor
+            .esil_hooks
+            .entry(addr)
+            .or_insert(vec![esil.to_owned()])
+            .push(esil.to_owned());
     }
 
     /// Hook a symbol with a callback that is passed each state that reaches it
-    pub fn hook_symbol(&mut self, sym: &str, hook_callback: HookMethod) {
+    pub fn hook_symbol(&mut self, sym: &str, hook_callback: Rc<HookMethod>) {
         let addr = self.get_address(sym).unwrap();
         self.hook(addr, hook_callback);
     }
@@ -457,11 +463,15 @@ impl Radius {
      * More words
      *
      */
-    pub fn run(&mut self, state: State, threads: usize) -> Option<State> {
+    pub fn run(&mut self, state: State, _threads: usize) -> Option<State> {
+        // we are gonna scrap threads for now cuz theyre currently useless.
+        self.processor.run(state, RunMode::Single).pop()
+
         // if there are multiple threads we need to duplicate solvers
         // else there will be race conditions. Unfortunately this
         // will prevent mergers from happening. this sucks
-        if threads == 1 || !self.processor.mergepoints.is_empty() {
+
+        /*if threads == 1 || !self.processor.mergepoints.is_empty() {
             return self.processor.run(state, RunMode::Single).pop();
         }
 
@@ -509,7 +519,7 @@ impl Radius {
             {
                 break Some(state.to_owned());
             }
-        }
+        }*/
     }
 
     /// Run radare2 analysis

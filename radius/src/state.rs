@@ -6,6 +6,7 @@ use crate::solver::{BitVec, Solver};
 use crate::value::{vc, Value};
 
 use std::cmp::Ordering;
+use std::rc::Rc;
 use std::u8;
 //use std::collections::HashMap;
 use ahash::AHashMap;
@@ -56,7 +57,7 @@ pub enum EventContext {
     MoveContext(Value, Value, Value),
 }
 
-pub type EventHook = fn(&mut State, &EventContext);
+pub type EventHook = dyn Fn(&mut State, &EventContext);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecMode {
@@ -117,7 +118,7 @@ pub struct State {
     pub status: StateStatus,
     pub context: HashMap<String, Vec<Value>>,
     pub taints: HashMap<String, u64>,
-    pub hooks: HashMap<Event, EventHook>,
+    pub hooks: HashMap<Event, Rc<EventHook>>,
     pub visits: HashMap<u64, usize>,
     pub pid: u64,
     pub backtrace: Vec<(u64, u64)>,
@@ -270,15 +271,17 @@ impl State {
         }
     }
 
-    pub fn hook_event(&mut self, event: Event, hook: EventHook) {
+    pub fn hook_event(&mut self, event: Event, hook: Rc<EventHook>) {
         self.has_event_hooks = true;
         self.hooks.insert(event, hook);
     }
 
     pub fn do_hooked(&mut self, event: &Event, event_context: &EventContext) {
-        if let Some(hook) = self.hooks.get(event) {
-            hook(self, event_context)
+        if !self.hooks.contains_key(event) {
+            return;
         }
+        let hook = self.hooks.get(event).unwrap().clone();
+        hook(self, event_context)
     }
 
     /// Allocate a block of memory `length` bytes in size

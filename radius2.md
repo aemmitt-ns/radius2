@@ -63,33 +63,33 @@ $ radius2 -p /bin/ls -v
 
 The string on the right is ESIL, the intermediate language that is actually being executed by radius. It will be explained more below. By default no libraries are loaded and standard c functions are emulated (see the contents of radius/sims/libc.rs). Shared libraries can be loaded by using the `-L` argument to specify directories to load from. 
 
-Symbolic values can be defined with `-s <name> <bits> <type>` where type can either be `num` or `str` to determine how the symbol is printed after evaluation. `stdin` is a special name that is automatically treated as the content of stdin, equivalent to `-s stdin 32 str -f 0 stdin` (numeric file names are treated as file descriptors). A simple crackme can be solved as easily as 
+Symbolic values can be defined with `-s <name> <bits> <type>` where type can either be `num` or `str` to determine how the symbol is printed after evaluation. `stdin` is a special name that is automatically treated as the content of stdin, equivalent to `-s stdin 32 -f 0 stdin` (numeric file names are treated as file descriptors). A simple crackme can be solved as easily as 
 
 ```
-$ radius2 -p r100 -s stdin 96 str -X Incorrect
+$ radius2 -p r100 -s stdin 96 -X Incorrect
   stdin : "Code_Talkers"
 ```
 
 The `-X` option tells radius2 to avoid any addresses that contain XREFs to a string containing the argument. States that reach avoided address are discarded and the first state to finish execution without being discarded is used to evaluate the symbolic values. Addresses to avoid can be manually set like `-x 0x400855`, the addresses can be in decimal or hex (or octal or binary if you wanna get real nuts), can include symbols and even be offsets from symbols like 
 
 ```
-$ radius2 -p r100 -s stdin 96 str -x main+109
+$ radius2 -p r100 -s stdin 96 -x main+109
   stdin : "Code_Talkers"
 ```
 
-Conversely breakpoints, target addresses where execution should stop and evaluate, can be set with `-b` and string xref breakpoints with `-B` so `radius2 -p r100 -s stdin 96 str -B Nice` also works.  
+Conversely breakpoints, target addresses where execution should stop and evaluate, can be set with `-b` and string xref breakpoints with `-B` so `radius2 -p r100 -s stdin 96 -B Nice` also works.  
 
 More complicated code may require state merging to finish in a reasonable time like in this example where `0x00400811` is designated as a merge point
 
 ```
-$ radius2 -p r200 -s stdin 48 str -X Incorrect -m 0x00400811
+$ radius2 -p r200 -s stdin 48 -X Incorrect -m 0x00400811
   stdin : "rotors"
 ```
 
-`radius2` can also set symbolic file contents using `-s sym 4096 str -f /path/to/file sym` and symbolic argv values with `-A ls @-l sym`  (the @ is necessary to stop it from being taken as an option to `radius2` itself). For both `-f` and `-A` any string which has not been defined as a symbol name will simply be that string. Files that are not supplied will be read from the real filesystem, but will never be written to. An example of these and other features is the solution to `unbreakable`
+`radius2` can also set symbolic file contents using `-s sym 4096 -f /path/to/file sym` and symbolic argv values with `-A ls @-l sym`  (the @ is necessary to stop it from being taken as an option to `radius2` itself). For both `-f` and `-A` any string which has not been defined as a symbol name will simply be that string. Files that are not supplied will be read from the real filesystem, but will never be written to. An example of these and other features is the solution to `unbreakable`
 
 ```
-$ radius2 -p unbreakable -s flag 408 str -c flag 'CTF{' -B 'Thank you' -z -A . flag
+$ radius2 -p unbreakable -s flag 408 -c flag 'CTF{' -B 'Thank you' -z -A . flag
   flag : "CTF{0The1Quick2Brown3Fox4Jumped5Over6The7Lazy8Fox9}"
 ```
 
@@ -98,7 +98,7 @@ This example also constrains the first four bytes of `flag` to be "CTF{" with `-
 `radius2` also has a basic testcase generation option, `-F <dir>` which will generate files containing values of the defined symbols for each different execution path. 
 
 ```
-$ radius2 -p ais3 -s flag 256 str -A . flag -F testcases -P
+$ radius2 -p ais3 -s flag 256 -A . flag -F testcases -P
 init time:      74039
 run time:       194957
 instructions:   2226
@@ -116,7 +116,7 @@ Here the `-P` option causes `radius2` to print out some profiling information. T
 However the most powerful feature of `radius2` is the ability to write arbitrary hooks with ESIL. The previous example could also be solved using 
 
 ```
-$ radius2 -p r200 -s stdin 48 str -m 0x4007ba -H 0x400849 'eax,!,?{,stdin,.,}'
+$ radius2 -p r200 -s stdin 48 -m 0x4007ba -H 0x400849 'eax,!,?{,stdin,.,}'
 000000000040084a: #x000073726f746f72 "rotors\u{0}\u{0}"
 ```
 

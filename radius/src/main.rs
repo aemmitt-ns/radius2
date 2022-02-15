@@ -3,9 +3,9 @@ use crate::r2_api::hex_encode;
 use crate::radius::{Radius, RadiusOption, RunMode};
 use boolector::BV;
 use clap::{App, Arg};
-use std::{fs, process};
 use std::path::Path;
 use std::time::Instant;
+use std::{fs, process};
 
 use crate::state::StateStatus;
 use crate::value::Value;
@@ -369,7 +369,7 @@ fn main() {
         let mut len = symbols[2 * i + 1];
 
         if len.ends_with("n") {
-            len = &len[..len.len()-1];
+            len = &len[..len.len() - 1];
             symbol_types.insert(sym_name, "num");
         } else {
             symbol_types.insert(sym_name, "str");

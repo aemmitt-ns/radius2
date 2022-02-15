@@ -2,10 +2,14 @@ use crate::state::State;
 use crate::value::{vc, Value};
 
 const MAXLEN: usize = 8192;
-const FORMATS: [char; 19] = ['d', 'i', 'u', 'o', 'x', 'X', 'f', 'F', 'e', 'E', 'g', 'G', 'a', 'A', 'c', 's', 'p', 'n', '%'];
+const FORMATS: [char; 19] = [
+    'd', 'i', 'u', 'o', 'x', 'X', 'f', 'F', 'e', 'E', 'g', 'G', 'a', 'A', 'c', 's', 'p', 'n', '%',
+];
 
-const UINTS: [char; 5] = ['u', 'o', 'x', 'X', 'p'];
-const NONUINTS: [char; 14] = ['d', 'i', 'f', 'F', 'e', 'E', 'g', 'G', 'a', 'A', 'c', 's', 'n', '%'];
+const UINTS: [char; 4] = ['u', 'o', 'x', 'X'];
+const NONUINTS: [char; 15] = [
+    'd', 'i', 'f', 'F', 'e', 'E', 'g', 'G', 'a', 'A', 'c', 's', 'n', '%', 'p',
+];
 
 // the value returned is the formatted string
 pub fn format(state: &mut State, args: &[Value]) -> Vec<Value> {
@@ -18,7 +22,7 @@ pub fn format(state: &mut State, args: &[Value]) -> Vec<Value> {
     while !formatstr.is_empty() {
         let c = formatstr.remove(0);
         if !formatstr.is_empty() && state.check(&c.eq(&vc('%' as u64))) {
-            if formatstr[0].as_u64() != Some('%' as u64) { 
+            if formatstr[0].as_u64() != Some('%' as u64) {
                 ind += 1; // jank fix cuz %% shouldnt increment
             }
             // if it can be % it *must* be %
@@ -40,7 +44,7 @@ pub fn may_be_formats(state: &mut State, c: &Value) -> Vec<char> {
     for f in FORMATS.iter() {
         if state.check(&c.eq(&vc(*f as u64))) {
             formats.push(*f);
-        } 
+        }
     }
     formats
 }
@@ -57,8 +61,13 @@ pub fn must_be_formats(state: &mut State, c: &Value, formats: &[char]) {
 }
 
 // do one format string, "%10s", "%03x", etc
-// count is just for %n 
-pub fn format_one(state: &mut State, formatstr: &mut Vec<Value>, arg: &Value, count: usize) -> Vec<Value> {
+// count is just for %n
+pub fn format_one(
+    state: &mut State,
+    formatstr: &mut Vec<Value>,
+    arg: &Value,
+    count: usize,
+) -> Vec<Value> {
     let mut preformat = Vec::with_capacity(64); // eg the 08 in %08x, ignore for now
     let mut result = Vec::with_capacity(MAXLEN);
 
@@ -71,10 +80,12 @@ pub fn format_one(state: &mut State, formatstr: &mut Vec<Value>, arg: &Value, co
                 "".to_owned()
             } else {
                 let preformat_val = state.memory.pack(&preformat);
-                let preformat_bv = state.solver.to_bv(&preformat_val, 8*preformat.len() as u32);
+                let preformat_bv = state
+                    .solver
+                    .to_bv(&preformat_val, 8 * preformat.len() as u32);
                 state.evaluate_string(&preformat_bv).unwrap_or_default()
             };
-            
+
             let maybe_uint = formats.iter().any(|f| UINTS.contains(&f));
 
             if maybe_uint {
@@ -83,10 +94,12 @@ pub fn format_one(state: &mut State, formatstr: &mut Vec<Value>, arg: &Value, co
                 result.extend(format_uint(state, &c, arg, &preformat_str));
             } else {
                 must_be_formats(state, &c, &NONUINTS);
-                let cc = state.solver.evalcon_to_u64(&c).unwrap_or(0) as u8;
+                let cl = tolower(state, &[c.clone()]);
+                let cc = state.solver.evalcon_to_u64(&cl).unwrap_or(0) as u8;
 
                 match cc as char {
                     'c' => result.push(arg.and(&vc(0xff))),
+                    'p' => result.extend(format_uint(state, &c, arg, &preformat_str)),
                     'd' | 'i' => result.extend(format_int(state, &c, arg, &preformat_str)),
                     'f' | 'e' | 'g' | 'a' => result.extend(format_float(state, &c, arg)),
                     's' => result.extend(format_string(state, &c, arg, &preformat_str)),
@@ -140,7 +153,7 @@ fn format_uint(state: &mut State, c: &Value, arg: &Value, pre: &str) -> Vec<Valu
         result = [pad, result].concat();
     }
 
-    result 
+    result
 }
 
 fn format_int(state: &mut State, _c: &Value, arg: &Value, pre: &str) -> Vec<Value> {
@@ -162,7 +175,7 @@ fn format_int(state: &mut State, _c: &Value, arg: &Value, pre: &str) -> Vec<Valu
         result = [pad, result].concat();
     }
 
-    result 
+    result
 }
 
 fn format_float(state: &mut State, _c: &Value, arg: &Value) -> Vec<Value> {
@@ -180,7 +193,7 @@ fn format_string(state: &mut State, _c: &Value, arg: &Value, pre: &str) -> Vec<V
         let pad = vec![vc(' ' as u64); extra];
         result = [pad, result].concat();
     }
-    result 
+    result
 }
 
 pub fn scan(state: &mut State, args: &[Value]) -> Value {
@@ -220,7 +233,9 @@ pub fn scan_one(state: &mut State, formatstr: &mut Vec<Value>, arg: &Value, data
                 "".to_owned()
             } else {
                 let preformat_val = state.memory.pack(&preformat);
-                let preformat_bv = state.solver.to_bv(&preformat_val, 8*preformat.len() as u32);
+                let preformat_bv = state
+                    .solver
+                    .to_bv(&preformat_val, 8 * preformat.len() as u32);
                 state.evaluate_string(&preformat_bv).unwrap_or_default()
             };
             let maybe_uint = formats.iter().any(|f| UINTS.contains(&f));
@@ -239,6 +254,7 @@ pub fn scan_one(state: &mut State, formatstr: &mut Vec<Value>, arg: &Value, data
 
                 match cc as char {
                     'c' => state.memory_write_value(arg, data, 1),
+                    'p' => scan_uint(state, &vc(cc as u64), arg, data),
                     'd' | 'i' => scan_int(state, arg, data),
                     'f' | 'e' | 'g' | 'a' => scan_float(state, arg, data),
                     's' => scan_string(state, arg, data, &preformat_str),
@@ -249,7 +265,7 @@ pub fn scan_one(state: &mut State, formatstr: &mut Vec<Value>, arg: &Value, data
         } else {
             preformat.push(c);
         }
-    } 
+    }
 }
 
 pub fn scan_uint(state: &mut State, c: &Value, arg: &Value, data: &mut Value) {
@@ -352,7 +368,6 @@ fn atoi_concrete(state: &mut State, addr: &Value, base: &Value, len: usize) -> V
  * appropriate sign for the result). It returns 0 if it saw no digits.
  */
 
-
 // for now and maybe forever this only works for strings that
 // don't have garbage in them. so only strings with digits or +/-
 pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value, size: u64) -> Value {
@@ -406,7 +421,6 @@ pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value, size: u64) -> 
     result * neg_mul
 }
 
-
 pub fn itoa_helper(
     state: &mut State,
     value: &Value,
@@ -415,7 +429,7 @@ pub fn itoa_helper(
     sign: bool,
     size: usize,
 ) -> Value {
-    let mut data = vec![];
+    let mut data = Vec::with_capacity(size);
 
     // condition to add a minus sign -
     let neg_cond = &(value.slt(&vc(0)) & base.eq(&vc(10)) & vc(sign as u64));
@@ -463,6 +477,7 @@ pub fn itoa_helper(
             .conditional(&neg_cond, &(new_addr.clone() + vc(1)), &new_addr);
     }
     state.memory_write_value(&new_addr, &Value::Symbolic(bv, 0), data.len());
+    state.memory_write_value(&new_addr.add(&vc(data.len() as u64)), &vc(0), 8);
 
     string.to_owned()
 }

@@ -40,12 +40,12 @@ pub enum RunMode {
     Multiple,
 }
 
-pub type HookMethod = fn(&mut State) -> bool;
+pub type HookMethod = dyn Fn(&mut State) -> bool;
 
 #[derive(Clone)]
 pub struct Processor {
     pub instructions: HashMap<u64, InstructionEntry>,
-    pub hooks: HashMap<u64, Vec<HookMethod>>,
+    pub hooks: HashMap<u64, Vec<Rc<HookMethod>>>,
     pub esil_hooks: HashMap<u64, Vec<String>>,
     pub sims: HashMap<u64, SimMethod>,
     pub traps: HashMap<u64, SimMethod>,

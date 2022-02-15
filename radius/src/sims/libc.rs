@@ -1,5 +1,5 @@
-use crate::sims::syscall;
 use crate::sims::format;
+use crate::sims::syscall;
 use crate::state::State;
 use crate::value::{vc, Value};
 use rand::Rng;
@@ -17,7 +17,9 @@ fn put_helper(state: &mut State, args: &[Value], nl: bool) -> Value {
     let addr = &args[0];
     let length = strlen(state, &args[0..1]);
     let mut data = state.memory_read(addr, &length);
-    if nl { data.push(vc('\n' as u64)) } // add newline
+    if nl {
+        data.push(vc('\n' as u64))
+    } // add newline
     state.filesystem.write(1, data);
     length
 }
@@ -40,7 +42,7 @@ fn readline(state: &mut State, args: &[Value]) -> Value {
             .unwrap_or(&vc(-1i64 as u64))
             .to_owned();
 
-        if c.as_u64() != Some(-1i64 as u64) {            
+        if c.as_u64() != Some(-1i64 as u64) {
             // uhhh idk we cant do symbolic file pos yet so
             // this is where we are at
             if c.as_u64() == Some('\n' as u64) {
@@ -194,8 +196,7 @@ pub fn feof(state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn strcpy(state: &mut State, args: &[Value]) -> Value {
-    let length =
-        state.memory_strlen(&args[1], &vc(MAX_LEN)) + vc(1);
+    let length = state.memory_strlen(&args[1], &vc(MAX_LEN)) + vc(1);
     state.memory_move(&args[0], &args[1], &length);
     args[0].to_owned()
 }
@@ -258,8 +259,10 @@ pub fn strncat(state: &mut State, args: &[Value]) -> Value {
 pub fn memset(state: &mut State, args: &[Value]) -> Value {
     let mut data = vec![];
     let length = state.solver.max_value(&args[2]);
-    for _ in 0..length { data.push(args[1].to_owned()); }
-    
+    for _ in 0..length {
+        data.push(args[1].to_owned());
+    }
+
     state.memory_write(&args[0], &data, &args[2]);
     args[0].to_owned()
 }
@@ -489,10 +492,7 @@ pub fn ftell(state: &mut State, args: &[Value]) -> Value {
 
 // is whitespace
 fn _isws(c: &Value) -> Value {
-    c.eq(&vc(0x09))
-        | c.eq(&vc(0x20))
-        | c.eq(&vc(0x0d))
-        | c.eq(&vc(0x0a))
+    c.eq(&vc(0x09)) | c.eq(&vc(0x20)) | c.eq(&vc(0x0d)) | c.eq(&vc(0x0a))
 }
 
 pub fn atoi(state: &mut State, args: &[Value]) -> Value {
@@ -758,6 +758,7 @@ pub fn getenv(state: &mut State, args: &[Value]) -> Value {
     let bits = state.memory.bits as usize;
     let mut env_ptr = state.context["env"][0].clone();
     let mut result = vc(0);
+    let eqs = vc('=' as u64);
     loop {
         let var_ptr = state.memory_read_value(&env_ptr, bits / 8);
 
@@ -767,14 +768,12 @@ pub fn getenv(state: &mut State, args: &[Value]) -> Value {
         }
 
         let full_length = state.memory_strlen(&var_ptr, &vc(MAX_LEN));
-        let name_end = state.memory_search(&var_ptr, &vc('=' as u64), &full_length, false);
+        let name_end = state.memory_search(&var_ptr, &eqs, &full_length, false);
 
-        let name_length =
-            state.cond(&name_end.eq(&vc(0)), &full_length, &name_end.sub(&var_ptr));
+        let name_length = state.cond(&name_end.eq(&vc(0)), &full_length, &name_end.sub(&var_ptr));
 
         let value_ptr = var_ptr.add(&name_length).add(&vc(1));
-        let long_len =
-            state.cond(&arg_length.ugte(&name_length), &arg_length, &name_length);
+        let long_len = state.cond(&arg_length.ugte(&name_length), &arg_length, &name_length);
 
         let cmp = state.memory_compare(&arg_ptr, &var_ptr, &long_len);
         result = state.cond(&cmp.eq(&vc(0)), &value_ptr, &result);
