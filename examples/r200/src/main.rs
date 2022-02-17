@@ -13,7 +13,7 @@ fn main() {
     radius.avoid(&[0x00400832]);
 
     let mut new_state = radius.run(state, 1).unwrap();
-    let flag = new_state.evaluate_string_value(&bv).unwrap();
+    let flag = new_state.evaluate_string(&bv).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "rotors");
 }

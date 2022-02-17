@@ -26,7 +26,7 @@ pub fn format(state: &mut State, args: &[Value]) -> Vec<Value> {
                 ind += 1; // jank fix cuz %% shouldnt increment
             }
             // if it can be % it *must* be %
-            state.assert_value(&c.eq(&vc('%' as u64)));
+            state.assert(&c.eq(&vc('%' as u64)));
             let formatted = format_one(state, &mut formatstr, &args[ind], count);
             count += formatted.len();
             result.extend(formatted);
@@ -35,6 +35,7 @@ pub fn format(state: &mut State, args: &[Value]) -> Vec<Value> {
             count += 1
         }
     }
+    result.push(vc(0));
     result
 }
 
@@ -56,7 +57,7 @@ pub fn must_be_formats(state: &mut State, c: &Value, formats: &[char]) {
         for f in formats.iter() {
             asserts.push(state.solver.to_bv(&c.eq(&vc(*f as u64)), 1));
         }
-        state.assert(&state.solver.or_all(&asserts));
+        state.assert_bv(&state.solver.or_all(&asserts));
     }
 }
 
@@ -83,7 +84,7 @@ pub fn format_one(
                 let preformat_bv = state
                     .solver
                     .to_bv(&preformat_val, 8 * preformat.len() as u32);
-                state.evaluate_string(&preformat_bv).unwrap_or_default()
+                state.evaluate_string_bv(&preformat_bv).unwrap_or_default()
             };
 
             let maybe_uint = formats.iter().any(|f| UINTS.contains(&f));
@@ -210,7 +211,7 @@ pub fn scan(state: &mut State, args: &[Value]) -> Value {
                 ind += 1; // jank fix cuz %% shouldnt increment
             }
             // if it can be % it *must* be %
-            state.assert_value(&c.eq(&vc('%' as u64)));
+            state.assert(&c.eq(&vc('%' as u64)));
             scan_one(state, &mut formatstr, &args[ind], &mut data);
             count += 1;
         } else {
@@ -236,7 +237,7 @@ pub fn scan_one(state: &mut State, formatstr: &mut Vec<Value>, arg: &Value, data
                 let preformat_bv = state
                     .solver
                     .to_bv(&preformat_val, 8 * preformat.len() as u32);
-                state.evaluate_string(&preformat_bv).unwrap_or_default()
+                state.evaluate_string_bv(&preformat_bv).unwrap_or_default()
             };
             let maybe_uint = formats.iter().any(|f| UINTS.contains(&f));
             let next = formatstr.remove(0); // get delimiter maybe?
@@ -375,7 +376,7 @@ pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value, size: u64) -> 
     let data = state.memory_read(&addr, &length);
     let len = data.len();
 
-    state.assert_value(&length.eq(&vc(len as u64)));
+    state.assert(&length.eq(&vc(len as u64)));
     if len == 0 {
         return Value::Concrete(0, 0);
     }
@@ -404,7 +405,7 @@ pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value, size: u64) -> 
         } else {
             isbasedigit(state, &dx, base)
         };
-        state.assert_value(&cond);
+        state.assert(&cond);
 
         // add d*10**n to result
         result = result
@@ -416,9 +417,41 @@ pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value, size: u64) -> 
     }
     // this assertion is much faster than slicing dx
     let mask = (1i64.wrapping_shl(size as u32) - 1) as u64;
-    state.assert_value(&result.ulte(&Value::Concrete(mask, 0)));
+    state.assert(&result.ulte(&Value::Concrete(mask, 0)));
 
     result * neg_mul
+}
+
+pub fn itoa_concrete(
+    state: &mut State,
+    value: &Value,
+    string: &Value,
+    base: &Value,
+    sign: bool,
+    size: usize,
+) -> Value {
+    let sz = size as u64;
+    if let Value::Concrete(v, t) = value {
+        let mut masked = v & ((1 << sz) - 1);
+        if sign && sz < 64 {
+            masked = (((masked as i64) << (64 - sz)) >> sz) as u64;
+        }
+        let vstr = match (base.as_u64().unwrap(), sign) {
+            (2, _) => format!("{:b}", masked),
+            (8, _) => format!("{:o}", masked),
+            (16, _) => format!("{:x}", masked),
+            (_, false) => format!("{}", masked),
+            (_, true) => format!("{}", masked as i64),
+        };
+        let mut data: Vec<Value> = vstr
+            .chars()
+            .map(|c| Value::Concrete(c as u64, *t))
+            .collect();
+
+        data.push(vc(0));
+        state.memory_write(string, &data, &vc(data.len() as u64));
+    }
+    string.to_owned()
 }
 
 pub fn itoa_helper(
@@ -429,6 +462,11 @@ pub fn itoa_helper(
     sign: bool,
     size: usize,
 ) -> Value {
+
+    if value.is_concrete() && base.is_concrete() {
+        return itoa_concrete(state, value, string, base, sign, size);
+    }
+
     let mut data = Vec::with_capacity(size);
 
     // condition to add a minus sign -

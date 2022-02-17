@@ -11,7 +11,7 @@ fn main() {
     radius.breakpoint(0x004007a1);
     radius.avoid(&[0x00400790]);
     let mut new_state = radius.run(state, 1).unwrap();
-    let flag = new_state.evaluate_string_value(&flag_val).unwrap();
+    let flag = new_state.evaluate_string(&flag_val).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "Code_Talkers");
 }

@@ -3,7 +3,7 @@ use crate::r2_api::{Endian, Information, R2Api};
 use crate::registers::Registers;
 use crate::sims::fs::SimFilesytem;
 use crate::solver::{BitVec, Solver};
-use crate::value::{vc, Value};
+use crate::value::{vc, Value, byte_values};
 
 use std::cmp::Ordering;
 use std::rc::Rc;
@@ -649,26 +649,34 @@ impl State {
     }
 
     pub fn fill_file_string(&mut self, fd: usize, string: &str) {
-        let data: Vec<Value> = string
-            .chars()
-            .map(|c| Value::Concrete(c as u64, 0))
-            .collect();
-
+        let data = byte_values(string);
         self.filesystem.fill(fd, &data)
+    }
+
+    pub fn dump_path(&mut self, path: &str) -> Vec<Value> {
+        if let Some(fd) = self.filesystem.getfd(path) {
+            self.filesystem.dump(fd)
+        } else {
+            vec![]
+        }
     }
 
     pub fn dump_file(&mut self, fd: usize) -> Vec<Value> {
         self.filesystem.dump(fd)
     }
 
-    pub fn dump_file_string(&mut self, fd: usize) -> Option<String> {
+    pub fn dump_file_bytes(&mut self, fd: usize) -> Vec<u8> {
         let values = self.filesystem.dump(fd);
         let bytes = values
             .iter()
             .map(|v| self.solver.evalcon_to_u64(v).unwrap_or(0) as u8)
             .collect();
 
-        String::from_utf8(bytes).ok()
+        bytes
+    }
+
+    pub fn dump_file_string(&mut self, fd: usize) -> Option<String> {
+        String::from_utf8(self.dump_file_bytes(fd)).ok()
     }
 
     /// Apply this state to the radare2 instance. This writes all the values
@@ -794,10 +802,10 @@ impl State {
 
     /// constrain bytes of bitvector to be an exact string eg. "ABC"
     /// or use "[...]" to match a simple pattern eg. "[XYZa-z0-9]"
-    pub fn constrain_bytes(&mut self, bv: &BitVec, pattern: &str) {
+    pub fn constrain_bytes_bv(&mut self, bv: &BitVec, pattern: &str) {
         if &pattern[..1] != "[" {
             for (i, c) in pattern.chars().enumerate() {
-                self.assert(
+                self.assert_bv(
                     &bv.slice(8 * (i as u32 + 1) - 1, 8 * i as u32)
                         ._eq(&self.bvv(c as u64, 8)),
                 );
@@ -824,16 +832,34 @@ impl State {
                     }
                 }
 
-                self.assert(&self.solver.or_all(&assertions));
+                self.assert_bv(&self.solver.or_all(&assertions));
             }
         }
     }
 
     /// constrain bytes of bitvector to be an exact string eg. "ABC"
     /// or use "[...]" to match a simple pattern eg. "[XYZa-z0-9]"
-    pub fn constrain_bytes_value(&mut self, bv: &Value, pattern: &str) {
+    pub fn constrain_bytes(&mut self, bv: &Value, pattern: &str) {
         if let Value::Symbolic(s, _) = bv {
-            self.constrain_bytes(&s, pattern)
+            self.constrain_bytes_bv(&s, pattern)
+        }
+    }
+
+    /// constrain bytes of file with file descriptor
+    pub fn constrain_fd(&mut self, fd: usize, content: &str) {
+        let fbytes = self.dump_file(fd);
+        let cbytes = byte_values(content);
+        for i in 0..cbytes.len() {
+            if i < fbytes.len() {
+                self.assert(&cbytes[i].eq(&fbytes[i]));
+            }
+        }
+    }
+
+    /// constrain bytes of file 
+    pub fn constrain_file(&mut self, path: &str, content: &str) {
+        if let Some(fd) = self.filesystem.getfd(path) {
+            self.constrain_fd(fd, content);
         }
     }
 
@@ -966,8 +992,13 @@ impl State {
     }
 
     /// Assert the truth of the given bitvector (value != 0)
-    pub fn assert(&mut self, bv: &BitVec) {
-        self.solver.assert(bv)
+    pub fn assert_bv(&mut self, bv: &BitVec) {
+        self.solver.assert_bv(bv)
+    }
+
+    /// Assert the truth of the given `Value` (value != 0)
+    pub fn assert(&mut self, value: &Value) {
+        self.solver.assert(value)
     }
 
     /// Check the satisfiability of the given value
@@ -980,18 +1011,13 @@ impl State {
         self.solver.conditional(condition, if_val, else_val)
     }
 
-    /// Assert the truth of the given `Value` (value != 0)
-    pub fn assert_value(&mut self, value: &Value) {
-        self.solver.assert_value(value)
-    }
-
     /// Evaluate multiple solutions to bv
     pub fn evaluate_many(&mut self, bv: &BitVec) -> Vec<u64> {
         self.solver.evaluate_many(bv)
     }
 
     /// Evaluate bytes from bitvector `bv`
-    pub fn evaluate_bytes(&mut self, bv: &BitVec) -> Option<Vec<u8>> {
+    pub fn evaluate_bytes_bv(&mut self, bv: &BitVec) -> Option<Vec<u8>> {
         let new_bv = bv; //self.translate(bv).unwrap();
         let mut data: Vec<u8> = vec![];
         if self.solver.is_sat() {
@@ -1015,8 +1041,8 @@ impl State {
     }
 
     /// Evaluate bytes from bitvector `bv`
-    pub fn evaluate_string(&mut self, bv: &BitVec) -> Option<String> {
-        if let Some(bytes) = self.evaluate_bytes(bv) {
+    pub fn evaluate_string_bv(&mut self, bv: &BitVec) -> Option<String> {
+        if let Some(bytes) = self.evaluate_bytes_bv(bv) {
             String::from_utf8(bytes).ok()
         } else {
             None
@@ -1024,12 +1050,12 @@ impl State {
     }
 
     /// Evaluate bytes from value
-    pub fn evaluate_bytes_value(&mut self, value: &Value) -> Option<Vec<u8>> {
-        self.evaluate_bytes(value.as_bv().as_ref().unwrap())
+    pub fn evaluate_bytes(&mut self, value: &Value) -> Option<Vec<u8>> {
+        self.evaluate_bytes_bv(value.as_bv().as_ref().unwrap())
     }
 
     /// Evaluate string from value
-    pub fn evaluate_string_value(&mut self, value: &Value) -> Option<String> {
-        self.evaluate_string(value.as_bv().as_ref().unwrap())
+    pub fn evaluate_string(&mut self, value: &Value) -> Option<String> {
+        self.evaluate_string_bv(value.as_bv().as_ref().unwrap())
     }
 }

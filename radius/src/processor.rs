@@ -172,6 +172,7 @@ impl Processor {
     }
 
     /// attempt to tokenize word as number literal (eg. 0x8)
+    #[inline]
     pub fn get_literal(&self, word: &str) -> Option<Word> {
         if let Ok(i) = word.parse::<u64>() {
             Some(Word::Literal(Value::Concrete(i, 0)))
@@ -186,6 +187,7 @@ impl Processor {
     }
 
     /// attempt to tokenize word as register (eg. rbx)
+    #[inline]
     pub fn get_register(&self, state: &mut State, word: &str) -> Option<Word> {
         let name = if let Some(alias) = state.registers.aliases.get(word) {
             alias.reg.as_str()
@@ -199,6 +201,7 @@ impl Processor {
     }
 
     /// attempt to tokenize word as operation (eg. +)
+    #[inline]
     pub fn get_operator(&self, word: &str) -> Option<Word> {
         match Operations::from_string(word) {
             Operations::Unknown => None,
@@ -542,7 +545,6 @@ impl Processor {
             }
         }
 
-        // shit is gettin messy
         //let mut new_status = status;
         let mut new_flags = flags.clone();
         if state.status == StateStatus::PostMerge && flags.contains(&InstructionFlag::Merge) {
@@ -570,59 +572,65 @@ impl Processor {
 
         // skip executing this instruction
         let mut skip = false;
-        for status in new_flags.iter() {
-            match status {
-                InstructionFlag::Hook => {
-                    let hooks = &self.hooks[&pc];
-                    for hook in hooks {
-                        skip = !hook(state) || skip;
-                    }
+        let mut update = true;
+        if !new_flags.is_empty() {
+            if new_flags.contains(&InstructionFlag::Hook) {
+                let hooks = &self.hooks[&pc];
+                for hook in hooks {
+                    skip = !hook(state) || skip;
                 }
-                InstructionFlag::ESILHook => {
-                    let esils = &self.esil_hooks[&pc];
-                    for esil in esils {
-                        self.parse_expression(state, esil);
-                        let val = pop_concrete(state, false, false);
-                        skip = (val != 0) || skip;
-                    }
+            }
+            if new_flags.contains(&InstructionFlag::ESILHook) {
+                let esils = &self.esil_hooks[&pc];
+                for esil in esils {
+                    self.parse_expression(state, esil);
+                    let val = pop_concrete(state, false, false);
+                    skip = (val != 0) || skip;
                 }
-                InstructionFlag::Sim => {
-                    let sim = &self.sims[&pc];
-                    let cc = state.r2api.get_cc(pc).unwrap_or_default();
-                    let args = self.get_args(state, &cc);
+            }
+            if state.registers.get_pc() != vc(pc) {
+                update = false; // hook changed pc dont update
+            }
+            if new_flags.contains(&InstructionFlag::Sim) {
+                let sim = &self.sims[&pc];
+                let cc = state.r2api.get_cc(pc).unwrap_or_default();
+                let args = self.get_args(state, &cc);
 
-                    let ret = sim(state, &args);
-                    state.registers.set_with_alias(cc.ret.as_str(), ret);
-                    state.backtrace.pop();
+                let ret = sim(state, &args);
+                state.registers.set_with_alias(cc.ret.as_str(), ret);
+                state.backtrace.pop();
 
-                    // don't ret if sim changes the PC value
-                    // this is bad hax because thats all i do
-                    let newer_pc_val = state.registers.get_pc();
-                    if let Some(newer_pc) = newer_pc_val.as_u64() {
-                        if newer_pc == pc {
-                            self.ret(state);
-                        }
-                    }
-                    skip = true;
+                // don't ret if sim changes the PC value
+                // this is bad hax because thats all i do
+                if state.registers.get_pc() == vc(pc) {
+                    self.ret(state);
                 }
-                InstructionFlag::Break => {
-                    state.status = StateStatus::Break;
-                    skip = true;
-                }
-                InstructionFlag::Merge => {
-                    state.status = StateStatus::Merge;
-                    skip = true;
-                }
-                InstructionFlag::Avoid => {
-                    state.status = StateStatus::Inactive;
-                    skip = true;
-                }
-            };
+                skip = true;
+                update = false;
+            }
+            if new_flags.contains(&InstructionFlag::Break) {
+                state.status = StateStatus::Break;
+                skip = true;
+                update = false;
+            }
+            if new_flags.contains(&InstructionFlag::Merge) {
+                state.status = StateStatus::Merge;
+                skip = true;
+                update = false;
+            }
+            if new_flags.contains(&InstructionFlag::Avoid) {
+                state.status = StateStatus::Inactive;
+                skip = true;
+                update = false;
+            }
+        }
+
+        if update {
+            let pc_val = Value::Concrete(new_pc, 0);
+            state.registers.set_pc(pc_val);
         }
 
         if !skip {
-            let pc_val = Value::Concrete(new_pc, 0);
-            state.registers.set_pc(pc_val);
             self.parse(state, words);
         }
     }
@@ -786,7 +794,7 @@ impl Processor {
                 let mut new_state = state.clone();
                 if let Some(pc_val) = new_pc.as_bv() {
                     let a = pc_val._eq(&new_state.bvv(*new_pc_val, pc_val.get_width()));
-                    new_state.solver.assert(&a);
+                    new_state.solver.assert_bv(&a);
                 }
                 new_state.registers.set_pc(Value::Concrete(*new_pc_val, 0));
                 states.push(new_state);
@@ -796,7 +804,7 @@ impl Processor {
             if let Some(pc_val) = new_pc.as_bv() {
                 let pc_bv = pc_val;
                 let a = pc_bv._eq(&state.bvv(new_pc_val, pc_bv.get_width()));
-                state.solver.assert(&a);
+                state.solver.assert_bv(&a);
             }
             state.registers.set_pc(Value::Concrete(new_pc_val, 0));
             states
@@ -906,7 +914,7 @@ impl Processor {
             let assertions = &merge_state.solver.assertions;
             let current = state.solver.and_all(assertions);
             merge_state.solver.reset();
-            merge_state.assert(&current.or(&asserted.as_bv().unwrap()));
+            merge_state.assert_bv(&current.or(&asserted.as_bv().unwrap()));
             self.merges.insert(pc, merge_state);
         } else {
             self.merges.insert(pc, state);

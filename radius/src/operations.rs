@@ -633,7 +633,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             state.esil.previous = addr;
             state.esil.last_sz = 8 * n;
         }
-        // this is a shit hack to do op pokes ~efficiently
+        // this is a hack to do op pokes ~efficiently
         Operations::AddressStore => {
             let addr = pop_value(state, false, false);
             state.esil.stored_address = Some(addr.to_owned());
@@ -800,10 +800,11 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let value = pop_value(state, false, false);
             let ip = state.registers.get_pc().as_u64().unwrap_or_default();
             if let Some(bv) = state.solver.eval_to_bv(&value) {
-                if let Some(string) = state.evaluate_string(&bv) {
-                    println!("\n{:016x}: {:?} {:?}\n", ip, bv, string);
+                let hex = &format!("{:?}", bv)[2..];
+                if let Some(string) = state.evaluate_string_bv(&bv) {
+                    println!("\n{:016x}: 0x{} {:?}\n", ip, hex, string);
                 } else {
-                    println!("\n{:016x}: {:?}\n", ip, bv);
+                    println!("\n{:016x}: 0x{}\n", ip, hex);
                 }
             } else {
                 println!("\n{:016x}: unsat\n", ip);
@@ -816,7 +817,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         }
         Operations::Constrain => {
             let value = pop_value(state, false, false);
-            state.assert_value(&value);
+            state.assert(&value);
         }
         Operations::Terminate => {
             state.set_break();

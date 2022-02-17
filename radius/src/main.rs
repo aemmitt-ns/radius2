@@ -434,7 +434,7 @@ fn main() {
             &cons[2 * i + 1]
         };
 
-        state.constrain_bytes(bv, cons);
+        state.constrain_bytes_bv(bv, cons);
     }
 
     // collect the ESIL hooks
@@ -476,7 +476,7 @@ fn main() {
 
     // set provided address and register values
     let sets: Vec<&str> = collect!(matches, "set");
-    for i in 0..matches.occurrences_of("set") as usize {
+    for i in 0..(matches.occurrences_of("set")/3) as usize {
         // easiest way to interpret the stuff is just to use
         let ind = 3 * i;
         let length: u32 = sets[ind + 2].parse().unwrap();
@@ -602,11 +602,9 @@ fn main() {
         if let Some(mut end_state) = result {
             // collect the ESIL strings to evaluate after running
             let evals: Vec<&str> = collect!(matches, "evaluate_after");
-
             for eval in evals {
                 radius.processor.parse_expression(&mut end_state, eval);
             }
-
             let solve_start = Instant::now();
 
             println!();
@@ -614,7 +612,7 @@ fn main() {
                 let val = Value::Symbolic(end_state.translate(&symbol_map[symbol]).unwrap(), 0);
 
                 if let Some(bv) = end_state.solver.eval_to_bv(&val) {
-                    let str_opt = end_state.evaluate_string(&bv);
+                    let str_opt = end_state.evaluate_string_bv(&bv);
                     let sym_type = symbol_types[symbol];
                     if sym_type == "str" && str_opt.is_some() {
                         println!("  {} : {:?}", symbol, str_opt.unwrap());
@@ -680,7 +678,7 @@ fn main() {
                     for symbol in symbol_map.keys() {
                         let val = new_state.translate(&symbol_map[symbol]).unwrap();
 
-                        if let Some(bytes) = new_state.evaluate_bytes(&val) {
+                        if let Some(bytes) = new_state.evaluate_bytes_bv(&val) {
                             if !solutions.contains_key(&bytes) {
                                 let c = file_counts[symbol];
                                 let filename = &format!("{}{:04}", symbol, c);

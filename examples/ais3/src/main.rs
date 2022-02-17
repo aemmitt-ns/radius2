@@ -1,7 +1,7 @@
 use radius2::{Radius, RadiusOption};
 
 fn main() {
-    let options = vec![RadiusOption::Sims(false)];
+    let options = vec![RadiusOption::Permissions(true)];
     let mut radius = Radius::new_with_options(Some("tests/ais3"), &options);
     //let verify = radius.get_address("sym.verify").unwrap();
     let mut state = radius.call_state(0x004005f6);
@@ -12,7 +12,8 @@ fn main() {
 
     radius.breakpoint(0x00400602);
     radius.avoid(&[0x0040060e]);
-    let mut new_state = radius.run(state, 1).unwrap();
-    let flag = new_state.evaluate_string_value(&flag_val).unwrap();
+    let new_state = radius.run(state, 1);
+    //println!("{:?}", radius.processor.crashes[0].status);
+    let flag = new_state.unwrap().evaluate_string(&flag_val).unwrap();
     println!("FLAG: {}", flag);
 }

@@ -19,7 +19,7 @@ fn main() {
     let bv = state.bv("flag", 8 * len as u32);
 
     // add "[a-zA-Z]" constraint
-    state.constrain_bytes(&bv, "[a-zA-Z]");
+    state.constrain_bytes_bv(&bv, "[a-zA-Z]");
     let buf_addr = state.registers.get("x0");
     state.memory_write_value(&buf_addr, &Value::Symbolic(bv.clone(), 0), len);
 
@@ -27,7 +27,7 @@ fn main() {
         .run_until(state, validate + 0x210, &[validate + 0x218])
         .unwrap();
 
-    let flag = new_state.evaluate_string(&bv).unwrap();
+    let flag = new_state.evaluate_string_bv(&bv).unwrap();
     println!("FLAG: {}", flag);
 
     // write solution back to app memory

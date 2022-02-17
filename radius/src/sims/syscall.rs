@@ -307,8 +307,7 @@ pub fn fork(state: &mut State, _args: &[Value]) -> Value {
         .or(&pid._eq(&state.bvv(0, 64)))
         .or(&pid._eq(&state.bvv(-1i64 as u64, 64)));
 
-    state.solver.assert(&a);
-
+    state.solver.assert_bv(&a);
     Value::Symbolic(pid, 0)
 }
 

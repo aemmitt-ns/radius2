@@ -48,7 +48,7 @@ fn readline(state: &mut State, args: &[Value]) -> Value {
             if c.as_u64() == Some('\n' as u64) {
                 break;
             } else if c.is_symbolic() {
-                state.assert_value(&!c.eq(&vc('\n' as u64)));
+                state.assert(&!c.eq(&vc('\n' as u64)));
             }
             state.memory_write_value(&p, &c, 1);
             p = p + vc(1);
@@ -317,13 +317,12 @@ pub fn strncmp(state: &mut State, args: &[Value]) -> Value {
 
 // TODO properly handle sym slens
 // idk if I will ever do this ^. it is super complicated
-// and the performance would likely be shit anyway
+// and the performance would likely be bad anyway
 pub fn memmem(state: &mut State, args: &[Value]) -> Value {
     let len = state.solver.evalcon_to_u64(&args[3]).unwrap() as usize;
     let mut needle_val = state.memory_read_value(&args[2], len);
 
     // necessary as concrete values will not search for end nulls
-    // TODO this is a shit hack and i need to fix it
     needle_val = Value::Symbolic(
         state.solver.to_bv(&needle_val, 8 * len as u32),
         needle_val.get_taint(),
@@ -433,7 +432,7 @@ type = struct _IO_FILE {
                          }
 */
 
-// beginning of shitty FILE function support
+// beginning of bad FILE function support
 
 // _fileno offset from above linux x86_64
 pub const LINUX_FILENO_OFFSET: u64 = 112;
@@ -734,7 +733,7 @@ pub fn getopt(state: &mut State, args: &[Value]) -> Value {
 
                 // if opt is c which has arg, arg must be in same argv (eg -xfoo)
                 let arg_cond = (!is_c.clone()).or(&is_c.and(&!arg[2].eq(&vc(0))));
-                state.assert_value(&arg_cond);
+                state.assert(&arg_cond);
 
                 optarg = state.cond(&is_c, &argv_addr.add(&vc(2)), &optarg);
                 state.memory_write_ptr(&vc(OPTARG), &optarg);
@@ -763,7 +762,7 @@ pub fn getenv(state: &mut State, args: &[Value]) -> Value {
         let var_ptr = state.memory_read_value(&env_ptr, bits / 8);
 
         if state.solver.check_sat(&var_ptr.eq(&vc(0))) {
-            state.assert_value(&var_ptr.eq(&vc(0)));
+            state.assert(&var_ptr.eq(&vc(0)));
             break;
         }
 

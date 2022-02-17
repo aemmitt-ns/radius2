@@ -253,7 +253,7 @@ impl Solver {
         let sol = if self.btor.sat() == SolverResult::Sat {
             let conval = bv.get_a_solution().as_u64().unwrap();
             let assertion = bv._eq(&self.bvv(conval, bv.get_width()));
-            self.assert(&assertion);
+            self.assert_bv(&assertion);
             Some(conval)
         } else {
             None
@@ -269,16 +269,16 @@ impl Solver {
             let nbv = self.bvv(*val, 64);
             cond = cond.or(&bv._eq(&nbv));
         }
-        self.assert(&cond);
+        self.assert_bv(&cond);
     }
 
     #[inline]
-    pub fn assert(&mut self, bv: &BitVec) {
+    pub fn assert_bv(&mut self, bv: &BitVec) {
         self.assertions.push(bv.to_owned());
     }
 
     #[inline]
-    pub fn assert_value(&mut self, value: &Value) {
+    pub fn assert(&mut self, value: &Value) {
         self.assertions
             .push(self.to_bv(&!value.eq(&Value::Concrete(0, 0)), 1));
     }
@@ -303,7 +303,7 @@ impl Solver {
             Value::Concrete(v, _t) => *v != 0,
             Value::Symbolic(_v, _t) => {
                 self.btor.push(1);
-                self.assert_value(assertion);
+                self.assert(assertion);
                 self.apply_assertions();
                 let sat = self.btor.sat() == SolverResult::Sat;
                 self.assertions.pop();

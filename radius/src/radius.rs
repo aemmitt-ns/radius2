@@ -351,7 +351,7 @@ impl Radius {
         self.processor
             .hooks
             .entry(addr)
-            .or_insert(vec![hook_callback.clone()])
+            .or_insert(vec![])
             .push(hook_callback);
     }
 
@@ -360,7 +360,7 @@ impl Radius {
         self.processor
             .esil_hooks
             .entry(addr)
-            .or_insert(vec![esil.to_owned()])
+            .or_insert(vec![])
             .push(esil.to_owned());
     }
 

@@ -4,9 +4,8 @@
 fn looper() {
     use crate::radius::{Radius, RadiusOption};
 
-    let options = vec![RadiusOption::Sims(false)]; // RadiusOption::Debug(true));
+    let options = [RadiusOption::Sims(false)]; // RadiusOption::Debug(true));
     let mut radius = Radius::new_with_options(Some("../tests/looper"), &options);
-    radius.r2api.cmd("e asm.arch=arm.v35").unwrap();
     let state = radius.call_state(0x100003f4c);
     //let state = radius.entry_state(&vec!("looper".to_owned()), &vec!());
     let new_state = radius.run_until(state, 0x100003fb4, &[]).unwrap();
@@ -18,7 +17,7 @@ fn looper() {
 #[test]
 fn hello() {
     use crate::radius::{Radius, RadiusOption};
-    let options = vec![RadiusOption::Debug(true)];
+    let options = [RadiusOption::Debug(true)];
     let mut radius = Radius::new_with_options(Some("../tests/hello"), &options);
     let state = radius.call_state(0x00001149);
     let new_state = radius.run_until(state, 0x1163, &[]).unwrap();
@@ -49,7 +48,7 @@ fn strstuff() {
     state.registers.set("rsi", Value::Concrete(addr, 0));
 
     let mut new_state = radius.run_until(state, 0x1208, &[0x120f]).unwrap();
-    println!("{:?}", new_state.evaluate_string(&bv))
+    println!("{:?}", new_state.evaluate_string_bv(&bv))
 }
 
 #[test]
@@ -107,7 +106,7 @@ fn r100() {
     radius.breakpoint(0x004007a1);
     radius.avoid(&[0x00400790]);
     let mut new_state = radius.run(state, 1).unwrap();
-    let flag = new_state.evaluate_string(&bv).unwrap();
+    let flag = new_state.evaluate_string_bv(&bv).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "Code_Talkers");
 }
@@ -132,7 +131,7 @@ fn r200() {
     radius.avoid(&[0x00400832]);
 
     let mut new_state = radius.run(state, 1).unwrap();
-    let flag = new_state.evaluate_string(&bv).unwrap();
+    let flag = new_state.evaluate_string_bv(&bv).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "rotors");
 }
@@ -149,7 +148,7 @@ fn unbreakable() {
 
     // add "CTF{" constraint
     let assertion = bv.slice(31, 0)._eq(&state.bvv(0x7b465443, 32));
-    state.assert(&assertion);
+    state.assert_bv(&assertion);
 
     let addr: u64 = 0x6042c0;
     state
@@ -157,7 +156,7 @@ fn unbreakable() {
         .write_value(addr, &Value::Symbolic(bv.clone(), 0), len);
     let mut new_state = radius.run_until(state, 0x00400830, &[0x00400850]).unwrap();
 
-    let flag = new_state.evaluate_string(&bv).unwrap();
+    let flag = new_state.evaluate_string_bv(&bv).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "CTF{0The1Quick2Brown3Fox4Jumped5Over6The7Lazy8Fox9}");
 }
@@ -170,19 +169,13 @@ fn unbreakable() {
 #[test]
 fn fileread() {
     use crate::radius::{Radius, RadiusOption};
-    use crate::value::Value;
+    use crate::value::byte_values;
 
     let options = vec![RadiusOption::Debug(true)];
     let mut radius = Radius::new_with_options(Some("../tests/fileread"), &options);
     radius.analyze(2); // necessary for sims for some reason
     let mut state = radius.call_state(0x100003e7c);
-    let data = vec![
-        Value::Concrete(0x68, 0),
-        Value::Concrete(0x6d, 0),
-        Value::Concrete(0x6d, 0),
-        Value::Concrete(0x6d, 0),
-        Value::Concrete(0x6d, 0),
-    ];
+    let data = byte_values("hmmmmmm");
     state.filesystem.add_file("test.txt", &data);
     let mut new_state = radius.run_until(state, 0x100003f14, &[]).unwrap();
 
@@ -210,19 +203,21 @@ fn format() {
     let buf_addr = state.memory_alloc(&vc(100));
     let fmt_addr = state.memory_alloc(&vc(100));
 
-    let dx = state.symbolic_value("dx", 8);
+    let _dx = state.symbolic_value("dx", 8);
     //state.assert_value(&dx.eq(&vc('x' as u64)));
 
     // symbolic format
     let fmt = [
         vc('%' as u64),
-        dx,
+        vc('0' as u64),
+        vc('6' as u64),
+        vc('x' as u64), //dx,
         vc(32),
         vc('%' as u64),
         vc('s' as u64),
         vc(0),
     ];
-    state.memory_write(&fmt_addr, &fmt, &vc(6));
+    state.memory_write(&fmt_addr, &fmt, &vc(8));
 
     //state.memory_write_string(fmt_addr.as_u64().unwrap(), "%02X");
     state.memory_write_string(buf_addr.as_u64().unwrap(), "cool");
@@ -230,8 +225,8 @@ fn format() {
     //state.memory_write_value(&buf_addr, &vc(17492), 4);
     let data = format::format(&mut state, &[fmt_addr, vc(17499), buf_addr]);
     let value = state.pack(&data);
-    state.assert_value(&value.slice(39, 0).eq(&vc(0x62353434)));
-    println!("{:?}", state.evaluate_string_value(&value));
+    //state.assert(&value.slice(39, 0).eq(&vc(0x62353434)));
+    println!("{:?}", state.evaluate_string(&value));
 }
 
 #[test]
@@ -301,7 +296,7 @@ fn symmem() {
 
     if let Value::Symbolic(c, _t) = cmp {
         c._eq(&state.bvv(0, 64)).assert();
-        println!("{}", state.evaluate_string(&x).unwrap());
+        println!("{}", state.evaluate_string_bv(&x).unwrap());
     }
 
     let len = 8;
@@ -310,9 +305,9 @@ fn symmem() {
     let numstr = state.symbolic_value("numstr", 8 * len);
     state.memory_write_value(&atoi_addr, &numstr, len as usize);
     let num = atoi_helper(&mut state, &atoi_addr, &Value::Concrete(2, 0), 32); //numstr);
-    state.assert_value(&num.sgt(&Value::Concrete(110i64 as u64, 0)));
+    state.assert(&num.sgt(&Value::Concrete(110i64 as u64, 0)));
     //println!("num: {:?}", num);
-    println!("atoi: {:?}", state.evaluate_string_value(&numstr));
+    println!("atoi: {:?}", state.evaluate_string(&numstr));
 
     let itoa_addr = Value::Concrete(0x300000, 0);
     let citoa_val = Value::Concrete(0x003239343731, 0);
@@ -327,7 +322,7 @@ fn symmem() {
         32,
     );
     let ibv = state.memory_read_value(&itoa_addr, 7);
-    state.assert_value(&ibv.eq(&citoa_val));
+    state.assert(&ibv.eq(&citoa_val));
     println!("itoa: {:?}", state.eval(&itoa_val));
 
     //println!("cmp: {:?}", cmp);
@@ -372,7 +367,7 @@ fn ioscrackme() {
     let bv = state.bv("flag", 8 * len as u32);
 
     // add "[a-zA-Z]" constraint
-    state.constrain_bytes(&bv, "[a-zA-Z]");
+    state.constrain_bytes_bv(&bv, "[a-zA-Z]");
 
     let buf_addr: u64 = 0xfff00000;
     state.registers.set("x0", Value::Concrete(buf_addr, 0));
@@ -384,7 +379,7 @@ fn ioscrackme() {
         .run_until(state, 0x10000600c, &[0x100006044])
         .unwrap();
 
-    let flag = new_state.evaluate_string(&bv);
+    let flag = new_state.evaluate_string_bv(&bv);
     println!("FLAG: {}", flag.unwrap());
     radius.r2api.close();
 }

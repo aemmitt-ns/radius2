@@ -229,7 +229,11 @@ impl ops::Shl<Value> for Value {
     fn shl(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
-                Value::Concrete(a.wrapping_shl(b as u32), t1 | t2)
+                if b > 63 {
+                    Value::Concrete(0, t1 | t2)
+                } else {
+                    Value::Concrete(a.wrapping_shl(b as u32), t1 | t2)
+                }
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
                 let bv = make_bv(&a, b, log2(a.get_width()));
@@ -253,7 +257,11 @@ impl ops::Shr<Value> for Value {
     fn shr(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
-                Value::Concrete(a.wrapping_shr(b as u32), t1 | t2)
+                if b > 63 {
+                    Value::Concrete(0, t1 | t2)
+                } else {
+                    Value::Concrete(a.wrapping_shr(b as u32), t1 | t2)
+                }
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
                 let bv = make_bv(&a, b, log2(a.get_width()));
