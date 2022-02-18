@@ -346,7 +346,7 @@ fn main() {
     }
 
     let mut state = if let Some(address) = matches.value_of("address") {
-        let addr = radius.get_address(address).unwrap_or_default();
+        let addr = radius.get_address(address).unwrap_or(0);
         if path.starts_with("frida:") {
             radius.frida_state(addr)
         } else if path.starts_with("gdb:") || path.starts_with("dbg:") {
@@ -355,7 +355,13 @@ fn main() {
             radius.call_state(addr)
         }
     } else {
-        radius.entry_state()
+        // workaround for stupid reloc.__libc_start_main issue
+        let addr = radius.get_address("main").unwrap_or(0);
+        if addr != 0 {
+            radius.call_state(addr)
+        } else {
+            radius.entry_state()
+        }
     };
 
     // collect the symbol declarations
@@ -476,7 +482,7 @@ fn main() {
 
     // set provided address and register values
     let sets: Vec<&str> = collect!(matches, "set");
-    for i in 0..(matches.occurrences_of("set")/3) as usize {
+    for i in 0..matches.occurrences_of("set") as usize {
         // easiest way to interpret the stuff is just to use
         let ind = 3 * i;
         let length: u32 = sets[ind + 2].parse().unwrap();

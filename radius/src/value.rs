@@ -130,7 +130,34 @@ impl ops::Div<Value> for Value {
 
     #[inline]
     fn div(self, rhs: Value) -> Value {
-        wrapping_binary_ops!(&self, &rhs, udiv, wrapping_div)
+        match (self, rhs) {
+            (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
+                // boolector makes /0 always -1 so 
+                if b != 0 {
+                    Value::Concrete(a.wrapping_div(b), t1 | t2)
+                } else {
+                    Value::Concrete(-1i64 as u64, t1 | t2)
+                }
+            }
+            (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
+                let bv = make_bv(&a, b, a.get_width());
+                Value::Symbolic(a.udiv(&bv), t1 | t2)
+            }
+            (Value::Concrete(a, t1), Value::Symbolic(b, t2)) => {
+                let bv = make_bv(&b, a, b.get_width());
+                Value::Symbolic(bv.udiv(&b), t1 | t2)
+            }
+            (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
+                let width_diff = a.get_width() as i32 - b.get_width() as i32;
+                match width_diff.cmp(&0) {
+                    Ordering::Equal => Value::Symbolic(a.udiv(&b), t1 | t2),
+                    Ordering::Greater => {
+                        Value::Symbolic(a.udiv(&b.uext(width_diff as u32)), t1 | t2)
+                    }
+                    Ordering::Less => Value::Symbolic(a.uext(-width_diff as u32).udiv(&b), t1 | t2),
+                }
+            }
+        }
     }
 }
 
@@ -139,7 +166,33 @@ impl ops::Rem<Value> for Value {
 
     #[inline]
     fn rem(self, rhs: Value) -> Value {
-        wrapping_binary_ops!(&self, &rhs, urem, wrapping_rem)
+        match (self, rhs) {
+            (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
+                if b != 0 {
+                    Value::Concrete(a.wrapping_rem(b), t1 | t2)
+                } else {
+                    Value::Concrete(a, t1 | t2)
+                }
+            }
+            (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
+                let bv = make_bv(&a, b, a.get_width());
+                Value::Symbolic(a.urem(&bv), t1 | t2)
+            }
+            (Value::Concrete(a, t1), Value::Symbolic(b, t2)) => {
+                let bv = make_bv(&b, a, b.get_width());
+                Value::Symbolic(bv.urem(&b), t1 | t2)
+            }
+            (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
+                let width_diff = a.get_width() as i32 - b.get_width() as i32;
+                match width_diff.cmp(&0) {
+                    Ordering::Equal => Value::Symbolic(a.urem(&b), t1 | t2),
+                    Ordering::Greater => {
+                        Value::Symbolic(a.urem(&b.uext(width_diff as u32)), t1 | t2)
+                    }
+                    Ordering::Less => Value::Symbolic(a.uext(-width_diff as u32).urem(&b), t1 | t2),
+                }
+            }
+        }
     }
 }
 
@@ -284,7 +337,12 @@ impl Value {
     pub fn sdiv(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
-                Value::Concrete(((a as i64).wrapping_div(b as i64)) as u64, t1 | t2)
+                // boolector makes /0 always -1 so 
+                if b != 0 {
+                    Value::Concrete(((a as i64).wrapping_div(b as i64)) as u64, t1 | t2)
+                } else {
+                    Value::Concrete(-1i64 as u64, t1 | t2)
+                }
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
                 let bv = make_bv(&a, b, a.get_width());
@@ -311,7 +369,11 @@ impl Value {
     pub fn srem(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
-                Value::Concrete(((a as i64).wrapping_rem(b as i64)) as u64, t1 | t2)
+                if b != 0 {
+                    Value::Concrete(((a as i64).wrapping_rem(b as i64)) as u64, t1 | t2)
+                } else {
+                    Value::Concrete(a, t1 | t2)
+                }
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
                 let bv = make_bv(&a, b, a.get_width());
@@ -336,7 +398,6 @@ impl Value {
 
     #[inline]
     pub fn asr(self, rhs: Value, sz: u32) -> Value {
-        //println!("{:?}, {:?}, {:?}", self, rhs, sz);
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
                 let shift = 64 - sz as i64;
