@@ -1,6 +1,6 @@
-## radius - fast symbolic execution with r2
+## radius2 - fast symbolic execution with r2
 
-radius is symbolic execution and taint analysis framework using radare2 and its ESIL intermediate representation. It is essentially a rust rewrite of ESILSolve with some architectural improvements. It uses boolector as the SMT solver rather than z3. It executes about 1000x faster than ESILSolve on average. radius gains additional speed over other rust based symbex tools by using u64 primitives for concrete values instead of constant valued bitvectors which incur significant overhead for all operations. 
+radius2 is symbolic execution and taint analysis framework using radare2 and its ESIL intermediate representation. It is essentially a rust rewrite of ESILSolve with some architectural improvements. It uses boolector as the SMT solver rather than z3. It executes about 1000x faster than ESILSolve on average. radius2 gains additional speed over other rust based symbex tools by using u64 primitives for concrete values instead of constant valued bitvectors which incur significant overhead for all operations. 
 
 ### Building
 
@@ -10,7 +10,7 @@ git clone https://github.com/radareorg/radare2.git
 radare2/sys/install.sh 
 ```
 
-Include radius as a dependency using `radius2 = "1.0.11"` or build locally with `cargo build --release`
+Include radius2 as a dependency using `radius2 = "1.0.11"` or build locally with `cargo build --release`
 
 ### Supported Architectures
 
@@ -21,9 +21,9 @@ Include radius as a dependency using `radius2 = "1.0.11"` or build locally with 
 
 ### "Supported" Architectures
 
-radius also "supports" **MIPS**, **PowerPC**, and **Gameboy** but they are almost entirely untested. 
+radius2 also "supports" **MIPS**, **PowerPC**, and **Gameboy** but they are almost entirely untested. 
 
-radius can execute **Dalvik** bytecode only involving static methods and variables. 
+radius2 can execute **Dalvik** bytecode only involving static methods and variables. 
 
 Finally there is also a varying amount of support for **6502**, **8051**, **AVR**, **h8300**, **PIC**, **RISCV**, **SH-4**, **V810**, **V850**, **Xtensa**.
 
@@ -45,15 +45,15 @@ fn main() {
     radius.breakpoint(0x004007a1);
     radius.avoid(&[0x00400790]);
     let mut new_state = radius.run(state, 1).unwrap();
-    let flag = new_state.evaluate_string_value(&flag_val).unwrap();
+    let flag = new_state.evaluate_string(&flag_val).unwrap();
     println!("FLAG: {}", flag);
     assert_eq!(flag, "Code_Talkers");
 }
 ```
 
-### radius CLI tool
+### radius2 CLI tool
 
-radius can also be installed from crates.io and easily included in packages. radius also has a CLI tool that can be installed with `cargo install radius2`
+radius2 can also be installed from crates.io and easily included in packages. radius2 also has a CLI tool that can be installed with `cargo install radius2`
 
 ```
 radius2 1.0.11
