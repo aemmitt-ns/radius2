@@ -17,6 +17,7 @@ use std::rc::Rc;
 
 use ahash::{AHashMap, AHashSet};
 type HashMap<P, Q> = AHashMap<P, Q>;
+use std::collections::BTreeMap;
 
 const INSTR_NUM: usize = 64;
 // const COLOR: bool = true;
@@ -44,7 +45,7 @@ pub type HookMethod = dyn Fn(&mut State) -> bool;
 
 #[derive(Clone)]
 pub struct Processor {
-    pub instructions: HashMap<u64, InstructionEntry>,
+    pub instructions: BTreeMap<u64, InstructionEntry>,
     pub hooks: HashMap<u64, Vec<Rc<HookMethod>>>,
     pub esil_hooks: HashMap<u64, Vec<String>>,
     pub sims: HashMap<u64, SimMethod>,
@@ -102,7 +103,7 @@ impl Processor {
         color: bool,
     ) -> Self {
         Processor {
-            instructions: HashMap::new(),
+            instructions: BTreeMap::new(),
             hooks: HashMap::new(),
             esil_hooks: HashMap::new(),
             sims: HashMap::new(),

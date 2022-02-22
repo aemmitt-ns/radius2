@@ -200,33 +200,30 @@ fn format() {
     let main = radius.r2api.get_address("main").unwrap();
     let mut state = radius.call_state(main);
 
-    let buf_addr = state.memory_alloc(&vc(100));
+    //let buf_addr = state.memory_alloc(&vc(100));
     let fmt_addr = state.memory_alloc(&vc(100));
 
-    let _dx = state.symbolic_value("dx", 8);
+    let dx = state.symbolic_value("dx", 8);
     //state.assert_value(&dx.eq(&vc('x' as u64)));
 
     // symbolic format
     let fmt = [
         vc('%' as u64),
-        vc('0' as u64),
-        vc('6' as u64),
-        vc('x' as u64), //dx,
-        vc(32),
-        vc('%' as u64),
-        vc('s' as u64),
-        vc(0),
+        dx,
+        vc(0)
     ];
     state.memory_write(&fmt_addr, &fmt, &vc(8));
 
-    //state.memory_write_string(fmt_addr.as_u64().unwrap(), "%02X");
-    state.memory_write_string(buf_addr.as_u64().unwrap(), "cool");
+    //state.memory_write_string(fmt_addr.as_u64().unwrap(), "%02x");
+    //state.memory_write_string(buf_addr.as_u64().unwrap(), "cool");
 
     //state.memory_write_value(&buf_addr, &vc(17492), 4);
-    let data = format::format(&mut state, &[fmt_addr, vc(17499), buf_addr]);
+    let data = format::format(&mut state, &[fmt_addr, vc(17499)]);
     let value = state.pack(&data);
-    //state.assert(&value.slice(39, 0).eq(&vc(0x62353434)));
-    println!("{:?}", state.evaluate_string(&value));
+    state.assert(&value.slice(31, 0).eq(&vc(0x62353434)));
+    let result = state.evaluate_string(&value).unwrap();
+    println!("result: {}", result);
+    assert_eq!(&result[0..4], "445b");
 }
 
 #[test]
@@ -237,8 +234,6 @@ fn symmem() {
     use crate::value::Value;
     use std::rc::Rc;
 
-    //println!("{:?}", x);
-
     let mut radius =
         Radius::new_with_options(Some("../tests/symmem"), &vec![RadiusOption::Debug(false)]);
 
@@ -248,7 +243,7 @@ fn symmem() {
         Event::SymbolicRead(EventTrigger::Before),
         Rc::new(|_s, _e| {
             println!("hit event hook");
-        }),
+        })
     );
 
     let x = state.bv("x", 64);
