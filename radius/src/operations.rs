@@ -105,6 +105,7 @@ impl Operations {
     pub fn from_string(s: &str) -> Self {
         match s {
             "TRAP" => Operations::Trap,
+            "$" => Operations::Trap,
             "()" => Operations::Syscall,
             "$$" => Operations::PcAddress,
             "?{" => Operations::If,
@@ -243,12 +244,12 @@ pub fn pop_value(state: &mut State, set_size: bool, sign_ext: bool) -> Value {
                 Value::Concrete(ov.as_u64().unwrap(), *t)
             } else {
                 let v = ov; //state.translate(&ov).unwrap();
-                let szdiff = SIZE as u32 - v.get_width();
+                let szdiff = SIZE as i32 - v.get_width() as i32;
                 if szdiff > 0 {
                     if sign_ext {
-                        Value::Symbolic(v.sext(szdiff), *t)
+                        Value::Symbolic(v.sext(szdiff as u32), *t)
                     } else {
-                        Value::Symbolic(v.uext(szdiff), *t)
+                        Value::Symbolic(v.uext(szdiff as u32), *t)
                     }
                 } else {
                     value
@@ -578,6 +579,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::Poke(n) => {
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
+            //println!("value: {:?}", value);
 
             if let Some(cond) = &state.condition.to_owned() {
                 let prev = state.memory_read_value(&addr, *n);
@@ -802,18 +804,18 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             if let Some(bv) = state.solver.eval_to_bv(&value) {
                 let hex = &format!("{:?}", bv)[2..];
                 if let Some(string) = state.evaluate_string_bv(&bv) {
-                    println!("\n{:016x}: 0x{} {:?}\n", ip, hex, string);
+                    println!("\n0x{:08x}    0x{} {:?}\n", ip, hex, string);
                 } else {
-                    println!("\n{:016x}: 0x{}\n", ip, hex);
+                    println!("\n0x{:08x}    0x{}\n", ip, hex);
                 }
             } else {
-                println!("\n{:016x}: unsat\n", ip);
+                println!("\n0x{:08x}    unsat\n", ip);
             }
         }
         Operations::PrintDebug => {
             let value = pop_value(state, false, false);
             let ip = state.registers.get_pc().as_u64().unwrap_or_default();
-            println!("\n{:016x}: {:?}\n", ip, value);
+            println!("\n0x{:08x}    {:?}\n", ip, value);
         }
         Operations::Constrain => {
             let value = pop_value(state, false, false);

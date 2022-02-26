@@ -318,15 +318,58 @@ pub struct Export {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClassMethod {
+pub struct ObjCClassMethod {
     pub name: String,
-    pub addr: u64,
+    pub vaddr: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClassField {
+pub struct ObjCClassField {
     pub name: String,
-    pub addr: u64,
+    pub vaddr: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JavaClassMethod {
+    pub name: String,
+    pub vaddr: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JavaClassField {
+    pub name: String,
+    pub vaddr: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObjCClassInfo {
+    pub class: String,
+
+    #[serde(default)]
+    pub methods: Vec<ObjCClassMethod>,
+
+    #[serde(default)]
+    pub fields: Vec<ObjCClassField>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JavaClassInfo {
+    
+    pub classname: String,
+    pub vaddr: u64,
+
+    #[serde(default)]
+    pub index: i64,
+    //pub r#super: String,
+
+    #[serde(default)]
+    pub methods: Vec<JavaClassMethod>,
+
+    #[serde(default)]
+    pub fields: Vec<JavaClassField>,
+
+    #[serde(rename = "super", default)]
+    pub superclass: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -358,19 +401,6 @@ pub struct Entrypoint {
     pub laddr: u64,
     pub haddr: u64,
     pub r#type: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClassInfo {
-    pub classname: String,
-    pub addr: u64,
-    pub index: i64,
-    //pub r#super: String,
-    pub methods: Vec<ClassMethod>,
-    pub fields: Vec<ClassField>,
-
-    #[serde(rename = "super")]
-    pub superclass: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -634,19 +664,29 @@ impl R2Api {
         }
     }
 
-    pub fn get_classes(&mut self) -> R2Result<Vec<ClassInfo>> {
+    /*pub fn get_classes(&mut self) -> R2Result<Vec<ClassInfo>> {
         let json = self.cmd("icj")?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }*/
+
+    pub fn get_objc_class(&mut self, class:  &str) -> R2Result<ObjCClassInfo> {
+        let json = self.cmd(&format!("icj {}", class))?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn get_class_map(&mut self) -> R2Result<HashMap<String, ClassInfo>> {
+    pub fn get_java_class(&mut self, class:  &str) -> R2Result<JavaClassInfo> {
+        let json = self.cmd(&format!("icj {}", class))?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    /*pub fn get_class_map(&mut self) -> R2Result<HashMap<String, ClassInfo>> {
         let classes = self.get_classes()?;
         let mut class_map = HashMap::new();
         for c in &classes {
             class_map.insert(c.classname.clone(), c.to_owned());
         }
         Ok(class_map)
-    }
+    }*/
 
     pub fn get_segments(&mut self) -> R2Result<Vec<Segment>> {
         let json = self.cmd("iSj")?;

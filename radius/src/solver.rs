@@ -33,8 +33,8 @@ impl Solver {
 
         Solver {
             btor,
-            assertions: vec![],
-            indexes: vec![],
+            assertions: Vec::with_capacity(256),
+            indexes: Vec::with_capacity(256),
             eval_max,
         }
     }
@@ -44,7 +44,7 @@ impl Solver {
 
         let mut solver = Solver {
             btor,
-            assertions: vec![],
+            assertions: Vec::with_capacity(256),
             indexes: self.indexes.clone(),
             eval_max: self.eval_max,
         };

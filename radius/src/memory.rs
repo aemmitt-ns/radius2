@@ -56,7 +56,7 @@ pub struct MemorySegment {
 impl Memory {
     pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool) -> Memory {
         let segments = r2api.get_segments().unwrap();
-        let mut segs = vec![];
+        let mut segs = Vec::with_capacity(64);
 
         for seg in segments {
             segs.push(MemorySegment {
@@ -475,7 +475,7 @@ impl Memory {
 
         //let mut data: Vec<Value> = Vec::with_capacity(length);
         for count in 0..length as u64 {
-            let caddr = addr + count;
+            let caddr = addr.wrapping_add(count);
             let mem = self.mem.get(&caddr);
 
             match mem {
@@ -492,7 +492,7 @@ impl Memory {
                         data[count as usize] = Value::Concrete(bytes[0] as u64, 0);
                         for (c, byte) in bytes.into_iter().enumerate() {
                             let new_data = Value::Concrete(byte as u64, 0);
-                            self.mem.entry(caddr + c as u64).or_insert(new_data);
+                            self.mem.entry(caddr.wrapping_add(c as u64)).or_insert(new_data);
                         }
                     }
                 }
@@ -632,7 +632,8 @@ impl Memory {
         match value {
             Value::Concrete(val, t) => {
                 for count in 0..length {
-                    data.push(Value::Concrete((*val >> (8 * count)) & 0xff, *t));
+                    // TODO fix this for >64 bit length
+                    data.push(Value::Concrete((val.wrapping_shr(8 * count as u32)) & 0xff, *t));
                 }
             }
             Value::Symbolic(val, t) => {

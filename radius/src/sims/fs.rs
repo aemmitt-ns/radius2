@@ -76,7 +76,7 @@ impl SimFilesytem {
         if data.is_ok() {
             let metadata = fs::metadata(path).unwrap();
 
-            let mut content = vec![];
+            let mut content = Vec::with_capacity(512);
             for d in data.unwrap() {
                 content.push(Value::Concrete(d as u64, 0));
             }
@@ -248,7 +248,7 @@ impl SimFilesytem {
                 fd: 0,
                 position: 0,
                 mode: FileMode::Read,
-                content: vec![],
+                content: Vec::with_capacity(256),
                 metadata: None,
             },
             SimFile {
@@ -256,7 +256,7 @@ impl SimFilesytem {
                 fd: 1,
                 position: 0,
                 mode: FileMode::Write,
-                content: vec![],
+                content: Vec::with_capacity(256),
                 metadata: None,
             },
             SimFile {
@@ -264,7 +264,7 @@ impl SimFilesytem {
                 fd: 2,
                 position: 0,
                 mode: FileMode::Write,
-                content: vec![],
+                content: Vec::with_capacity(256),
                 metadata: None,
             },
         ]

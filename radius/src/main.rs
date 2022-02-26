@@ -10,9 +10,12 @@ use std::{fs, process};
 use crate::state::StateStatus;
 use crate::value::Value;
 
-use ahash::AHashMap;
-type HashMap<P, Q> = AHashMap<P, Q>;
+use std::collections::HashMap;
+
+//use ahash::AHashMap;
+//type HashMap<P, Q> = AHashMap<P, Q>;
 use std::collections::VecDeque;
+use serde::{Deserialize, Serialize};
 
 pub mod memory;
 pub mod operations;
@@ -38,11 +41,25 @@ macro_rules! collect {
     };
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonOutput {
+    pub symbols: HashMap<String, String>,
+    pub stdout: String,
+    pub stderr: String
+}
+
 fn main() {
     let matches = App::new("radius2")
         .version(env!("CARGO_PKG_VERSION"))
         .author("Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>")
-        .about("Symbolic Execution tool using r2 and boolector")
+        .about("A symbolic execution tool using r2 and boolector
+        
+                             ooo  o88                           ooooooo   
+ oo oooooo   ooooooo    ooooo888  oooo oooo  oooo   ooooooo88 o88     888 
+  888   888  ooooo888 888    888   888  888   888  888ooooooo       o888  
+  888      888    888 888    888   888  888   888          888   o888     
+ o888o      88ooo88 8o  88ooo888o o888o  888o88 8o 88oooooo88 o8888oooo88 
+        ")
         .arg(
             Arg::with_name("path")
                 .short("p")
@@ -66,6 +83,12 @@ fn main() {
                 .value_names(&["PATH", "SYMBOL"])
                 .multiple(true)
                 .help("Add a symbolic file"),
+        )
+        .arg(
+            Arg::with_name("json")
+                .short("j")
+                .long("json")
+                .help("Output JSON"),
         )
         .arg(
             Arg::with_name("verbose")
@@ -283,6 +306,13 @@ fn main() {
     let profile = occurs!(matches, "profile");
     let fuzz = occurs!(matches, "fuzz");
     let all_sims = !no_sims && libpaths.is_empty();
+    let mut json_out = JsonOutput {
+        symbols: HashMap::new(),
+        stdout: String::from(""),
+        stderr: String::from(""),
+    };
+
+    let do_json = occurs!(matches, "json");
 
     let plugins = occurs!(matches, "plugins")
         || matches
@@ -613,24 +643,32 @@ fn main() {
             }
             let solve_start = Instant::now();
 
-            println!();
+            if !do_json { println!() };
             for symbol in symbol_map.keys() {
                 let val = Value::Symbolic(end_state.translate(&symbol_map[symbol]).unwrap(), 0);
 
                 if let Some(bv) = end_state.solver.eval_to_bv(&val) {
                     let str_opt = end_state.evaluate_string_bv(&bv);
                     let sym_type = symbol_types[symbol];
-                    if sym_type == "str" && str_opt.is_some() {
-                        println!("  {} : {:?}", symbol, str_opt.unwrap());
+                    let hex = &format!("{:?}", bv)[2..];
+                    if !do_json {
+                        if sym_type == "str" && str_opt.is_some() {
+                            println!("  {} : {:?}", symbol, str_opt.unwrap());
+                        } else {
+                            println!("  {} : 0x{}", symbol, hex);
+                        }
                     } else {
-                        let hex = &format!("{:?}", bv)[2..];
-                        println!("  {} : 0x{}", symbol, hex);
+                        json_out.symbols.insert(symbol.to_owned().to_owned(), hex.to_owned());
                     }
                 } else {
-                    println!("  {} : no satisfiable value", symbol);
+                    if !do_json {
+                        println!("  {} : no satisfiable value", symbol);
+                    } else {
+                        json_out.symbols.insert(symbol.to_owned().to_owned(), "unsat".to_owned());
+                    }
                 }
             }
-            println!();
+            if !do_json { println!() };
 
             if profile {
                 println!("solve time:\t{}", solve_start.elapsed().as_micros());
@@ -640,12 +678,24 @@ fn main() {
             let head = "=".repeat(37);
             if occurs!(matches, "stdout") {
                 let out = end_state.dump_file_string(1).unwrap_or_default();
-                println!("{}stdout{}\n{}\n{}======{}", head, head, out, head, head);
+                if !do_json {
+                    println!("{}stdout{}\n{}\n{}======{}", head, head, out, head, head);
+                } else {
+                    json_out.stdout = out.to_owned();
+                }
             }
             if occurs!(matches, "stderr") {
                 let out = end_state.dump_file_string(2).unwrap_or_default();
-                println!("\n{}stderr{}\n{}\n{}======{}", head, head, out, head, head);
+                if !do_json {
+                    println!("\n{}stderr{}\n{}\n{}======{}", head, head, out, head, head);
+                } else {
+                    json_out.stderr = out.to_owned();
+                }
             }
+        }
+        
+        if do_json {
+            println!("{}", serde_json::to_string(&json_out).unwrap_or_default());
         }
     } else {
         let mut pcs: HashMap<u64, usize> = HashMap::new();

@@ -683,7 +683,7 @@ impl State {
     /// in the states memory back to the memory in r2 as well as the register
     /// values, evaluating any symbolic expressions.
     pub fn apply(&mut self) {
-        let mut inds = vec![];
+        let mut inds = Vec::with_capacity(256);
         for reg in &self.registers.indexes {
             if !inds.contains(&reg.value_index) {
                 inds.push(reg.value_index);

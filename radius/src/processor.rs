@@ -214,7 +214,7 @@ impl Processor {
     pub fn print_instr(&self, state: &mut State, instr: &Instruction) {
         if !self.color {
             println!(
-                "{:016x}:  {:<40} |  {}",
+                "0x{:08x}    {:<40} |  {}",
                 instr.offset, instr.disasm, instr.esil
             );
         } else {
@@ -387,7 +387,7 @@ impl Processor {
                             let sys_val = state.registers.get_with_alias("SN");
                             if let Some(trap_sim) = self.traps.get(&trap) {
                                 // provide syscall args
-                                let cc = state.r2api.get_syscall_cc().unwrap();
+                                let cc = state.r2api.get_syscall_cc().unwrap_or_default();
                                 let mut args = vec![sys_val];
                                 for arg in cc.args {
                                     args.push(state.registers.get(arg.as_str()));
@@ -554,7 +554,9 @@ impl Processor {
         }
 
         match instr.type_num {
-            CALL_TYPE => state.backtrace.push((instr.jump as u64, new_pc)),
+            CALL_TYPE => {
+                state.backtrace.push((instr.jump as u64, new_pc));
+            },
             RETN_TYPE => {
                 if state.backtrace.is_empty() && new_flags.is_empty() {
                     // try to avoid returning outside valid context
