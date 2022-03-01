@@ -45,6 +45,8 @@ pub enum Operations {
     WeakEqual,
     Peek(usize),
     Poke(usize),
+    PeekBits,
+    PokeBits,
     PeekSize,
     PokeSize,
     PopCount,
@@ -139,7 +141,6 @@ impl Operations {
             "--" => Operations::Decrement,
             "=" => Operations::Equal,
             ":=" => Operations::WeakEqual,
-            "[]" => Operations::PeekSize,
             "[1]" => Operations::Peek(1),
             "[2]" => Operations::Peek(2),
             "[4]" => Operations::Peek(4),
@@ -150,7 +151,10 @@ impl Operations {
             "=[4]" => Operations::Poke(4),
             "=[8]" => Operations::Poke(8),
             "=[16]" => Operations::Poke(16),
-            "=[]" => Operations::PokeSize,
+            "=[]" => Operations::PokeBits, 
+            "[]" => Operations::PeekBits, 
+            "=[n]" => Operations::PokeSize,
+            "[n]" => Operations::PeekSize,
             "POPCOUNT" => Operations::PopCount,
             "CEIL" => Operations::Ceiling,
             "FLOOR" => Operations::Floor,
@@ -600,6 +604,39 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             state.esil.previous = addr;
             state.esil.last_sz = 8 * (*n);
         }
+        Operations::PeekBits => {
+            let n = (state.memory.bits/8) as usize;
+            let addr = pop_value(state, false, false);
+
+            let val = state.memory_read_value(&addr, n);
+            state.esil.current = val.to_owned();
+            push_value(state, val);
+
+            state.esil.previous = addr;
+            state.esil.last_sz = 8 * n;
+        }
+        Operations::PokeBits => {
+            let n = (state.memory.bits/8) as usize;
+            let addr = pop_value(state, false, false);
+            let value = pop_value(state, false, false);
+
+            if let Some(cond) = &state.condition.to_owned() {
+                let prev = state.memory_read_value(&addr, n);
+                state.memory_write_value(
+                    &addr,
+                    &state
+                        .solver
+                        .conditional(&Value::Symbolic(cond.to_owned(), 0), &value, &prev),
+                    n,
+                );
+            } else {
+                state.memory_write_value(&addr, &value, n);
+            }
+
+            //state.memory.write_value(addr, value, n);
+            state.esil.previous = addr;
+            state.esil.last_sz = 8 * n;
+        }
         Operations::PeekSize => {
             let n = pop_concrete(state, false, false) as usize;
             let addr = pop_value(state, false, false);
@@ -618,8 +655,6 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
 
             if let Some(cond) = &state.condition.to_owned() {
                 let prev = state.memory_read_value(&addr, n);
-                //prev = state.translate_value(&prev);
-
                 state.memory_write_value(
                     &addr,
                     &state

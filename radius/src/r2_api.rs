@@ -884,9 +884,9 @@ impl R2Api {
     }
 
     pub fn read(&mut self, addr: u64, length: usize) -> R2Result<Vec<u8>> {
-        let cmd = format!("xj {} @ {}", length, addr);
-        let json = self.cmd(cmd.as_str())?;
-        r2_result(serde_json::from_str(json.as_str()))
+        let cmd = format!("p8 {} @ {}", length, addr);
+        let out = self.cmd(cmd.as_str())?;
+        Ok(hex_decode(&out))
     }
 
     pub fn write(&mut self, addr: u64, data: Vec<u8>) {
