@@ -79,6 +79,7 @@ pub enum Operations {
     Break,
     Repeat,
     GoTo,
+    PrintStack,
     ToDo,
     NoOperation,
     Print,      // Tool for cli hooks
@@ -184,6 +185,7 @@ impl Operations {
             "BREAK" => Operations::Break,
             "REPEAT" => Operations::Repeat,
             "GOTO" => Operations::GoTo,
+            "STACK" => Operations::PrintStack,
             "TODO" => Operations::ToDo,
             "" => Operations::NoOperation,
 
@@ -827,6 +829,11 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         }
         Operations::Clear => {
             state.stack.clear();
+        }
+        Operations::PrintStack => {
+           for value in state.stack.iter().rev() {
+                println!("{:?}", value);
+           }
         }
         Operations::Break => {}
         Operations::Repeat => {}

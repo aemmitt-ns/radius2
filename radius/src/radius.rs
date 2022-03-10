@@ -445,6 +445,19 @@ impl Radius {
                 .sum::<u64>()
     }
 
+    /// execute function
+    pub fn call_function(&mut self, sym: &str, state: State, args: Vec<Value>) -> Option<State> {
+        let addr = self.r2api.get_address(sym).unwrap_or_default();
+        self.call_address(addr, state, args)
+    }
+
+    /// execute function at address
+    pub fn call_address(&mut self, addr: u64, mut state: State, args: Vec<Value>) -> Option<State> {
+        state.set_args(args);
+        state.registers.set_pc(vc(addr));
+        self.processor.run(state, RunMode::Single).pop()
+    }
+
     /// Simple way to execute until a given target address while avoiding a vec of other addrs
     pub fn run_until(&mut self, state: State, target: u64, avoid: &[u64]) -> Option<State> {
         self.breakpoint(target);

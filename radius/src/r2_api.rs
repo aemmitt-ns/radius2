@@ -42,7 +42,7 @@ impl Default for CallingConvention {
                 String::from("A0"),
                 String::from("A1"),
                 String::from("A2"),
-                String::from("A3"),
+                // String::from("A3"),
             ],
         }
     }
@@ -394,6 +394,14 @@ pub struct File {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FridaInfo {
+    pub arch: String,
+    pub bits: u64,
+    pub os: String,
+    pub pid: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entrypoint {
     pub vaddr: u64,
     pub paddr: u64,
@@ -486,6 +494,12 @@ impl R2Api {
             Mode::Default
         };
 
+        if r2api.mode == Mode::Frida {
+            let info  = r2api.get_frida_info().unwrap();
+            r2api.info.bin.arch = info.arch;
+            r2api.info.bin.bits = info.bits;
+        }
+
         // if we are on arm64 default to v35 plugin
         if r2api.info.bin.arch == "arm" && r2api.info.bin.bits == 64 {
             r2api.set_option("asm.arch", "arm.v35").unwrap_or_default();
@@ -515,6 +529,11 @@ impl R2Api {
 
     pub fn get_info(&mut self) -> R2Result<Information> {
         let json = self.cmd("ij")?;
+        Ok(serde_json::from_str(json.as_str()).unwrap())
+    }
+
+    pub fn get_frida_info(&mut self) -> R2Result<FridaInfo> {
+        let json = self.cmd(":ij")?;
         Ok(serde_json::from_str(json.as_str()).unwrap())
     }
 

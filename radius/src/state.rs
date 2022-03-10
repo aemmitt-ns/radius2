@@ -710,6 +710,44 @@ impl State {
         }
     }
 
+    /// merges the argument state into self
+    pub fn merge(&mut self, state: &mut State) {
+        let state_asserts = &state.solver.assertions;
+        let assertion = state.solver.and_all(&state_asserts);
+        let asserted = Value::Symbolic(assertion, 0);
+
+        // merge registers
+        let mut new_regs = Vec::with_capacity(256);
+        let reg_count = state.registers.values.len();
+        for index in 0..reg_count {
+            let reg = &self.registers.values[index];
+            let curr_reg = &state.registers.values[index];
+            new_regs.push(state.solver.conditional(&asserted, curr_reg, reg));
+        }
+        self.registers.values = new_regs;
+
+        // merge memory
+        let mut new_mem = HashMap::new();
+        let merge_addrs = self.memory.addresses();
+        let state_addrs = state.memory.addresses();
+
+        let mut addrs = Vec::with_capacity(state.solver.eval_max);
+        addrs.extend(merge_addrs);
+        addrs.extend(state_addrs);
+        for addr in addrs {
+            let mem = &self.memory.read_value(addr, 1);
+            let curr_mem = state.memory.read_value(addr, 1);
+            new_mem.insert(addr, state.solver.conditional(&asserted, &curr_mem, mem));
+        }
+        self.memory.mem = new_mem;
+
+        // merge solvers
+        let assertions = &self.solver.assertions;
+        let current = state.solver.and_all(assertions);
+        self.solver.reset();
+        self.assert_bv(&current.or(&asserted.as_bv().unwrap()));
+    }
+
     /// Use the constraints from the provided state. This is
     /// useful for constraining the data in some initial
     /// state with the assertions of some desired final state
@@ -963,6 +1001,13 @@ impl State {
         }
 
         args
+    }
+
+    /// get the return value from the right register
+    pub fn get_ret(&mut self) -> Value {
+        let pc = self.registers.get_pc().as_u64().unwrap();
+        let cc = self.r2api.get_cc(pc).unwrap_or_default();
+        self.registers.get(&cc.ret)
     }
 
     /// Set the argument values for the current function

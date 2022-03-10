@@ -882,42 +882,8 @@ impl Processor {
 
     pub fn merge(&mut self, mut state: State) {
         let pc = state.registers.get_pc().as_u64().unwrap();
-
         if let Some(mut merge_state) = self.merges.remove(&pc) {
-            let state_asserts = &state.solver.assertions;
-            let assertion = state.solver.and_all(&state_asserts);
-            let asserted = Value::Symbolic(assertion, 0);
-
-            // merge registers
-            let mut new_regs = Vec::with_capacity(256);
-            let reg_count = state.registers.values.len();
-            for index in 0..reg_count {
-                let reg = &merge_state.registers.values[index];
-                let curr_reg = &state.registers.values[index];
-                new_regs.push(state.solver.conditional(&asserted, curr_reg, reg));
-            }
-            merge_state.registers.values = new_regs;
-
-            // merge memory
-            let mut new_mem = HashMap::new();
-            let merge_addrs = merge_state.memory.addresses();
-            let state_addrs = state.memory.addresses();
-
-            let mut addrs = Vec::with_capacity(state.solver.eval_max);
-            addrs.extend(merge_addrs);
-            addrs.extend(state_addrs);
-            for addr in addrs {
-                let mem = &merge_state.memory.read_value(addr, 1);
-                let curr_mem = state.memory.read_value(addr, 1);
-                new_mem.insert(addr, state.solver.conditional(&asserted, &curr_mem, mem));
-            }
-            merge_state.memory.mem = new_mem;
-
-            // merge solvers
-            let assertions = &merge_state.solver.assertions;
-            let current = state.solver.and_all(assertions);
-            merge_state.solver.reset();
-            merge_state.assert_bv(&current.or(&asserted.as_bv().unwrap()));
+            merge_state.merge(&mut state);
             self.merges.insert(pc, merge_state);
         } else {
             self.merges.insert(pc, state);

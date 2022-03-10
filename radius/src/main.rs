@@ -149,7 +149,7 @@ fn main() {
         )
         .arg(
             Arg::with_name("color")
-                .short("C")
+                .short("V")
                 .long("color")
                 .help("Use color output"),
         )
@@ -264,6 +264,14 @@ fn main() {
                 .value_names(&["SYMBOL", "EXPR"])
                 .multiple(true)
                 .help("Constrain symbol values with string or pattern"),
+        )
+        .arg(
+            Arg::with_name("constrain_after")
+                .short("C")
+                .long("constrain-after") // post-constrain
+                .value_names(&["SYMBOL", "EXPR"])
+                .multiple(true)
+                .help("Constrain symbol or file values after execution"),
         )
         .arg(
             Arg::with_name("hook")
@@ -636,6 +644,29 @@ fn main() {
         }
 
         if let Some(mut end_state) = result {
+
+            // collect the ESIL strings to evaluate after running
+            let constraints: Vec<&str> = collect!(matches, "constrain_after");
+            for i in 0..matches.occurrences_of("constrain_after") as usize {
+                let name = constraints[2 * i];
+                let con = constraints[2 * i + 1];
+
+                let cons = if con.starts_with('@') {
+                    &con[1..]
+                } else {
+                    &con
+                };
+
+                if symbol_map.contains_key(name) {
+                    let bv = &symbol_map[name];
+                    end_state.constrain_bytes_bv(bv, cons);
+                } else if files.contains(&name) {
+                    end_state.constrain_file(name, cons);
+                } else if let Ok(fd) = name.parse::<usize>() {
+                    end_state.constrain_fd(fd, cons);
+                }
+            }
+
             // collect the ESIL strings to evaluate after running
             let evals: Vec<&str> = collect!(matches, "evaluate_after");
             for eval in evals {
