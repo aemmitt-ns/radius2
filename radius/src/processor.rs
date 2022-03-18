@@ -82,15 +82,8 @@ pub enum InstructionFlag {
 pub struct InstructionEntry {
     pub instruction: Instruction,
     pub tokens: Vec<Word>,
-    pub flags: AHashSet<InstructionFlag>, // next: Option<Arc<InstructionEntry>>
+    pub flags: AHashSet<InstructionFlag>,
 }
-
-//const DEBUG: bool = false; // show instructions
-//const LAZY:  bool = true;  // dont check sat on ite PCs
-//const OPT:   bool = true;  // optimize by removing unread flag sets
-//const BFS:   bool = true;    // dequeue states instead of popping
-
-//const ALLOW_INVALID: bool = true; // Allow invalid instructions (exec as NOP)
 
 impl Processor {
     pub fn new(
@@ -791,6 +784,12 @@ impl Processor {
 
         if state.esil.pcs.len() > 1 || new_pc.as_u64().is_none() {
             let mut states: Vec<State> = Vec::with_capacity(pc_allocs);
+
+            // this function is kind of a mess this should be refactored
+            if state.esil.pcs.is_empty() && new_pc.as_u64().is_none() {
+                state.set_inactive();
+                return states;
+            }
 
             let last = state.esil.pcs.len() - 1;
             for new_pc_val in &state.esil.pcs[..last] {

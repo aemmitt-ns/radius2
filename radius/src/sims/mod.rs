@@ -30,6 +30,10 @@ pub fn zero(_state: &mut State, _args: &[Value]) -> Value {
     Value::Concrete(0, 0)
 }
 
+pub fn ret(state: &mut State, _args: &[Value]) -> Value {
+    state.registers.get_with_alias("R0")
+}
+
 // this isn't great
 /*pub fn unconstrained(state: &mut State, _args: &[Value]) -> Value {
     let mut uncon_vec = state.context.entry("uncon".to_owned()).or_insert(vec!()).clone();
@@ -157,6 +161,7 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("srand", libc::srand, 1),
         make_sim("gethostname", libc::gethostname, 0),
         make_sim("getpagesize", libc::getpagesize, 0),
+        make_sim("__stack_chk_fail", ret, 0),
         make_sim("__libc_start_main", libc::__libc_start_main, 5),
     ]
 }

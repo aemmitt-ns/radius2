@@ -727,7 +727,7 @@ impl State {
         self.registers.values = new_regs;
 
         // merge memory
-        let mut new_mem = HashMap::new();
+        let mut new_mem = HashMap::with_capacity(1024);
         let merge_addrs = self.memory.addresses();
         let state_addrs = state.memory.addresses();
 
@@ -737,9 +737,13 @@ impl State {
         for addr in addrs {
             let mem = &self.memory.read_value(addr, 1);
             let curr_mem = state.memory.read_value(addr, 1);
-            new_mem.insert(addr, state.solver.conditional(&asserted, &curr_mem, mem));
+            new_mem.insert(addr, state.cond(&asserted, &curr_mem, mem));
         }
         self.memory.mem = new_mem;
+
+        // TODO merge context        
+
+        // TODO merge filesystem
 
         // merge solvers
         let assertions = &self.solver.assertions;
@@ -924,6 +928,14 @@ impl State {
             *self.visits.get(&pc).unwrap_or(&0)
         } else {
             0
+        }
+    }
+
+    /// print backtrace
+    pub fn print_backtrace(&mut self) {
+        for (i, bt) in self.backtrace.iter().rev().enumerate() {
+            let name = self.r2api.get_flag(bt.1).unwrap_or_default();
+            println!("\n#{} 0x{:08x} ({})\n", i, bt.1, name.trim());
         }
     }
 

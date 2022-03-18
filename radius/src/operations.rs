@@ -84,8 +84,10 @@ pub enum Operations {
     NoOperation,
     Print,      // Tool for cli hooks
     PrintDebug, // Tool for cli hooks
+    Backtrace,  // Tool for cli hooks
     Constrain,
     Terminate,
+    Discard,
 
     // flag ops
     Zero,
@@ -192,8 +194,10 @@ impl Operations {
             // hax for use in the cli / plugin
             "." => Operations::Print,
             ".." => Operations::PrintDebug,
+            "BT" => Operations::Backtrace,
             "_" => Operations::Constrain,
-            "!!" => Operations::Terminate,
+            "!!" => Operations::Terminate, // state.set_break()
+            "!_" => Operations::Discard,  // state.set_inactive()
 
             "$z" => Operations::Zero,
             "$c" => Operations::Carry,
@@ -831,9 +835,9 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             state.stack.clear();
         }
         Operations::PrintStack => {
-           for value in state.stack.iter().rev() {
-                println!("{:?}", value);
-           }
+            for value in state.stack.iter().rev() {
+                    println!("{:?}", value);
+            }
         }
         Operations::Break => {}
         Operations::Repeat => {}
@@ -859,6 +863,9 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let ip = state.registers.get_pc().as_u64().unwrap_or_default();
             println!("\n0x{:08x}    {:?}\n", ip, value);
         }
+        Operations::Backtrace => {
+            state.print_backtrace();
+        }
         Operations::Constrain => {
             let value = pop_value(state, false, false);
             state.assert(&value);
@@ -866,7 +873,9 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::Terminate => {
             state.set_break();
         }
-
+        Operations::Discard => {
+            state.set_inactive();
+        }
         Operations::ToDo => {
             if state.strict {
                 unimplemented!();

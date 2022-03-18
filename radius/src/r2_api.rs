@@ -958,10 +958,14 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }
 
+    pub fn get_flag(&mut self, addr: u64) -> R2Result<String> {
+        self.cmd(&format!("fd @ 0x{:x}", addr))
+    }
+
     // load libraries, return list of full loaded paths
     pub fn load_libraries(&mut self, lib_paths: &[String]) -> R2Result<Vec<String>> {
         let paths = self.load_library_helper(lib_paths, &[])?;
-        self.cmd("op 3")?; // usually the main module is 3 idk
+        self.cmd("op 3").unwrap_or_default(); // usually the main module is 3 idk
         Ok(paths)
     }
 

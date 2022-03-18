@@ -376,6 +376,10 @@ impl Radius {
         let files = r2api.get_files().unwrap();
 
         for file in files {
+            if file.uri.starts_with("null://") {
+                continue;
+            }
+
             r2api.set_file_fd(file.fd);
             let symbols = r2api.get_imports().unwrap();
             let mut symmap: HashMap<String, u64> = HashMap::new();
