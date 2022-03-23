@@ -320,13 +320,13 @@ pub struct Export {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObjCClassMethod {
     pub name: String,
-    pub vaddr: u64,
+    pub addr: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObjCClassField {
     pub name: String,
-    pub vaddr: u64,
+    pub addr: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -343,13 +343,15 @@ pub struct JavaClassField {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObjCClassInfo {
-    pub class: String,
+    pub classname: String,
 
     #[serde(default)]
     pub methods: Vec<ObjCClassMethod>,
 
     #[serde(default)]
     pub fields: Vec<ObjCClassField>,
+
+    pub addr: u64
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

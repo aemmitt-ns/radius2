@@ -1,5 +1,5 @@
 use crate::state::{StackItem, State};
-use crate::value::Value;
+use crate::value::{Value, vc};
 use std::f64;
 
 pub const OPS: [&str; 16] = [
@@ -49,6 +49,8 @@ pub enum Operations {
     PokeBits,
     PeekSize,
     PokeSize,
+    PeekMany,
+    PokeMany,
     PopCount,
     Ceiling,
     Floor,
@@ -158,6 +160,8 @@ impl Operations {
             "[]" => Operations::PeekBits, 
             "=[n]" => Operations::PokeSize,
             "[n]" => Operations::PeekSize,
+            "=[*]" => Operations::PokeMany,
+            "[*]" => Operations::PeekMany,
             "POPCOUNT" => Operations::PopCount,
             "CEIL" => Operations::Ceiling,
             "FLOOR" => Operations::Floor,
@@ -675,6 +679,32 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             //state.memory.write_value(addr, value, n);
             state.esil.previous = addr;
             state.esil.last_sz = 8 * n;
+        }
+        Operations::PeekMany => {
+            let mut addr = pop_value(state, false, false);
+            let num = pop_concrete(state, false, false);
+
+            for _ in 0..num {
+                if let Some(StackItem::StackRegister(ind)) = state.stack.pop() {
+                    let reg = state.registers.indexes[ind].clone();
+                    let val = state.memory_read_value(&addr, reg.reg_info.size as usize);
+                    do_equal(state, StackItem::StackRegister(ind), val, false);
+                    addr = addr + vc(reg.reg_info.size);
+                }
+            }
+        }
+        Operations::PokeMany => {
+            let mut addr = pop_value(state, false, false);
+            let num = pop_concrete(state, false, false);
+
+            for _ in 0..num {
+                if let Some(StackItem::StackRegister(ind)) = state.stack.pop() {
+                    let reg = state.registers.indexes[ind].clone();
+                    let val = state.registers.get_value(ind);
+                    state.memory_write_value(&addr, &val, reg.reg_info.size as usize);
+                    addr = addr + vc(reg.reg_info.size);
+                }
+            }
         }
         // this is a hack to do op pokes ~efficiently
         Operations::AddressStore => {
