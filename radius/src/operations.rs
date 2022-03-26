@@ -84,6 +84,7 @@ pub enum Operations {
     PrintStack,
     ToDo,
     NoOperation,
+
     Print,      // Tool for cli hooks
     PrintDebug, // Tool for cli hooks
     Backtrace,  // Tool for cli hooks
@@ -114,7 +115,7 @@ impl Operations {
             "TRAP" => Operations::Trap,
             "$" => Operations::Trap,
             "()" => Operations::Syscall,
-            "$$" => Operations::PcAddress,
+            "$$" => Operations::PcAddress, // this is whack
             "?{" => Operations::If,
             "}{" => Operations::Else,
             "}" => Operations::EndIf,
@@ -420,7 +421,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::Syscall => {}
         Operations::PcAddress => {
             let pc = state.registers.get_with_alias("PC");
-            push_value(state, pc);
+            push_value(state, pc - vc(4));
         }
         Operations::If => {} // these are handled in processor
         Operations::Else => {}
@@ -687,7 +688,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             for _ in 0..num {
                 if let Some(StackItem::StackRegister(ind)) = state.stack.pop() {
                     let reg = state.registers.indexes[ind].clone();
-                    let val = state.memory_read_value(&addr, reg.reg_info.size as usize);
+                    let val = state.memory_read_value(&addr, reg.reg_info.size as usize/8);
                     do_equal(state, StackItem::StackRegister(ind), val, false);
                     addr = addr + vc(reg.reg_info.size);
                 }
@@ -701,7 +702,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                 if let Some(StackItem::StackRegister(ind)) = state.stack.pop() {
                     let reg = state.registers.indexes[ind].clone();
                     let val = state.registers.get_value(ind);
-                    state.memory_write_value(&addr, &val, reg.reg_info.size as usize);
+                    state.memory_write_value(&addr, &val, reg.reg_info.size as usize/8);
                     addr = addr + vc(reg.reg_info.size);
                 }
             }

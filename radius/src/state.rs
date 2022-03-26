@@ -741,7 +741,7 @@ impl State {
         }
         self.memory.mem = new_mem;
 
-        // TODO merge context        
+        // TODO merge context
 
         // TODO merge filesystem
 
@@ -890,12 +890,14 @@ impl State {
     /// constrain bytes of file with file descriptor
     pub fn constrain_fd(&mut self, fd: usize, content: &str) {
         let fbytes = self.dump_file(fd);
-        let cbytes = byte_values(content);
-        for i in 0..cbytes.len() {
+        let fbv = self.pack(&fbytes);
+        self.constrain_bytes(&fbv, content);
+        //let cbytes = byte_values(content);
+        /*for i in 0..cbytes.len() {
             if i < fbytes.len() {
                 self.assert(&cbytes[i].eq(&fbytes[i]));
             }
-        }
+        }*/
     }
 
     /// constrain bytes of file 

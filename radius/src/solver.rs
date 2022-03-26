@@ -245,7 +245,17 @@ impl Solver {
     }
 
     // evaluate and constrain the symbol to the value
-    pub fn evalcon(&mut self, bv: &BitVec) -> Option<u64> {
+    pub fn evalcon(&mut self, lbv: &BitVec) -> Option<u64> {
+
+        // TODO this is a stupid fix to 128 bit float reg evalcon-ing 
+        // all of this code needs to be reorganized around Values instead of 
+        // returning u64s, except for circumstances explicitly involving addresses
+        let bv = if lbv.get_width() <= 64 {
+            lbv.to_owned()
+        } else {
+            lbv.slice(63, 0)
+        };
+
         self.enable_model(true);
         self.btor.push(1);
         self.apply_assertions();
@@ -321,11 +331,15 @@ impl Solver {
         self.apply_assertions();
         for _i in 0..self.eval_max {
             if self.btor.sat() == SolverResult::Sat {
-                let sol = bv.get_a_solution().as_u64().unwrap();
-                solutions.push(sol);
-                let sol_bv = BV::from_u64(self.btor.clone(), sol, bv.get_width());
+                let solopt = bv.get_a_solution().as_u64();
+                if let Some(sol) = solopt {
+                    solutions.push(sol);
+                    let sol_bv = BV::from_u64(self.btor.clone(), sol, bv.get_width());
 
-                bv._eq(&sol_bv).not().assert();
+                    bv._eq(&sol_bv).not().assert();
+                } else {
+                    break;
+                }
             } else {
                 break;
             }

@@ -68,7 +68,12 @@ impl Registers {
 
             if !in_bounds {
                 let val = if !blank {
-                    Value::Concrete(r2api.get_register_value(&reg.name).unwrap(), 0)
+                    let v = r2api.get_register_value(&reg.name).unwrap_or_default();
+                    if reg.size <= 64 {
+                        Value::Concrete(v, 0)
+                    } else {
+                        Value::Symbolic(btor.bvv(v, reg.size as u32), 0)
+                    }
                 } else {
                     let sym_name = format!("reg_{}", reg.name);
                     Value::Symbolic(btor.bv(sym_name.as_str(), reg.size as u32), 0)
@@ -184,7 +189,6 @@ impl Registers {
 
     #[inline]
     pub fn set_value(&mut self, index: usize, value: Value) {
-        //println!("reg {:?} {:?}", index, value);
         let register = &self.indexes[index];
 
         if register.reg_info.offset == -1i64 as u64 {
@@ -192,9 +196,15 @@ impl Registers {
         }
 
         let size = register.reg_info.size;
-
         if size == register.bounds.size {
-            self.values[register.value_index] = value;
+            if size <= 64 {
+                self.values[register.value_index] = value;
+            } else {
+                // need to prevent size > 64 from becoming a u64
+                let bv = self.solver.to_bv(&value, size as u32);
+                let v = Value::Symbolic(bv, value.get_taint());
+                self.values[register.value_index] = v;
+            }
         } else {
             let bound_size = register.bounds.size as u32;
             let offset = register.reg_info.offset - register.bounds.start;

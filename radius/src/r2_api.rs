@@ -769,7 +769,11 @@ impl R2Api {
     pub fn get_ret(&mut self) -> R2Result<String> {
         // simple as that?
         let ret = self.cmd("pae ret")?;
-        Ok(ret[0..ret.len() - 1].to_owned())
+        if ret.is_empty() {
+            Err("no ret instruction".to_owned())
+        } else {
+            Ok(ret[0..ret.len() - 1].to_owned())
+        }
     }
 
     pub fn get_register_value(&mut self, reg: &str) -> R2Result<u64> {
