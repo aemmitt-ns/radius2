@@ -8,9 +8,7 @@ use crate::value::{vc, Value, byte_values};
 use std::cmp::Ordering;
 use std::rc::Rc;
 use std::u8;
-//use std::collections::HashMap;
-use ahash::AHashMap;
-type HashMap<P, Q> = AHashMap<P, Q>;
+use std::collections::HashMap;
 
 // use backtrace::Backtrace;
 

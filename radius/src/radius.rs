@@ -9,11 +9,9 @@ use crate::value::{vc, Value};
 // use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 
 // use std::thread;
-
-use ahash::AHashMap;
-type HashMap<P, Q> = AHashMap<P, Q>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RadiusOption {
@@ -21,7 +19,7 @@ pub enum RadiusOption {
     Syscalls(bool),
     /// Use simulated imports     
     Sims(bool),
-    /// Sim all imports, with stub if missing        
+    /// Sim all imports, with stub if missing
     SimAll(bool),
     /// Optimize executed ESIL expressions
     Optimize(bool),

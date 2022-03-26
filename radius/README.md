@@ -10,7 +10,7 @@ git clone https://github.com/radareorg/radare2.git
 radare2/sys/install.sh 
 ```
 
-Include radius2 as a dependency using `radius2 = "1.0.11"` or build locally with `cargo build --release`
+Include radius2 as a dependency using `radius2 = "1.0.12"` or build locally with `cargo build --release`
 
 ### Supported Architectures
 
@@ -56,17 +56,25 @@ fn main() {
 radius2 can also be installed from crates.io and easily included in packages. radius2 also has a CLI tool that can be installed with `cargo install radius2`
 
 ```
-radius2 1.0.11
+radius2 1.0.12
 Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>
-Symbolic Execution tool using r2 and boolector
+A symbolic execution tool using r2 and boolector
+        
+                             ooo  o88                           ooooooo   
+ oo oooooo   ooooooo    ooooo888  oooo oooo  oooo   ooooooo88 o88     888 
+  888   888  ooooo888 888    888   888  888   888  888ooooooo       o888  
+  888      888    888 888    888   888  888   888          888   o888     
+ o888o      88ooo88 8o  88ooo888o o888o  888o88 8o 88oooooo88 o8888oooo88 
+        
 
 USAGE:
     radius2 [FLAGS] [OPTIONS] --path <path>
 
 FLAGS:
-    -C, --color         Use color output
+    -V, --color         Use color output
         --crash         Execution stops on invalid memory access
     -h, --help          Prints help information
+    -j, --json          Output JSON
     -z, --lazy          Evaluate symbolic PC values lazily
         --no-sims       Do not simulate imports
         --plugins       Load r2 plugins
@@ -76,7 +84,7 @@ FLAGS:
     -0, --stdin         Use stdin for target program
     -1, --stdout        Show stdout output
         --strict        Panic on invalid instructions and ESIL
-    -V, --version       Prints version information
+        --version       Prints version information
     -v, --verbose       Show verbose / debugging output
 
 OPTIONS:
@@ -87,6 +95,7 @@ OPTIONS:
     -B, --break-strings <break_strings>...    Breakpoint code xrefs to strings
     -b, --break <breakpoint>...               Breakpoint at some target address
     -c, --constrain <SYMBOL> <EXPR>           Constrain symbol values with string or pattern
+    -C, --constrain-after <SYMBOL> <EXPR>     Constrain symbol or file values after execution
         --env <env>...                        Environment variable for the target program
     -e, --eval <ESIL>...                      Evaluate ESIL expression
     -E, --eval-after <ESIL>...                Evaluate ESIL expression after execution

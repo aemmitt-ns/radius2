@@ -1,6 +1,6 @@
-//use std::collections::HashMap;
-use ahash::AHashMap;
-type HashMap<P, Q> = AHashMap<P, Q>;
+use std::collections::HashMap;
+//use ahash::AHashMap;
+//type HashMap<P, Q> = AHashMap<P, Q>;
 
 use crate::r2_api::{Endian, R2Api, STACK_SIZE, STACK_START};
 use crate::solver::Solver;

@@ -420,8 +420,10 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::Trap => {}
         Operations::Syscall => {}
         Operations::PcAddress => {
+            // hopefully this is only used by ARM
+            // i am gonna remove it from r2 regardless
             let pc = state.registers.get_with_alias("PC");
-            push_value(state, pc - vc(4));
+            push_value(state, pc - vc(4)); 
         }
         Operations::If => {} // these are handled in processor
         Operations::Else => {}

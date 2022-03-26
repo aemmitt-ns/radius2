@@ -1,7 +1,4 @@
-//use std::collections::HashMap;
-use ahash::AHashMap;
-type HashMap<P, Q> = AHashMap<P, Q>;
-
+use std::collections::HashMap;
 use crate::r2_api::{AliasInfo, R2Api, RegisterInfo};
 use crate::solver::Solver;
 use crate::value::Value;

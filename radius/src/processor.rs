@@ -15,8 +15,7 @@ use std::collections::BinaryHeap;
 use std::mem;
 use std::rc::Rc;
 
-use ahash::{AHashMap, AHashSet};
-type HashMap<P, Q> = AHashMap<P, Q>;
+use std::collections::{HashMap, HashSet};
 use std::collections::BTreeMap;
 
 const INSTR_NUM: usize = 64;
@@ -51,10 +50,10 @@ pub struct Processor {
     pub sims: HashMap<u64, SimMethod>,
     pub traps: HashMap<u64, SimMethod>,
     pub syscalls: HashMap<u64, Syscall>,
-    pub breakpoints: AHashSet<u64>,
-    pub mergepoints: AHashSet<u64>,
-    pub avoidpoints: AHashSet<u64>,
-    pub visited: AHashSet<u64>,
+    pub breakpoints: HashSet<u64>,
+    pub mergepoints: HashSet<u64>,
+    pub avoidpoints: HashSet<u64>,
+    pub visited: HashSet<u64>,
     pub merges: HashMap<u64, State>,
     pub crashes: Vec<State>,
     pub selfmodify: bool,
@@ -82,7 +81,7 @@ pub enum InstructionFlag {
 pub struct InstructionEntry {
     pub instruction: Instruction,
     pub tokens: Vec<Word>,
-    pub flags: AHashSet<InstructionFlag>,
+    pub flags: HashSet<InstructionFlag>,
 }
 
 impl Processor {
@@ -102,10 +101,10 @@ impl Processor {
             sims: HashMap::new(),
             traps: HashMap::new(),
             syscalls: HashMap::new(),
-            breakpoints: AHashSet::new(),
-            mergepoints: AHashSet::new(),
-            avoidpoints: AHashSet::new(),
-            visited: AHashSet::new(),
+            breakpoints: HashSet::new(),
+            mergepoints: HashSet::new(),
+            avoidpoints: HashSet::new(),
+            visited: HashSet::new(),
             merges: HashMap::new(),
             crashes: vec![],
             selfmodify,
@@ -520,7 +519,7 @@ impl Processor {
         &self,
         state: &mut State,
         instr: &Instruction,
-        flags: &AHashSet<InstructionFlag>,
+        flags: &HashSet<InstructionFlag>,
         words: &[Word],
     ) {
         if state.check && state.check_crash(&vc(instr.offset), &vc(instr.size), 'x') {
@@ -669,7 +668,7 @@ impl Processor {
                 let size = instr.size;
                 let words = self.tokenize(state, &instr.esil);
 
-                let mut flags = AHashSet::new();
+                let mut flags = HashSet::new();
                 let mut opt = self.optimized && !self.selfmodify;
                 if self.hooks.contains_key(&pc_tmp) {
                     flags.insert(InstructionFlag::Hook);
