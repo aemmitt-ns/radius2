@@ -101,6 +101,10 @@ impl Solver {
         }
     }
 
+    pub fn to_sym(&self, value: &Value, length: u32) -> Value {
+        Value::Symbolic(self.to_bv(value, length), value.get_taint())
+    }
+
     pub fn conditional(&self, cond: &Value, if_val: &Value, else_val: &Value) -> Value {
         let mut max_bit = 1;
         if if_val.is_symbolic() || else_val.is_symbolic() {

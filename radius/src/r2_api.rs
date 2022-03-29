@@ -392,7 +392,7 @@ pub struct File {
     pub uri: String,
     pub from: u64,
     pub writable: bool,
-    pub size: usize,
+    pub size: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -920,13 +920,19 @@ impl R2Api {
     }
 
     pub fn get_address(&mut self, symbol: &str) -> R2Result<u64> {
-        let cmd = if self.mode != Mode::Frida {
-            format!("?v {}", symbol)
+        let val = if self.mode != Mode::Frida {
+            let cmd = format!("?v {}", symbol);
+            self.cmd(cmd.as_str())?
         } else {
-            format!(":isa {}", symbol)
+            let cmd = format!(":isa {}", symbol);
+            let v = self.cmd(cmd.as_str())?;
+            if v.len() < 4 {
+                let cmd = format!("?v {}", symbol);
+                self.cmd(cmd.as_str())?
+            } else {
+                v
+            }
         };
-
-        let val = self.cmd(cmd.as_str())?;
         if val.len() > 3 {
             r2_result(u64::from_str_radix(&val[2..val.len() - 1], 16))
         } else {

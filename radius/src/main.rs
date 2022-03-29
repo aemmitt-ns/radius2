@@ -26,7 +26,6 @@ pub mod registers;
 pub mod sims;
 pub mod solver;
 pub mod state;
-pub mod test;
 pub mod value;
 
 macro_rules! occurs {
@@ -383,6 +382,70 @@ fn main() {
         }
     }
 
+    // set breakpoints, avoids, and merges
+    let mut bps: Vec<u64> = collect!(matches, "breakpoint")
+        .iter()
+        .map(|x| radius.get_address(x).unwrap())
+        .collect();
+    let mut avoid: Vec<u64> = collect!(matches, "avoid")
+        .iter()
+        .map(|x| radius.get_address(x).unwrap())
+        .collect();
+    let merges: Vec<u64> = collect!(matches, "merge")
+        .iter()
+        .map(|x| radius.get_address(x).unwrap())
+        .collect();
+
+    let mut analyzed = false;
+    // get code references to strings and add them to the avoid list
+    if occurs!(matches, "avoid_strings") {
+        // need to analyze to get string refs
+        radius.analyze(3);
+        analyzed = true;
+        for string in collect!(matches, "avoid_strings") {
+            for location in radius.r2api.search_strings(string).unwrap() {
+                avoid.extend(
+                    radius
+                        .r2api
+                        .get_references(location)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|x| x.from),
+                );
+            }
+        }
+    }
+
+    // get code references to strings and add them to the breakpoints
+    if occurs!(matches, "break_strings") {
+        // need to analyze to get string refs
+        if !analyzed {
+            radius.analyze(3);
+        }
+        for string in collect!(matches, "break_strings") {
+            for location in radius.r2api.search_strings(string).unwrap() {
+                bps.extend(
+                    radius
+                        .r2api
+                        .get_references(location)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|x| x.from),
+                );
+            }
+        }
+    }
+
+    for bp in bps {
+        radius.breakpoint(bp);
+    }
+
+    radius.avoid(&avoid);
+
+    for merge in merges {
+        radius.mergepoint(merge);
+    }
+
     let mut state = if let Some(address) = matches.value_of("address") {
         let addr = radius.get_address(address).unwrap_or(0);
         if path.starts_with("frida:") {
@@ -551,70 +614,6 @@ fn main() {
         {
             state.registers.set_value(index, value);
         }
-    }
-
-    // set breakpoints, avoids, and merges
-    let mut bps: Vec<u64> = collect!(matches, "breakpoint")
-        .iter()
-        .map(|x| radius.get_address(x).unwrap())
-        .collect();
-    let mut avoid: Vec<u64> = collect!(matches, "avoid")
-        .iter()
-        .map(|x| radius.get_address(x).unwrap())
-        .collect();
-    let merges: Vec<u64> = collect!(matches, "merge")
-        .iter()
-        .map(|x| radius.get_address(x).unwrap())
-        .collect();
-
-    let mut analyzed = false;
-    // get code references to strings and add them to the avoid list
-    if occurs!(matches, "avoid_strings") {
-        // need to analyze to get string refs
-        radius.analyze(3);
-        analyzed = true;
-        for string in collect!(matches, "avoid_strings") {
-            for location in radius.r2api.search_strings(string).unwrap() {
-                avoid.extend(
-                    radius
-                        .r2api
-                        .get_references(location)
-                        .unwrap_or_default()
-                        .iter()
-                        .map(|x| x.from),
-                );
-            }
-        }
-    }
-
-    // get code references to strings and add them to the breakpoints
-    if occurs!(matches, "break_strings") {
-        // need to analyze to get string refs
-        if !analyzed {
-            radius.analyze(3);
-        }
-        for string in collect!(matches, "break_strings") {
-            for location in radius.r2api.search_strings(string).unwrap() {
-                bps.extend(
-                    radius
-                        .r2api
-                        .get_references(location)
-                        .unwrap_or_default()
-                        .iter()
-                        .map(|x| x.from),
-                );
-            }
-        }
-    }
-
-    for bp in bps {
-        radius.breakpoint(bp);
-    }
-
-    radius.avoid(&avoid);
-
-    for merge in merges {
-        radius.mergepoint(merge);
     }
 
     // collect the ESIL strings to evaluate
