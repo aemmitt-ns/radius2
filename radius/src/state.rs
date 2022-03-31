@@ -69,6 +69,7 @@ pub enum ExecMode {
 #[derive(Debug, Clone)]
 pub struct EsilState {
     pub mode: ExecMode,
+    pub prev_pc: Value,
     pub previous: Value,
     pub current: Value,
     pub last_sz: usize,
@@ -161,6 +162,7 @@ impl State {
     ) -> Self {
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
+            prev_pc: Value::Concrete(0, 0),
             previous: Value::Concrete(0, 0),
             current: Value::Concrete(0, 0),
             last_sz: 64,
@@ -235,6 +237,7 @@ impl State {
 
         let esil_state = EsilState {
             mode: ExecMode::Uncon,
+            prev_pc: self.esil.prev_pc.clone(),
             previous: vc(0),
             current: vc(0),
             last_sz: 64,
@@ -692,7 +695,7 @@ impl State {
         }
 
         let mut addrs = self.memory.addresses();
-        addrs.sort();
+        addrs.sort_unstable();
 
         let mut chunk: Vec<u8> = Vec::with_capacity(256);
         for (i, addr) in addrs.iter().enumerate() {
@@ -711,7 +714,7 @@ impl State {
     /// merges the argument state into self
     pub fn merge(&mut self, state: &mut State) {
         let state_asserts = &state.solver.assertions;
-        let assertion = state.solver.and_all(&state_asserts);
+        let assertion = state.solver.and_all(state_asserts);
         let asserted = Value::Symbolic(assertion, 0);
 
         // merge registers
@@ -881,7 +884,7 @@ impl State {
     /// or use "[...]" to match a simple pattern eg. "[XYZa-z0-9]"
     pub fn constrain_bytes(&mut self, bv: &Value, pattern: &str) {
         if let Value::Symbolic(s, _) = bv {
-            self.constrain_bytes_bv(&s, pattern)
+            self.constrain_bytes_bv(s, pattern)
         }
     }
 
@@ -1079,7 +1082,7 @@ impl State {
         let mut data: Vec<u8> = vec![];
         if self.solver.is_sat() {
             //let one_sol = new_bv.get_a_solution().disambiguate();
-            let solution_opt = self.solver.solution(&new_bv);
+            let solution_opt = self.solver.solution(new_bv);
             if let Some(solution) = solution_opt {
                 for i in 0..(new_bv.get_width() / 8) as usize {
                     let sol = u8::from_str_radix(&solution[i * 8..(i + 1) * 8], 2);

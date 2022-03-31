@@ -14,6 +14,7 @@ const READ_CACHE: usize = 64;
 // today is not that day
 const HEAP_START: u64 = 0x40000000;
 const HEAP_SIZE: u64 = 0x04000000;
+const HEAP_CANARY_SIZE: u64 = 0x16;
 // const HEAP_CHUNK: u64 = 0x100;
 
 // i think these are different on darwin
@@ -30,10 +31,11 @@ pub struct Memory {
     // TODO refactor merge to make this private
     pub mem: HashMap<u64, Value>,
     heap: Heap,
+    heap_canary: Value,
     pub bits: u64,
     pub endian: Endian,
     pub segs: Vec<MemorySegment>,
-    pub blank: bool,
+    pub blank: bool
 }
 
 pub enum Permission {
@@ -79,21 +81,29 @@ impl Memory {
             bin.bits
         };
 
+        let heap_canary = Value::Symbolic(
+            btor.bv("heap_canary", HEAP_CANARY_SIZE as u32), 0);
+
         Memory {
             solver: btor,
             r2api: r2api.clone(),
             mem: HashMap::new(),
             heap: Heap::new(HEAP_START, HEAP_SIZE),
+            heap_canary,
             bits,
             endian: Endian::from_string(endian),
             segs,
             blank,
+
         }
     }
 
     pub fn alloc(&mut self, length: &Value) -> u64 {
         let len = length.as_u64().unwrap();
-        self.heap.alloc(len)
+        let addr = self.heap.alloc(len);
+        //let canary = self.heap_canary.clone();
+        //self.write_value(addr, &canary, HEAP_CANARY_SIZE as usize/8);
+        addr
     }
 
     #[inline]
@@ -187,7 +197,7 @@ impl Memory {
             let chk_value_addr = self.heap.alloc(8);
             self.write_value(
                 chk_value_addr,
-                &(Value::Symbolic(self.solver.bv("radius_canary", 64), 0)),
+                &(Value::Symbolic(self.solver.bv("stack_canary", 64), 0)),
                 (self.bits / 8) as usize,
             );
         }
@@ -251,7 +261,7 @@ impl Memory {
                     let read_val = self.read_value(a, len);
                     let bv = solver.bvv(a, addr.get_width());
                     let cond = Value::Symbolic(addr._eq(&bv), *t);
-                    let new_val = solver.conditional(&cond, &value, &read_val);
+                    let new_val = solver.conditional(&cond, value, &read_val);
                     self.write_value(a, &new_val, len);
                 }
             }
@@ -326,7 +336,7 @@ impl Memory {
             for count in 0..len {
                 let addr_val = Value::Concrete(addr, t);
                 let count_val = Value::Concrete(count as u64, 0);
-                let cond = address.eq(&addr_val) & count_val.ult(&length);
+                let cond = address.eq(&addr_val) & count_val.ult(length);
                 let value = solver.conditional(&cond, &values[count], &read_vals[count]);
                 self.write(addr + count as u64, &mut [value]);
             }
@@ -377,17 +387,17 @@ impl Memory {
                 pos_val = addr.clone() + length.clone() - Value::Concrete(pos as u64, 0);
             }
 
-            let pos_cond = pos_val.ult(&(addr.clone() + length.clone())) & !pos_val.ult(&addr);
-            let new_cond = value.eq(&needle) & pos_cond & !cond.clone();
+            let pos_cond = pos_val.ult(&(addr.clone() + length.clone())) & !pos_val.ult(addr);
+            let new_cond = value.eq(needle) & pos_cond & !cond.clone();
             //println!("{:?}", new_cond);
             result = solver.conditional(&new_cond, &pos_val, &result);
-            cond = value.eq(&needle) | cond;
+            cond = value.eq(needle) | cond;
 
             if let Value::Concrete(res, _t) = &result {
                 if *res != 0 {
                     break;
                 }
-            } else if value.id(&needle).as_u64().unwrap() == 1 {
+            } else if value.id(needle).as_u64().unwrap() == 1 {
                 // this is weird but cuts searches on identical values
                 break;
             }
@@ -420,9 +430,9 @@ impl Memory {
             let d2 = &data2[ind];
 
             let ind_val = Value::Concrete(ind as u64, 0);
-            let gt = !d1.ult(&d2) & !d1.eq(&d2);
-            let lt = d1.ult(&d2) & !d1.eq(&d2);
-            let len_cond = ind_val.ult(&length);
+            let gt = !d1.ult(d2) & !d1.eq(d2);
+            let lt = d1.ult(d2) & !d1.eq(d2);
+            let len_cond = ind_val.ult(length);
 
             let lt_val = solver.conditional(
                 &(lt & same.clone() & len_cond.clone()),
@@ -532,7 +542,7 @@ impl Memory {
         solver.push();
         let data_u8 = data
             .iter()
-            .map(|d| solver.evalcon_to_u64(&d).unwrap() as u8)
+            .map(|d| solver.evalcon_to_u64(d).unwrap() as u8)
             .collect();
         solver.pop();
         data_u8
@@ -555,9 +565,9 @@ impl Memory {
 
     pub fn write(&mut self, addr: u64, data: &mut [Value]) {
         let length = data.len();
-        for (count, mut item) in data.iter_mut().enumerate().take(length) {
+        for (count, item) in data.iter_mut().enumerate().take(length) {
             let caddr = addr + count as u64;
-            self.mem.insert(caddr, mem::take(&mut item));
+            self.mem.insert(caddr, mem::take(item));
         }
     }
 
@@ -685,7 +695,7 @@ impl Heap {
     pub fn alloc(&mut self, size: u64) -> u64 {
         let last = &self.chunks[self.chunks.len() - 1];
         let addr = last.addr + last.size;
-        self.chunks.push(Chunk { addr, size });
+        self.chunks.push(Chunk { addr, size: size + HEAP_CANARY_SIZE});
         addr
     }
 
@@ -694,13 +704,12 @@ impl Heap {
         if addr == last.addr {
             self.chunks.pop();
             Some(addr)
+        } else if let Some(rem) = self.chunks.iter().position(|x| x.addr == addr) {
+            self.chunks.remove(rem);
+            Some(addr)
         } else {
-            if let Some(rem) = self.chunks.iter().position(|x| x.addr == addr) {
-                self.chunks.remove(rem);
-                Some(addr)
-            } else {
-                None
-            }
+            None
         }
+        
     }
 }

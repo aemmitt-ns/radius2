@@ -356,7 +356,7 @@ fn main() {
     let dir = Path::new(matches.value_of("fuzz").unwrap_or("."));
 
     // just a guardrail cuz the error otherwise is vv unclear
-    if path != "-" && !path.contains(":") && fs::metadata(path).is_err() {
+    if path != "-" && !path.contains(':') && fs::metadata(path).is_err() {
         println!("'{}' not found", path);
         process::exit(1);
     }
@@ -475,7 +475,7 @@ fn main() {
         let sym_name = symbols[2 * i];
         let mut len = symbols[2 * i + 1];
 
-        if len.ends_with("n") {
+        if len.ends_with('n') {
             len = &len[..len.len() - 1];
             symbol_types.insert(sym_name, "num");
         } else {
@@ -653,7 +653,7 @@ fn main() {
                 let cons = if con.starts_with('@') {
                     &con[1..]
                 } else {
-                    &con
+                    con
                 };
 
                 if symbol_map.contains_key(name) {
@@ -690,13 +690,11 @@ fn main() {
                     } else {
                         json_out.symbols.insert(symbol.to_owned().to_owned(), hex.to_owned());
                     }
+                } else if !do_json {
+                    println!("  {} : no satisfiable value", symbol);
                 } else {
-                    if !do_json {
-                        println!("  {} : no satisfiable value", symbol);
-                    } else {
-                        json_out.symbols.insert(symbol.to_owned().to_owned(), "unsat".to_owned());
-                    }
-                }
+                    json_out.symbols.insert(symbol.to_owned().to_owned(), "unsat".to_owned());
+                }   
             }
             if !do_json { println!() };
 
@@ -711,7 +709,7 @@ fn main() {
                 if !do_json {
                     println!("{}stdout{}\n{}\n{}======{}", head, head, out, head, head);
                 } else {
-                    json_out.stdout = out.to_owned();
+                    json_out.stdout = out;
                 }
             }
             if occurs!(matches, "stderr") {
@@ -719,7 +717,7 @@ fn main() {
                 if !do_json {
                     println!("\n{}stderr{}\n{}\n{}======{}", head, head, out, head, head);
                 } else {
-                    json_out.stderr = out.to_owned();
+                    json_out.stderr = out;
                 }
             }
         }

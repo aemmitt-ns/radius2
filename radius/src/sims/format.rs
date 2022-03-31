@@ -76,7 +76,7 @@ pub fn format_one(
         let c = formatstr.remove(0);
         let formats = may_be_formats(state, &c);
 
-        if formats.len() > 0 {
+        if !formats.is_empty() {
             let preformat_str = if preformat.is_empty() {
                 "".to_owned()
             } else {
@@ -87,7 +87,7 @@ pub fn format_one(
                 state.evaluate_string_bv(&preformat_bv).unwrap_or_default()
             };
 
-            let maybe_uint = formats.iter().any(|f| UINTS.contains(&f));
+            let maybe_uint = formats.iter().any(|f| UINTS.contains(f));
 
             if maybe_uint {
                 // ensure that it *is* a uint format
@@ -229,7 +229,7 @@ pub fn scan_one(state: &mut State, formatstr: &mut Vec<Value>, arg: &Value, data
         let c = formatstr.remove(0);
         let formats = may_be_formats(state, &c);
 
-        if formats.len() > 0 {
+        if !formats.is_empty() {
             let preformat_str = if preformat.is_empty() {
                 "".to_owned()
             } else {
@@ -239,7 +239,7 @@ pub fn scan_one(state: &mut State, formatstr: &mut Vec<Value>, arg: &Value, data
                     .to_bv(&preformat_val, 8 * preformat.len() as u32);
                 state.evaluate_string_bv(&preformat_bv).unwrap_or_default()
             };
-            let maybe_uint = formats.iter().any(|f| UINTS.contains(&f));
+            let maybe_uint = formats.iter().any(|f| UINTS.contains(f));
             let next = formatstr.remove(0); // get delimiter maybe?
             let delim = state.memory_search(data, &next, &vc(MAXLEN as u64), false);
             state.memory_write_value(&delim, &vc(0), 1); // write a null there
@@ -283,7 +283,7 @@ pub fn scan_int(state: &mut State, arg: &Value, data: &mut Value) {
 }
 
 pub fn scan_float(state: &mut State, arg: &Value, data: &mut Value) {
-    let addr = state.solver.evalcon_to_u64(&data).unwrap_or_default();
+    let addr = state.solver.evalcon_to_u64(data).unwrap_or_default();
     let fs = state.memory_read_cstring(addr);
     let f = fs.parse::<f32>().unwrap_or_default();
     state.memory_write_value(arg, &vc(f32::to_bits(f) as u64), 4);
@@ -373,7 +373,7 @@ fn atoi_concrete(state: &mut State, addr: &Value, base: &Value, len: usize) -> V
 // don't have garbage in them. so only strings with digits or +/-
 pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value, size: u64) -> Value {
     let length = state.memory_strlen(&addr, &Value::Concrete(64, 0));
-    let data = state.memory_read(&addr, &length);
+    let data = state.memory_read(addr, &length);
     let len = data.len();
 
     state.assert(&length.eq(&vc(len as u64)));
@@ -474,10 +474,10 @@ pub fn itoa_helper(
 
     let uval = state
         .solver
-        .conditional(&neg_cond, &value.mul(&vc(-1i64 as u64)), &value);
+        .conditional(neg_cond, &value.mul(&vc(-1i64 as u64)), value);
 
     let uval = Value::Symbolic(state.solver.to_bv(&uval, 128), 0);
-    let ubase = Value::Symbolic(state.solver.to_bv(&base, 128), 0);
+    let ubase = Value::Symbolic(state.solver.to_bv(base, 128), 0);
     let mut shift = Value::Symbolic(state.solver.bvv(0, 64), 0);
 
     for i in 0..size as u32 {
@@ -505,14 +505,14 @@ pub fn itoa_helper(
     if sign {
         let b = state
             .solver
-            .conditional(&neg_cond, &vc('-' as u64), &vc('+' as u64));
+            .conditional(neg_cond, &vc('-' as u64), &vc('+' as u64));
 
-        state.memory_write_value(&string, &b, 1);
+        state.memory_write_value(string, &b, 1);
 
         // if we add a minus, write number to addr+1
         new_addr = state
             .solver
-            .conditional(&neg_cond, &(new_addr.clone() + vc(1)), &new_addr);
+            .conditional(neg_cond, &(new_addr.clone() + vc(1)), &new_addr);
     }
     state.memory_write_value(&new_addr, &Value::Symbolic(bv, 0), data.len());
     state.memory_write_value(&new_addr.add(&vc(data.len() as u64)), &vc(0), 8);

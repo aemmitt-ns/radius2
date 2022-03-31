@@ -224,7 +224,7 @@ impl Solver {
     pub fn evalcon_to_u64(&mut self, value: &Value) -> Option<u64> {
         match value {
             Value::Concrete(val, _t) => Some(*val),
-            Value::Symbolic(bv, _t) => self.evalcon(&bv),
+            Value::Symbolic(bv, _t) => self.evalcon(bv),
         }
     }
 

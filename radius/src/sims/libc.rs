@@ -105,19 +105,19 @@ pub fn sscanf(state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn memmove(state: &mut State, args: &[Value]) -> Value {
-    state.memory_move(&args[0], &args[1], &args[2]);
+    state.memory_move(&args[0], &args[1], &args[2].slice(31, 0));
     args[0].to_owned()
 }
 
 pub fn memcpy(state: &mut State, args: &[Value]) -> Value {
     // TODO make actual memcpy that does overlaps right
     // how often do memcpys actually do that? next to never probably
-    state.memory_move(&args[0], &args[1], &args[2]);
+    state.memory_move(&args[0], &args[1], &args[2].slice(31, 0));
     args[0].to_owned()
 }
 
 pub fn bcopy(state: &mut State, args: &[Value]) -> Value {
-    state.memory_move(&args[0], &args[1], &args[2]);
+    state.memory_move(&args[0], &args[1], &args[2].slice(31, 0));
     vc(0)
 }
 
@@ -139,12 +139,12 @@ pub fn memfrob(state: &mut State, args: &[Value]) -> Value {
     let num = &args[1];
 
     let x = vc(0x2a);
-    let data = state.memory_read(&addr, &num);
+    let data = state.memory_read(addr, num);
     let mut new_data = vec![];
     for d in data {
         new_data.push(d.to_owned() ^ x.to_owned());
     }
-    state.memory_write(addr, &new_data, &num);
+    state.memory_write(addr, &new_data, num);
     vc(0)
 }
 
@@ -153,7 +153,7 @@ pub fn strlen(state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn strnlen(state: &mut State, args: &[Value]) -> Value {
-    state.memory_strlen(&args[0], &args[1])
+    state.memory_strlen(&args[0], &args[1].slice(31, 0))
 }
 
 pub fn gets(state: &mut State, args: &[Value]) -> Value {
@@ -192,7 +192,7 @@ pub fn feof(state: &mut State, args: &[Value]) -> Value {
     let fd = fileno(state, &args[1..2]);
     let fdn = state.solver.evalcon_to_u64(&fd).unwrap_or(1) as usize;
     let f = &state.filesystem.files[fdn];
-    vc(!(f.position == f.content.len() - 1) as u64)
+    vc((f.position != f.content.len() - 1) as u64)
 }
 
 pub fn strcpy(state: &mut State, args: &[Value]) -> Value {
@@ -221,7 +221,7 @@ pub fn strdupa(state: &mut State, args: &[Value]) -> Value {
 
 // TODO for strn stuff I may need to add a null?
 pub fn strndup(state: &mut State, args: &[Value]) -> Value {
-    let length = state.memory_strlen(&args[0], &args[1]);
+    let length = state.memory_strlen(&args[0], &args[1].slice(31, 0));
     let new_addr = vc(state.memory.alloc(&length));
     state.memory_move(&new_addr, &args[0], &length);
     new_addr
@@ -237,7 +237,7 @@ pub fn strfry(_state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn strncpy(state: &mut State, args: &[Value]) -> Value {
-    let length = state.memory_strlen(&args[1], &args[2]);
+    let length = state.memory_strlen(&args[1], &args[2].slice(31, 0));
     state.memory_move(&args[0], &args[1], &length);
     args[0].to_owned()
 }
@@ -250,15 +250,15 @@ pub fn strcat(state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn strncat(state: &mut State, args: &[Value]) -> Value {
-    let length1 = state.memory_strlen(&args[0], &args[2]);
-    let length2 = state.memory_strlen(&args[1], &args[2]) + vc(1);
+    let length1 = state.memory_strlen(&args[0], &args[2].slice(31, 0));
+    let length2 = state.memory_strlen(&args[1], &args[2].slice(31, 0)) + vc(1);
     state.memory_move(&args[0].add(&length1), &args[1], &length2);
     args[0].to_owned()
 }
 
 pub fn memset(state: &mut State, args: &[Value]) -> Value {
     let mut data = vec![];
-    let length = state.solver.max_value(&args[2]);
+    let length = state.solver.max_value(&args[2]) & 0xffffffff;
     for _ in 0..length {
         data.push(args[1].to_owned());
     }

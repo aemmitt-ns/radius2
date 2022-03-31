@@ -475,17 +475,17 @@ impl Value {
                 Value::Concrete((*a == *b) as u64, *t1 | *t2)
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
-                let bv = make_bv(&a, *b, a.get_width());
+                let bv = make_bv(a, *b, a.get_width());
                 Value::Symbolic(a._eq(&bv), *t1 | *t2)
             }
             (Value::Concrete(a, t1), Value::Symbolic(b, t2)) => {
-                let bv = make_bv(&b, *a, b.get_width());
+                let bv = make_bv(b, *a, b.get_width());
                 Value::Symbolic(bv._eq(&b), *t1 | *t2)
             }
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
                 let width_diff = a.get_width() as i32 - b.get_width() as i32;
                 match width_diff.cmp(&0) {
-                    Ordering::Equal => Value::Symbolic(a._eq(&b), *t1 | *t2),
+                    Ordering::Equal => Value::Symbolic(a._eq(b), *t1 | *t2),
                     Ordering::Greater => {
                         Value::Symbolic(a._eq(&b.uext(width_diff as u32)), *t1 | *t2)
                     }
@@ -531,22 +531,22 @@ impl Value {
                 Value::Concrete(((*a as i64) < (*b as i64)) as u64, *t1 | *t2)
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
-                let bv = make_bv(&a, *b, a.get_width());
+                let bv = make_bv(a, *b, a.get_width());
                 Value::Symbolic(a.slt(&bv), *t1 | *t2)
             }
             (Value::Concrete(a, t1), Value::Symbolic(b, t2)) => {
-                let bv = make_bv(&b, *a, b.get_width());
+                let bv = make_bv(b, *a, b.get_width());
                 Value::Symbolic(bv.slt(&b), *t1 | *t2)
             }
             (Value::Symbolic(a, t1), Value::Symbolic(b, t2)) => {
                 let width_diff = a.get_width() as i32 - b.get_width() as i32;
                 match width_diff.cmp(&0) {
-                    Ordering::Equal => Value::Symbolic(a.slt(&b), *t1 | *t2),
+                    Ordering::Equal => Value::Symbolic(a.slt(b), *t1 | *t2),
                     Ordering::Greater => {
                         Value::Symbolic(a.slt(&b.sext(width_diff as u32)), *t1 | *t2)
                     }
                     Ordering::Less => {
-                        Value::Symbolic(a.uext((-width_diff) as u32).slt(&b), *t1 | *t2)
+                        Value::Symbolic(a.uext((-width_diff) as u32).slt(b), *t1 | *t2)
                     }
                 }
             }

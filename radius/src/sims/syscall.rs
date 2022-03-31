@@ -69,7 +69,7 @@ pub fn close(state: &mut State, args: &[Value]) -> Value {
 
 pub fn read(state: &mut State, args: &[Value]) -> Value {
     let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
-    let length = state.solver.max_value(&args[2]);
+    let length = state.solver.max_value(&args[2]) & 0xffffffff;
     let data = state.filesystem.read(fd as usize, length as usize);
     let len = data.len();
     state.memory_write(&args[1], &data, &args[2]);

@@ -401,6 +401,7 @@ impl Processor {
     }
 
     /// removes words that weak set flag values that are never read, and words that are NOPs
+    /// really need to refactor this mess but every time i try it gets slower
     pub fn optimize(&mut self, state: &mut State, prev_pc: u64, curr_instr: &InstructionEntry) {
         let prev_instr = &self.instructions[&prev_pc];
         if !prev_instr
@@ -422,12 +423,11 @@ impl Processor {
                 if i + 1 < len {
                     let next = &curr_instr.tokens[i + 1];
                     if let Word::Operator(op) = next {
-                        if let Operations::WeakEqual = op {
-                            regs_written.push(*index);
-                        } else if let Operations::Equal = op {
-                            regs_written.push(*index);
-                        } else {
-                            regs_read.push(*index);
+                        match op {
+                            Operations::WeakEqual | Operations::Equal => {
+                                regs_written.push(*index);
+                            } 
+                            _ => regs_read.push(*index)
                         }
                     } else {
                         regs_read.push(*index);
@@ -527,6 +527,7 @@ impl Processor {
         }
 
         let pc = instr.offset;
+        state.esil.prev_pc = vc(pc);
         let new_pc = instr.offset + instr.size;
 
         state.esil.pcs.clear();

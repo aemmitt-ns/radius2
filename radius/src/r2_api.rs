@@ -1,5 +1,5 @@
 use r2pipe::{Error, R2Pipe, R2PipeSpawnOptions};
-use serde::{Deserialize, Serialize};
+use serde::{Deserializer, Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::u64;
 use std::u8;
@@ -304,6 +304,17 @@ pub struct Import {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FridaImport {
+    pub index: usize,
+    pub module: String,
+    pub r#type: String,
+    pub name: String,
+    
+    #[serde(deserialize_with = "from_hex")]
+    pub address: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Export {
     name: String,
     flagname: String,
@@ -427,6 +438,18 @@ pub struct Reference {
 
     #[serde(default)]
     pub refname: String,
+}
+
+fn from_hex<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: &str = Deserialize::deserialize(deserializer)?;
+    if s.len() > 2 {
+        Ok(u64::from_str_radix(&s[2..], 16).unwrap_or(0))
+    } else {
+        Ok(0)
+    }
 }
 
 pub type R2Result<T> = Result<T, String>;
@@ -874,8 +897,25 @@ impl R2Api {
     }
 
     pub fn get_imports(&mut self) -> R2Result<Vec<Import>> {
-        let json = self.cmd("iij")?;
-        r2_result(serde_json::from_str(json.as_str()))
+        if self.mode != Mode::Frida {
+            let json = self.cmd("iij")?;
+            r2_result(serde_json::from_str(json.as_str()))
+        } else {
+            // so jank i dont even know
+            let json = self.cmd(":iij")?;
+            let f_imps: Vec<FridaImport> = serde_json::from_str(json.as_str()).unwrap();
+
+            Ok(f_imps
+                .iter()
+                .map(|f| Import {
+                    name: f.name.to_owned(), 
+                    r#type: f.r#type.to_owned(), 
+                    ordinal: f.index, 
+                    plt: f.address, 
+                    bind: f.name.to_owned()
+                }).collect()
+            )
+        }
     }
 
     pub fn get_exports(&mut self) -> R2Result<Vec<Export>> {
