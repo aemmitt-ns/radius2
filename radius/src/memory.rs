@@ -14,7 +14,7 @@ const READ_CACHE: usize = 64;
 // today is not that day
 const HEAP_START: u64 = 0x40000000;
 const HEAP_SIZE: u64 = 0x04000000;
-const HEAP_CANARY_SIZE: u64 = 0x16;
+const HEAP_CANARY_SIZE: u64 = 0x10;
 // const HEAP_CHUNK: u64 = 0x100;
 
 // i think these are different on darwin
@@ -31,7 +31,7 @@ pub struct Memory {
     // TODO refactor merge to make this private
     pub mem: HashMap<u64, Value>,
     heap: Heap,
-    heap_canary: Value,
+    //heap_canary: Value,
     pub bits: u64,
     pub endian: Endian,
     pub segs: Vec<MemorySegment>,
@@ -81,15 +81,15 @@ impl Memory {
             bin.bits
         };
 
-        let heap_canary = Value::Symbolic(
-            btor.bv("heap_canary", HEAP_CANARY_SIZE as u32), 0);
+        //let heap_canary = Value::Symbolic(
+        //    btor.bv("heap_canary", HEAP_CANARY_SIZE as u32), 0);
 
         Memory {
             solver: btor,
             r2api: r2api.clone(),
             mem: HashMap::new(),
             heap: Heap::new(HEAP_START, HEAP_SIZE),
-            heap_canary,
+            //heap_canary,
             bits,
             endian: Endian::from_string(endian),
             segs,
@@ -102,7 +102,7 @@ impl Memory {
         let len = length.as_u64().unwrap();
         let addr = self.heap.alloc(len);
         //let canary = self.heap_canary.clone();
-        //self.write_value(addr, &canary, HEAP_CANARY_SIZE as usize/8);
+        //self.write_value(addr, &canary, HEAP_CANARY_SIZE as usize);
         addr
     }
 

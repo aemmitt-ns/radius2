@@ -809,6 +809,11 @@ impl R2Api {
         let _r = self.cmd(cmd.as_str());
     }
 
+    pub fn clear_upper_bits(&self) -> bool {
+        // this sucks i need to fix r2 
+        self.info.bin.arch == "arm" && self.info.bin.bits == 64
+    }
+    
     pub fn get_syscall_str(&mut self, sys_num: u64) -> R2Result<String> {
         let cmd = format!("asl {}", sys_num);
         let ret = self.cmd(cmd.as_str())?;

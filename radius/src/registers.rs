@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use crate::r2_api::{AliasInfo, R2Api, RegisterInfo};
 use crate::solver::Solver;
-use crate::value::Value;
+use crate::value::{Value, vc};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Bounds {
@@ -27,6 +27,7 @@ pub struct Registers {
     pub indexes: Vec<Register>,
     pub values: Vec<Value>,
     pub pc: Option<Register>,
+    // clear_upper: bool
 }
 
 impl Registers {
@@ -36,6 +37,8 @@ impl Registers {
             .reg_info
             .sort_by(|a, b| b.size.partial_cmp(&a.size).unwrap());
 
+        //let clear_upper = r2api.clear_upper_bits();
+
         let mut registers = Registers {
             solver: btor.clone(),
             r2api: r2api.clone(),
@@ -44,6 +47,7 @@ impl Registers {
             indexes: vec![],
             values: vec![],
             pc: None,
+            // clear_upper
         };
 
         let mut bounds_map: HashMap<Bounds, usize> = HashMap::new();
@@ -67,7 +71,7 @@ impl Registers {
                 let val = if !blank {
                     let v = r2api.get_register_value(&reg.name).unwrap_or_default();
                     if reg.size <= 64 {
-                        Value::Concrete(v, 0)
+                        vc(v)
                     } else {
                         Value::Symbolic(btor.bvv(v, reg.size as u32), 0)
                     }
@@ -202,6 +206,8 @@ impl Registers {
                 let v = Value::Symbolic(bv, value.get_taint());
                 self.values[register.value_index] = v;
             }
+        //} else if self.clear_upper && size == 32 { // this sux
+        //    self.values[register.value_index] = value.uext(&vc(32));
         } else {
             let bound_size = register.bounds.size as u32;
             let offset = register.reg_info.offset - register.bounds.start;

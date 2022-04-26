@@ -594,7 +594,6 @@ impl Processor {
 
                 let ret = sim(state, &args);
                 state.registers.set_with_alias(cc.ret.as_str(), ret);
-                //state.backtrace.pop();
 
                 // don't ret if sim changes the PC value
                 // this is bad hax because thats all i do
@@ -633,9 +632,11 @@ impl Processor {
 
     // weird method that just performs a return
     pub fn ret(&self, state: &mut State) {
-        //let ret_esil = state.r2api.get_ret().unwrap();
-        //self.parse_expression(state, ret_esil.as_str());
-        if let Some(bt) = state.backtrace.pop() {
+        let ret_esil = state.r2api.get_ret().unwrap_or_default();
+        if ret_esil != "" {
+            self.parse_expression(state, ret_esil.as_str());
+            state.backtrace.pop();
+        } else if let Some(bt) = state.backtrace.pop() {
             state.registers.set_pc(vc(bt.1));
         }
     }
