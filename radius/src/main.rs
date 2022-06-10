@@ -289,18 +289,6 @@ fn main() {
                 .help("Run r2 command on launch"),
         )
         .arg(
-            Arg::with_name("architecture")
-                .long("arch")
-                .takes_value(true)
-                .help("Set target arch (usually autodetected)"),
-        )
-        .arg(
-            Arg::with_name("bits")
-                .long("bits")
-                .takes_value(true)
-                .help("Set target bits (usually autodetected)"),
-        )
-        .arg(
             Arg::with_name("evaluate")
                 .short("e")
                 .long("eval")
