@@ -7,7 +7,6 @@ use crate::sims::{get_sims, zero, SimMethod};
 use crate::value::{vc, Value};
 
 // use std::collections::VecDeque;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
@@ -213,11 +212,29 @@ impl Radius {
         state
     }
 
+    /**
+     * Initialized state at the provided function name with an initialized stack
+     * equivalent to `call_state(get_address(sym))`
+     *
+     * **Example**
+     *
+     * ```
+     * use radius2::radius::Radius;
+     * let mut radius = Radius::new("../tests/r100");
+     * let mut state = radius.callsym_state("sym.imp.printf");
+     * ```
+     */
+    pub fn callsym_state<T: AsRef<str>>(&mut self, sym: T) -> State {
+        let addr = self.get_address(sym).unwrap_or_default();
+        self.call_state(addr)
+    }
+
     /// Initialize state from a debugger breakpoint
     /// the program will block until bp is hit
-    pub fn debug_state(&mut self, addr: u64) -> State {
-        self.r2api.seek(addr);
-        self.r2api.init_debug(addr);
+    pub fn debug_state(&mut self, addr: u64, args: &[String]) -> State {
+        // set cache to false to set breakpoint
+        self.r2api.set_option("io.cache", "false").unwrap();
+        self.r2api.init_debug(addr, args);
         self.init_state()
     }
 
@@ -249,8 +266,10 @@ impl Radius {
      */
     pub fn entry_state(&mut self) -> State {
         // get the entrypoint
-        let entry = self.r2api.get_entrypoints().unwrap()[0].vaddr;
-        self.r2api.seek(entry);
+        let entrypoints = self.r2api.get_entrypoints().unwrap_or_default();
+        if !entrypoints.is_empty() {
+            self.r2api.seek(entrypoints[0].vaddr);
+        }
         self.r2api.init_vm();
         let mut state = self.init_state();
         state.memory.add_stack();
@@ -259,7 +278,7 @@ impl Radius {
 
         let start_main_reloc = self.r2api.get_address("reloc.__libc_start_main").unwrap();
 
-        self.hook(start_main_reloc, Rc::new(__libc_start_main));
+        self.hook(start_main_reloc, __libc_start_main);
         state
     }
 
@@ -345,7 +364,7 @@ impl Radius {
     }
 
     /// Hook an address with a callback that is passed the `State`
-    pub fn hook(&mut self, addr: u64, hook_callback: Rc<HookMethod>) {
+    pub fn hook(&mut self, addr: u64, hook_callback: HookMethod) {
         self.processor
             .hooks
             .entry(addr)
@@ -363,7 +382,7 @@ impl Radius {
     }
 
     /// Hook a symbol with a callback that is passed each state that reaches it
-    pub fn hook_symbol(&mut self, sym: &str, hook_callback: Rc<HookMethod>) {
+    pub fn hook_symbol(&mut self, sym: &str, hook_callback: HookMethod) {
         let addr = self.get_address(sym).unwrap();
         self.hook(addr, hook_callback);
     }
@@ -548,8 +567,8 @@ impl Radius {
     }
 
     /// Get address of symbol
-    pub fn get_address(&mut self, symbol: &str) -> R2Result<u64> {
-        self.r2api.get_address(symbol)
+    pub fn get_address<T: AsRef<str>>(&mut self, symbol: T) -> R2Result<u64> {
+        self.r2api.get_address(symbol.as_ref())
     }
 
     /// Get all functions

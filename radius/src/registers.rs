@@ -5,6 +5,7 @@ use crate::value::{Value, vc};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Bounds {
+    tstr: String,
     start: u64,
     end: u64,
     size: u64,
@@ -53,6 +54,7 @@ impl Registers {
         let mut bounds_map: HashMap<Bounds, usize> = HashMap::new();
         for reg in reg_info.reg_info {
             let mut bounds = Bounds {
+                tstr: reg.type_str.to_owned(),
                 start: reg.offset,
                 end: reg.offset.wrapping_add(reg.size),
                 size: reg.size,
@@ -61,7 +63,8 @@ impl Registers {
             let old_bounds = bounds_map.keys();
             let mut in_bounds = false;
             for bound in old_bounds {
-                if bounds.start >= bound.start && bounds.end <= bound.end {
+                let inside = bounds.start >= bound.start && bounds.end <= bound.end;
+                if bound.tstr == bounds.tstr && inside {
                     in_bounds = true;
                     bounds = bound.clone();
                 }
@@ -144,7 +147,11 @@ impl Registers {
             let t = r.reg.to_owned();
             return self.set_value(self.regs[&t].index, value);
         }
-        self.set_value(self.regs[alias].index, value)
+        // make set_with_alias more forgiving
+        if let Some(reg) = self.regs.get(alias) {
+            let creg = reg.clone();
+            self.set_value(creg.index, value);
+        }
     }
 
     /// Get the value of `PC`
@@ -178,7 +185,6 @@ impl Registers {
         if register.reg_info.offset == -1i64 as u64 {
             return Value::Concrete(0, 0); // this is a zero register
         }
-
         let value = &self.values[register.value_index];
         if register.reg_info.size == register.bounds.size {
             value.to_owned()
@@ -199,15 +205,15 @@ impl Registers {
         let size = register.reg_info.size;
         if size == register.bounds.size {
             if size <= 64 {
-                self.values[register.value_index] = value;
+                self.values[register.value_index] = value.slice(size - 1, 0);
             } else {
                 // need to prevent size > 64 from becoming a u64
                 let bv = self.solver.to_bv(&value, size as u32);
                 let v = Value::Symbolic(bv, value.get_taint());
                 self.values[register.value_index] = v;
             }
-        //} else if self.clear_upper && size == 32 { // this sux
-        //    self.values[register.value_index] = value.uext(&vc(32));
+        } else if size == 32 { // this sux
+            self.values[register.value_index] = value.slice(size - 1, 0).uext(&vc(32));
         } else {
             let bound_size = register.bounds.size as u32;
             let offset = register.reg_info.offset - register.bounds.start;

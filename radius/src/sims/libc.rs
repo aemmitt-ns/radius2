@@ -532,6 +532,11 @@ pub fn strtol(state: &mut State, args: &[Value]) -> Value {
     strtoll(state, args).slice(bits - 1, 0)
 }
 
+pub fn strtoul(state: &mut State, args: &[Value]) -> Value {
+    let bits = state.memory.bits;
+    strtoll(state, args).slice(bits - 1, 0)
+}
+
 pub fn itoa(state: &mut State, args: &[Value]) -> Value {
     format::itoa_helper(state, &args[0], &args[1], &args[2], true, 32)
 }
@@ -791,6 +796,12 @@ pub fn realpath(state: &mut State, args: &[Value]) -> Value {
 
 pub fn sleep(_state: &mut State, _args: &[Value]) -> Value {
     vc(0)
+}
+
+pub fn __errno_location(state: &mut State, _args: &[Value]) -> Value {
+    let addr = state.memory_alloc(&vc(8));
+    state.memory_write_value(&addr, &vc(0), 8);
+    addr
 }
 
 pub fn open(state: &mut State, args: &[Value]) -> Value {

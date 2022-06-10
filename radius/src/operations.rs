@@ -11,6 +11,7 @@ pub const SIZE: u64 = 64;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operations {
     Trap,
+    Interrupt,
     Syscall,
     PcAddress,
     If,
@@ -35,7 +36,9 @@ pub enum Operations {
     Multiply,
     LongMultiply,
     Divide,
+    LongDivide,
     Modulo,
+    LongModulo,
     SignedDivide,
     SignedModulo,
     Not,
@@ -89,6 +92,8 @@ pub enum Operations {
     PrintDebug, // Tool for cli hooks
     Backtrace,  // Tool for cli hooks
     Constrain,
+    ConstraintPush,
+    ConstraintPop,
     Terminate,
     Discard,
 
@@ -113,7 +118,7 @@ impl Operations {
     pub fn from_string(s: &str) -> Self {
         match s {
             "TRAP" => Operations::Trap,
-            "$" => Operations::Trap,
+            "$" => Operations::Interrupt,
             "()" => Operations::Syscall,
             "$$" => Operations::PcAddress, // this is whack
             "?{" => Operations::If,
@@ -139,7 +144,9 @@ impl Operations {
             "*" => Operations::Multiply,
             "L*" => Operations::LongMultiply,
             "/" => Operations::Divide,
+            "L/" => Operations::LongDivide,
             "%" => Operations::Modulo,
+            "L%" => Operations::LongModulo,
             "~/" => Operations::SignedDivide,
             "~%" => Operations::SignedModulo,
             "!" => Operations::Not,
@@ -201,6 +208,8 @@ impl Operations {
             ".." => Operations::PrintDebug,
             "BT" => Operations::Backtrace,
             "_" => Operations::Constrain,
+            "_+" => Operations::ConstraintPush,
+            "_-" => Operations::ConstraintPop,
             "!!" => Operations::Terminate, // state.set_break()
             "!_" => Operations::Discard,  // state.set_inactive()
 
@@ -236,7 +245,14 @@ pub fn get_size(state: &mut State) -> u32 {
     sz
 }
 
+
 #[inline]
+pub fn pop_bv(state: &mut State, n: u32) -> Value {
+    let value = pop_value(state, false, false);
+    Value::Symbolic(state.solver.to_bv(&value, n), value.get_taint())
+}
+
+//#[inline]
 pub fn pop_value(state: &mut State, set_size: bool, sign_ext: bool) -> Value {
     let item = state.stack.pop().unwrap_or_default();
 
@@ -418,6 +434,7 @@ pub fn genmask(bits: u64) -> u64 {
 pub fn do_operation(state: &mut State, operation: &Operations) {
     match operation {
         Operations::Trap => {}
+        Operations::Interrupt => {}
         Operations::Syscall => {}
         Operations::PcAddress => {
             push_value(state, state.esil.prev_pc.clone()); 
@@ -544,6 +561,21 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                     push_value(state, Value::Symbolic(prod.slice(63, 0), t1 | t2));
                 }
             }
+        }
+        Operations::LongDivide => {
+            let arg1 = pop_bv(state, 128);
+            let arg2 = pop_bv(state, 128);
+            let arg3 = pop_bv(state, 128);
+
+            push_value(state, ((arg2 << vc(64)) + arg1) / arg3);
+        }
+        Operations::LongModulo => {
+            let arg1 = pop_bv(state, 128);
+            let arg2 = pop_bv(state, 128);
+            let arg3 = pop_bv(state, 128);
+
+            //println!("{:?} {:?} {:?}", arg1, arg2, arg3);
+            push_value(state, ((arg2 << vc(64)) + arg1) % arg3);
         }
         Operations::Divide => {
             binary_operation!(state, /);
@@ -900,6 +932,12 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let value = pop_value(state, false, false);
             state.assert(&value);
         }
+        Operations::ConstraintPush => {
+            state.solver.push();
+        }
+        Operations::ConstraintPop => {
+            state.solver.pop();
+        }
         Operations::Terminate => {
             state.set_break();
         }
@@ -938,7 +976,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         }
         Operations::Parity => match &state.esil.current {
             Value::Concrete(val, t) => {
-                let pf = Value::Concrete(!(val.count_ones() % 2) as u64, *t);
+                let pf = Value::Concrete(!((val & 0xff).count_ones() % 2) as u64, *t);
                 push_value(state, pf);
             }
             Value::Symbolic(_val, _t) => {

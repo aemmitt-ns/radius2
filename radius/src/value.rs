@@ -620,7 +620,8 @@ impl Value {
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
                 //let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.slice(*b as u32 - 1, 0).uext(64 - *b as u32), *t1 | *t2)
+                let bits = if *b <= 64 { *b } else { 64 };
+                Value::Symbolic(a.slice(*b as u32 - 1, 0).uext(64 - bits as u32), *t1 | *t2)
             }
             (Value::Concrete(a, t), Value::Symbolic(_b, _t)) => {
                 // uh hopefully this doesnt happen
@@ -643,7 +644,7 @@ impl Value {
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
                 //let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.slice(*b as u32 - 1, 0).sext(64 - *b as u32), *t1 | *t2)
+                Value::Symbolic(a.slice(*b as u32 - 1, 0).sext(64 - (*b % 64) as u32), *t1 | *t2)
             }
             (Value::Concrete(a, t), Value::Symbolic(_b, _t)) => {
                 // uh hopefully this doesnt happen
@@ -661,7 +662,8 @@ impl Value {
     pub fn slice(&self, high: u64, low: u64) -> Value {
         match self {
             Value::Concrete(a, t) => {
-                Value::Concrete((*a >> low) & ((1 << (high - low + 1)) - 1), *t)
+                let mask = if (high - low) < 63 { (1 << (high - low + 1)) - 1 } else { -1i64 as u64 };
+                Value::Concrete((*a >> low) & mask, *t)
             }
             Value::Symbolic(a, t) => Value::Symbolic(a.slice(high as u32, low as u32), *t),
         }
@@ -737,7 +739,11 @@ impl Value {
 
     #[inline]
     pub fn is_symbolic(&self) -> bool {
-        matches!(self, Value::Symbolic(_, _))
+        if let Value::Symbolic(s, _) = self {
+            !s.is_const()
+        } else {
+            false
+        }
     }
 
     #[inline]

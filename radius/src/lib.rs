@@ -16,4 +16,4 @@ pub mod value;
 
 pub use crate::radius::{Radius, RadiusOption};
 pub use crate::state::State;
-pub use crate::value::Value;
+pub use crate::value::{Value, vc};

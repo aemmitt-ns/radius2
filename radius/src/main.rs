@@ -289,6 +289,18 @@ fn main() {
                 .help("Run r2 command on launch"),
         )
         .arg(
+            Arg::with_name("architecture")
+                .long("arch")
+                .takes_value(true)
+                .help("Set target arch (usually autodetected)"),
+        )
+        .arg(
+            Arg::with_name("bits")
+                .long("bits")
+                .takes_value(true)
+                .help("Set target bits (usually autodetected)"),
+        )
+        .arg(
             Arg::with_name("evaluate")
                 .short("e")
                 .long("eval")
@@ -451,7 +463,7 @@ fn main() {
         if path.starts_with("frida:") {
             radius.frida_state(addr)
         } else if path.starts_with("gdb:") || path.starts_with("dbg:") {
-            radius.debug_state(addr)
+            radius.debug_state(addr, &[])
         } else {
             radius.call_state(addr)
         }
@@ -540,7 +552,6 @@ fn main() {
         } else {
             &cons[2 * i + 1]
         };
-
         state.constrain_bytes_bv(bv, cons);
     }
 
@@ -725,7 +736,7 @@ fn main() {
         if do_json {
             println!("{}", serde_json::to_string(&json_out).unwrap_or_default());
         }
-    } else {
+    } else { // TODO this is temporary until I integrate a real testcase gen mode in processor
         let mut pcs: HashMap<u64, usize> = HashMap::new();
         let mut states = VecDeque::new();
         let mut solutions: HashMap<Vec<u8>, usize> = HashMap::new();

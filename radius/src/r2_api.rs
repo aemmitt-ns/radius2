@@ -793,7 +793,11 @@ impl R2Api {
         // simple as that?
         let ret = self.cmd("pae ret")?;
         if ret.is_empty() {
-            Err("no ret instruction".to_owned())
+            if self.info.bin.arch == "bpf" {
+                Ok("8,sp,+=,sp,[8],pc,=".to_owned())
+            } else {
+                Err("no ret instruction".to_owned())
+            }
         } else {
             Ok(ret[0..ret.len() - 1].to_owned())
         }
@@ -801,7 +805,7 @@ impl R2Api {
 
     pub fn get_register_value(&mut self, reg: &str) -> R2Result<u64> {
         let val = self.cmd(&format!("aer {}", reg))?;
-        Ok(u64::from_str_radix(&val[2..val.len() - 1], 16).unwrap())
+        Ok(u64::from_str_radix(&val[2..val.len() - 1], 16).unwrap_or_default())
     }
 
     pub fn set_register_value(&mut self, reg: &str, value: u64) {
@@ -847,12 +851,19 @@ impl R2Api {
         match self.mode {
             Mode::Debugger => self.cmd("dc"),
             Mode::Frida => self.cmd(":dc"),
-            _ => Ok("idk".to_string()),
+            _ => self.cmd("aec"),
         }
     }
 
-    pub fn init_debug(&mut self, addr: u64) {
-        self.cmd(&format!("db {};dc", addr)).unwrap();
+    pub fn init_debug(&mut self, addr: u64, args: &[String]) {
+        (match self.mode {
+            Mode::Debugger => self.cmd(&format!("db {};dc", addr)),
+            Mode::Frida => panic!("can't enter debug from frida mode, also why would you?"),
+            _ => {
+                self.mode = Mode::Debugger;
+                self.cmd(&format!("doo {};db {};dc", args.join(" "), addr))
+            }
+        }).unwrap_or_default();
     }
 
     pub fn init_vm(&mut self) {

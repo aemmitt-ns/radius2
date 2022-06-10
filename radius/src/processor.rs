@@ -40,15 +40,16 @@ pub enum RunMode {
     Multiple,
 }
 
-pub type HookMethod = dyn Fn(&mut State) -> bool;
+pub type HookMethod = fn(&mut State) -> bool;
 
 #[derive(Clone)]
 pub struct Processor {
     pub instructions: BTreeMap<u64, InstructionEntry>,
-    pub hooks: HashMap<u64, Vec<Rc<HookMethod>>>,
+    pub hooks: HashMap<u64, Vec<HookMethod>>,
     pub esil_hooks: HashMap<u64, Vec<String>>,
     pub sims: HashMap<u64, SimMethod>,
     pub traps: HashMap<u64, SimMethod>,
+    pub interrupts: HashMap<u64, SimMethod>,
     pub syscalls: HashMap<u64, Syscall>,
     pub breakpoints: HashSet<u64>,
     pub mergepoints: HashSet<u64>,
@@ -100,6 +101,7 @@ impl Processor {
             esil_hooks: HashMap::new(),
             sims: HashMap::new(),
             traps: HashMap::new(),
+            interrupts: HashMap::new(),
             syscalls: HashMap::new(),
             breakpoints: HashSet::new(),
             mergepoints: HashSet::new(),
@@ -371,6 +373,9 @@ impl Processor {
                             }
                             state.esil.mode = ExecMode::Uncon;
                             break;
+                        }
+                        Operations::Interrupt => {
+                            let _value = pop_value(state, false, false);
                         }
                         Operations::Trap => {
                             let trap = pop_concrete(state, false, false);
@@ -660,9 +665,9 @@ impl Processor {
                         return;
                     }
                 }
-                state.r2api.disassemble_bytes(pc_val, &data, 1).unwrap()
+                state.r2api.disassemble_bytes(pc_val, &data, 1).unwrap_or_default()
             } else {
-                state.r2api.disassemble(pc_val, INSTR_NUM).unwrap()
+                state.r2api.disassemble(pc_val, INSTR_NUM).unwrap_or_default()
             };
 
             let mut prev: Option<u64> = None;
@@ -833,6 +838,7 @@ impl Processor {
         let step = mode == RunMode::Step;
 
         loop {
+            //println!("{} states", states.len());
             if states.is_empty() {
                 if self.merges.is_empty() {
                     return results;

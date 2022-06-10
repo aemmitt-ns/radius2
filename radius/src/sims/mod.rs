@@ -118,7 +118,8 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("atol", libc::atoi, 1),
         make_sim("itoa", libc::itoa, 3),
         make_sim("strtol", libc::strtol, 3),
-        make_sim("strtoll", libc::strtol, 3),
+        make_sim("strtoul", libc::strtoul, 3),
+        make_sim("strtoll", libc::strtoll, 3),
         make_sim("strtod", libc::strtol, 3),
         make_sim("islower", libc::islower, 1),
         make_sim("isupper", libc::isupper, 1),
@@ -164,5 +165,6 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("__stack_chk_fail", ret, 0),
         make_sim("__libc_start_main", libc::__libc_start_main, 5),
         make_sim("__cfi_slowpath", zero, 0),
+        make_sim("__errno_location", libc::__errno_location, 0),
     ]
 }

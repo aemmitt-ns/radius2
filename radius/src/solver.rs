@@ -72,7 +72,13 @@ impl Solver {
 
     #[inline]
     pub fn bvv(&self, v: u64, n: u32) -> BitVec {
-        BV::from_u64(self.btor.clone(), v, n)
+        if n <= 64 {
+            // boolector sign extends. even though its u64...
+            // what the fuck
+            BV::from_u64(self.btor.clone(), v, n)
+        } else {
+            BV::from_u64(self.btor.clone(), v, 64).uext(n-64)
+        }
     }
 
     pub fn translate(&self, bv: &BitVec) -> Option<BitVec> {
