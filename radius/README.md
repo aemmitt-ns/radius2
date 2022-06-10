@@ -10,7 +10,7 @@ git clone https://github.com/radareorg/radare2.git
 radare2/sys/install.sh 
 ```
 
-Include radius2 as a dependency using `radius2 = "1.0.12"` or build locally with `cargo build --release`
+Include radius2 as a dependency using `radius2 = "1.0.15"` or build locally with `cargo build --release`
 
 ### Supported Architectures
 
@@ -21,13 +21,13 @@ Include radius2 as a dependency using `radius2 = "1.0.12"` or build locally with
 
 ### "Supported" Architectures
 
-radius2 also "supports" **MIPS**, **PowerPC**, and **Gameboy** but they are almost entirely untested. 
+radius2 also "supports" **MIPS**, **PowerPC**, and **Gameboy** but they are almost entirely untested. Additionally radius2 supports execution of **cBPF** and **eBPF** programs.
 
 radius2 can execute **Dalvik** bytecode only involving static methods and variables. 
 
 Finally there is also a varying amount of support for **6502**, **8051**, **AVR**, **h8300**, **PIC**, **RISCV**, **SH-4**, **V810**, **V850**, **Xtensa**.
 
-Also PCode can be translated to ESIL with r2ghidra with `pdgp` (currently broken) so potentially more archs could be supported that way.
+Also PCode can be translated to ESIL with r2ghidra with `pdgp` (currently broken, actually maybe fixed now) so potentially more archs could be supported that way.
 
 ### Example
 
