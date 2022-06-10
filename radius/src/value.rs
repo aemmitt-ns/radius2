@@ -739,11 +739,7 @@ impl Value {
 
     #[inline]
     pub fn is_symbolic(&self) -> bool {
-        if let Value::Symbolic(s, _) = self {
-            !s.is_const()
-        } else {
-            false
-        }
+        matches!(self, Value::Symbolic(_, _))
     }
 
     #[inline]
