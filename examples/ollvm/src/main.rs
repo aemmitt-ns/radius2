@@ -5,8 +5,10 @@ use radius2::{Radius, State, Value, vc};
 // target/release/ollvm  0.92s user 0.04s system 99% cpu 0.964 total
 
 const HASHES:[u64; 8] = [
-    0x875cd4f2e18f8fc4, 0xbb093e17e5d3fa42, 0xada5dd034aae16b4, 0x97322728fea51225,
-    0x4124799d72188d0d, 0x2b3e3fbbb4d44981, 0xdfcac668321e4daa, 0xeac2137a35c8923a
+    0x875cd4f2e18f8fc4, 0xbb093e17e5d3fa42, 
+    0xada5dd034aae16b4, 0x97322728fea51225,
+    0x4124799d72188d0d, 0x2b3e3fbbb4d44981, 
+    0xdfcac668321e4daa, 0xeac2137a35c8923a
 ];
 
 fn main() {

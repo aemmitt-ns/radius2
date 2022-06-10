@@ -533,7 +533,7 @@ impl Processor {
 
         let pc = instr.offset;
         state.esil.prev_pc = vc(pc);
-        let new_pc = instr.offset + instr.size;
+        let new_pc = instr.offset.wrapping_add(instr.size);
 
         state.esil.pcs.clear();
         if instr.jump != 0 {
@@ -714,7 +714,7 @@ impl Processor {
                     prev = Some(pc_tmp);
                 }
                 self.instructions.insert(pc_tmp, instr_entry);
-                pc_tmp += size;
+                pc_tmp = pc_tmp.wrapping_add(size);
             }
         }
     }
