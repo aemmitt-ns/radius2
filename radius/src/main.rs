@@ -679,7 +679,7 @@ fn main() {
                 if let Some(bv) = end_state.solver.eval_to_bv(&val) {
                     let str_opt = end_state.evaluate_string_bv(&bv);
                     let sym_type = symbol_types[symbol];
-                    let hex = &format!("{:?}", bv)[2..];
+                    let hex = end_state.solver.hex_solution(&bv).unwrap_or_default();
                     if !do_json {
                         if sym_type == "str" && str_opt.is_some() {
                             println!("  {} : {:?}", symbol, str_opt.unwrap());

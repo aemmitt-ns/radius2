@@ -382,6 +382,20 @@ impl Solver {
         sol
     }
 
+    // workaround for dumb temp file issue on termux
+    pub fn hex_solution(&self, bv: &BitVec) -> Option<String> {
+        if let Some(bin) = self.solution(bv) {
+            let mut hex = "".to_owned();
+            for i in 0..bin.len()/8 { // 
+                let byte = u64::from_str_radix(&bin[8*i .. 8*(i+1)], 2);
+                hex += &format!("{:02x}", byte.unwrap_or_default());
+            }
+            Some(hex)
+        } else {
+            None
+        }
+    }
+
     pub fn and_all(&self, bvs: &[BitVec]) -> BitVec {
         let mut bv = BV::from_bool(self.btor.clone(), true);
         for next_bv in bvs {

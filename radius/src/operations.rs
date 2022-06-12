@@ -910,7 +910,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let value = pop_value(state, false, false);
             let ip = state.registers.get_pc().as_u64().unwrap_or_default();
             if let Some(bv) = state.solver.eval_to_bv(&value) {
-                let hex = &format!("{:?}", bv)[2..];
+                let hex = state.solver.hex_solution(&bv).unwrap();
                 if let Some(string) = state.evaluate_string_bv(&bv) {
                     println!("\n0x{:08x}    0x{} {:?}\n", ip, hex, string);
                 } else {
