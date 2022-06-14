@@ -591,6 +591,11 @@ impl Radius {
         self.r2api.disassemble(address, num)
     }
 
+    /// Disassemble function at the provided address
+    pub fn disassemble_function(&mut self, address: u64) -> R2Result<Vec<Instruction>> {
+        self.r2api.disassemble_function(address)
+    }
+
     /// Assemble the given instruction
     pub fn assemble(&mut self, instruction: &str) -> R2Result<Vec<u8>> {
         self.r2api.assemble(instruction)

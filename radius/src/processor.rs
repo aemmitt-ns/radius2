@@ -551,24 +551,8 @@ impl Processor {
             new_flags.remove(&InstructionFlag::Merge);
         }
 
-        match instr.type_num {
-            CALL_TYPE => {
-                state.backtrace.push((instr.jump as u64, new_pc));
-            },
-            RETN_TYPE => {
-                if state.backtrace.is_empty() && new_flags.is_empty() {
-                    // try to avoid returning outside valid context
-                    if !self.breakpoints.is_empty() || !self.esil_hooks.is_empty() {
-                        new_flags.insert(InstructionFlag::Avoid);
-                    } else {
-                        // break if there are no other breakpoints/hooks
-                        new_flags.insert(InstructionFlag::Break);
-                    }
-                } else {
-                    state.backtrace.pop();
-                }
-            }
-            _ => {}
+        if instr.type_num == CALL_TYPE {
+            state.backtrace.push((instr.jump as u64, new_pc));
         }
 
         // skip executing this instruction
@@ -632,6 +616,24 @@ impl Processor {
 
         if !skip {
             self.parse(state, words);
+        }
+
+        if instr.type_num == RETN_TYPE {
+            if state.backtrace.is_empty() && new_flags.is_empty() {
+                // try to avoid returning outside valid context
+                if let Value::Concrete(v, _) = state.registers.get_pc() {
+                    if !state.memory.check_permission(v, 1, 'x') { // if it looks invalid
+                        if !self.breakpoints.is_empty() || !self.esil_hooks.is_empty() {
+                            state.status = StateStatus::Inactive;
+                        } else {
+                            // break if there are no other breakpoints/hooks
+                            state.status = StateStatus::Break;
+                        }
+                    }
+                }
+            } else {
+                state.backtrace.pop();
+            }
         }
     }
 

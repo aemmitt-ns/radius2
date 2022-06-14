@@ -507,7 +507,7 @@ pub fn atoll(state: &mut State, args: &[Value]) -> Value {
     format::atoi_helper(state, &args[0], &vc(10), 64)
 }
 
-pub fn strtoll(state: &mut State, args: &[Value]) -> Value {
+pub fn strto_helper(state: &mut State, args: &[Value], bits: u64) -> Value {
     // not perfect but idk
     if let Value::Concrete(addr, _) = args[1] {
         if addr != 0 {
@@ -519,22 +519,28 @@ pub fn strtoll(state: &mut State, args: &[Value]) -> Value {
             );
         }
     }
-
-    format::atoi_helper(state, &args[0], &args[2], 64)
+    
+    format::atoi_helper(state, &args[0], &args[2], bits)
 }
 
+pub fn strtoll(state: &mut State, args: &[Value]) -> Value {
+    strto_helper(state, args, 64)
+}
+
+// this is string to double not int... do something horrific for now
 pub fn strtod(state: &mut State, args: &[Value]) -> Value {
-    strtoll(state, args).slice(31, 0)
+    let addr = state.solver.evalcon_to_u64(&args[0]).unwrap_or_default();
+    vc(state.memory_read_cstring(addr).parse::<f64>().unwrap_or_default().to_bits())
 }
 
 pub fn strtol(state: &mut State, args: &[Value]) -> Value {
     let bits = state.memory.bits;
-    strtoll(state, args).slice(bits - 1, 0)
+    strto_helper(state, args, bits)
 }
 
 pub fn strtoul(state: &mut State, args: &[Value]) -> Value {
     let bits = state.memory.bits;
-    strtoll(state, args).slice(bits - 1, 0)
+    strto_helper(state, args, bits)
 }
 
 pub fn itoa(state: &mut State, args: &[Value]) -> Value {

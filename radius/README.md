@@ -2,33 +2,6 @@
 
 radius2 is symbolic execution and taint analysis framework using radare2 and its ESIL intermediate representation. It is essentially a rust rewrite of ESILSolve with some architectural improvements. It uses boolector as the SMT solver rather than z3. It executes about 1000x faster than ESILSolve on average. radius2 gains additional speed over other rust based symbex tools by using u64 primitives for concrete values instead of constant valued bitvectors which incur significant overhead for all operations. 
 
-### Building
-
-Install radare2 with 
-```
-git clone https://github.com/radareorg/radare2.git
-radare2/sys/install.sh 
-```
-
-Include radius2 as a dependency using `radius2 = "1.0.15"` or build locally with `cargo build --release`
-
-### Supported Architectures
-
-- **x86**
-- **amd64**
-- **ARM**
-- **AArch64**
-
-### "Supported" Architectures
-
-radius2 also "supports" **MIPS**, **PowerPC**, and **Gameboy** but they are almost entirely untested. Additionally radius2 supports execution of **cBPF** and **eBPF** programs.
-
-radius2 can execute **Dalvik** bytecode only involving static methods and variables. 
-
-Finally there is also a varying amount of support for **6502**, **8051**, **AVR**, **h8300**, **PIC**, **RISCV**, **SH-4**, **V810**, **V850**, **Xtensa**.
-
-Also PCode can be translated to ESIL with r2ghidra with `pdgp` (currently broken, actually maybe fixed now) so potentially more archs could be supported that way.
-
 ### Example
 
 ```rust
@@ -50,6 +23,37 @@ fn main() {
     assert_eq!(flag, "Code_Talkers");
 }
 ```
+
+### Building
+
+Install radare2 with 
+```
+git clone https://github.com/radareorg/radare2.git
+radare2/sys/install.sh 
+```
+
+Include radius2 as a dependency using `radius2 = "1.0.15"` or build locally with `cargo build --release`. 
+
+### Termux
+
+On Termux install with the commands `pkg install radare2; pkg install rust; pkg install ndk-multilib; cargo install radius2` 
+
+### Supported Architectures
+
+- **x86**
+- **amd64**
+- **ARM**
+- **AArch64**
+
+### "Supported" Architectures
+
+radius2 also "supports" **MIPS**, **PowerPC**, and **Gameboy** but they are almost entirely untested. Additionally radius2 supports execution of **cBPF** and **eBPF** programs.
+
+radius2 can execute **Dalvik** bytecode only involving static methods and variables. 
+
+Finally there is also a varying amount of support for **6502**, **8051**, **AVR**, **h8300**, **PIC**, **RISCV**, **SH-4**, **V810**, **V850**, **Xtensa**.
+
+Also PCode can be translated to ESIL with r2ghidra with `pdgp` (currently broken, actually maybe fixed now) so potentially more archs could be supported that way.
 
 ### radius2 CLI tool
 

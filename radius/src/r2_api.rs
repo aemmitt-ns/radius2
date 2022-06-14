@@ -940,6 +940,13 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }
 
+
+    pub fn disassemble_function(&mut self, addr: u64) -> R2Result<Vec<Instruction>> {
+        let cmd = format!("af @ {};pdfj @ {}", addr, addr);
+        let json = self.cmd(cmd.as_str())?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
     pub fn disassemble_bytes(
         &mut self,
         addr: u64,
@@ -970,20 +977,22 @@ impl R2Api {
         let _r = self.cmd(cmd.as_str());
     }
 
+    // get_address tries to be a bit smart, maybe a bad idea
     pub fn get_address(&mut self, symbol: &str) -> R2Result<u64> {
-        let val = if self.mode != Mode::Frida {
-            let cmd = format!("?v {}", symbol);
-            self.cmd(cmd.as_str())?
-        } else {
+        let mut val = "".to_owned();
+        if self.mode == Mode::Frida {
             let cmd = format!(":isa {}", symbol);
-            let v = self.cmd(cmd.as_str())?;
-            if v.len() < 4 {
-                let cmd = format!("?v {}", symbol);
-                self.cmd(cmd.as_str())?
-            } else {
-                v
+            val = self.cmd(cmd.as_str()).unwrap_or_default();
+        }
+        if val == "" || val == "0x0\n" {
+            for prefix in &["", "sym.", "sym.imp.", "sym.unk."] {
+                let cmd = format!("?v {}{}", prefix, symbol);
+                val = self.cmd(cmd.as_str()).unwrap_or_default();
+                if val != "" && val != "0x0\n" {
+                    break;
+                }
             }
-        };
+        }
         if val.len() > 3 {
             r2_result(u64::from_str_radix(&val[2..val.len() - 1], 16))
         } else {

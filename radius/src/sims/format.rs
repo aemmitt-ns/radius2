@@ -416,8 +416,10 @@ pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value, size: u64) -> 
             );
     }
     // this assertion is much faster than slicing dx
-    let mask = (1i64.wrapping_shl(size as u32) - 1) as u64;
-    state.assert(&result.ulte(&Value::Concrete(mask, 0)));
+    if size < 64 {
+        let mask = (1i64.wrapping_shl(size as u32) - 1) as u64 ;
+        state.assert(&result.ulte(&Value::Concrete(mask, 0)));
+    }
 
     result * neg_mul
 }

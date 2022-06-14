@@ -612,7 +612,6 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             do_equal(state, reg_arg, value, false);
         }
         Operations::Peek(n) => {
-            // TODO: fix to allow symbolic (sort of done)
             let addr = pop_value(state, false, false);
 
             let val = state.memory_read_value(&addr, *n);
@@ -625,12 +624,9 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::Poke(n) => {
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
-            //println!("value: {:?}", value);
 
             if let Some(cond) = &state.condition.to_owned() {
                 let prev = state.memory_read_value(&addr, *n);
-                //prev = state.translate_value(&prev);
-
                 state.memory_write_value(
                     &addr,
                     &state
@@ -908,6 +904,11 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
 
         Operations::Print => {
             let value = pop_value(state, false, false);
+            if let Some(cond) = &state.condition {
+                state.solver.push();
+                let condition = cond.clone();
+                state.assert_bv(&condition);
+            }
             let ip = state.registers.get_pc().as_u64().unwrap_or_default();
             if let Some(bv) = state.solver.eval_to_bv(&value) {
                 let hex = state.solver.hex_solution(&bv).unwrap();
@@ -918,6 +919,9 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                 }
             } else {
                 println!("\n0x{:08x}    unsat\n", ip);
+            }
+            if state.condition.is_some() {
+                state.solver.pop();
             }
         }
         Operations::PrintDebug => {
