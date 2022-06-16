@@ -943,7 +943,15 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             state.solver.pop();
         }
         Operations::Terminate => {
-            state.set_break();
+            if let Some(cond) = &state.condition {
+                let cond_value = Value::Symbolic(cond.to_owned(), 0);
+                if state.solver.check_sat(&cond_value) {
+                    state.solver.assert(&cond_value);
+                    state.set_break();
+                }
+            } else {
+                state.set_break();
+            }
         }
         Operations::Discard => {
             state.set_inactive();

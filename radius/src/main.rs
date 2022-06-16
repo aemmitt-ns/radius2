@@ -558,7 +558,7 @@ fn main() {
         if let Some(sym) = symbol_map.get(name) {
             let length = symbol_map[name].get_width() as usize;
             let value = Value::Symbolic(sym.clone(), 0);
-            let bytes = state.memory.unpack(&value, length / 8);
+            let bytes = state.unpack(&value, length / 8);
             if let Ok(fd) = files[2 * i].parse() {
                 state.filesystem.fill(fd, &bytes);
             } else {

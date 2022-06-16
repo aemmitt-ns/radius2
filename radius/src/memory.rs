@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 //use ahash::AHashMap;
 //type HashMap<P, Q> = AHashMap<P, Q>;
 
@@ -7,13 +7,13 @@ use crate::solver::Solver;
 use crate::value::Value;
 use std::mem;
 
-const READ_CACHE: usize = 64;
+pub const READ_CACHE: usize = 256;
 // const LEN_MAX: u64 = 65536;
 
 // one day I will make a reasonable heap impl
 // today is not that day
 const HEAP_START: u64 = 0x40000000;
-const HEAP_SIZE: u64 = 0x04000000;
+const HEAP_SIZE: u64 = 0x040000;
 const HEAP_CANARY_SIZE: u64 = 0x10;
 // const HEAP_CHUNK: u64 = 0x100;
 
@@ -29,7 +29,7 @@ pub struct Memory {
     pub r2api: R2Api,
 
     // TODO refactor merge to make this private
-    pub mem: HashMap<u64, Value>,
+    pub mem: BTreeMap<u64, Vec<Value>>,
     heap: Heap,
     //heap_canary: Value,
     pub bits: u64,
@@ -87,7 +87,7 @@ impl Memory {
         Memory {
             solver: btor,
             r2api: r2api.clone(),
-            mem: HashMap::new(),
+            mem: BTreeMap::new(),
             heap: Heap::new(HEAP_START, HEAP_SIZE),
             //heap_canary,
             bits,
@@ -157,10 +157,12 @@ impl Memory {
     }
 
     pub fn add_heap(&mut self) {
+        self.mem.insert(HEAP_START, vec![Value::Concrete(0, 0); READ_CACHE]);
         self.add_segment("heap", HEAP_START, HEAP_SIZE, "rw--");
     }
 
     pub fn add_stack(&mut self) {
+        //self.mem.insert(STACK_START+STACK_SIZE/2, vec![Value::Concrete(0, 0); READ_CACHE]);
         self.add_segment("stack", STACK_START, STACK_SIZE, "rw--");
     }
 
@@ -284,7 +286,7 @@ impl Memory {
             }
             Value::Symbolic(addr, t) => {
                 let addrs = solver.evaluate_many(addr);
-                let mut values = vec![];
+                let mut values = Vec::with_capacity(256);
                 for a in addrs {
                     let mut read_vals = vec![Value::Concrete(0, 0); len];
                     self.read(a, len, &mut read_vals);
@@ -473,39 +475,45 @@ impl Memory {
 
     #[inline]
     pub fn write_value(&mut self, addr: u64, value: &Value, length: usize) {
-        let mut data = self.unpack(value, length);
-        self.write(addr, &mut data)
+        if length <= 32 {
+            let mut data: [Value; 32] = Default::default();
+            self.unpack(value, length, &mut data[..length]);
+            self.write(addr, &mut data[..length])
+        } else {
+            let mut data = vec![Value::Concrete(0, 0); length];
+            self.unpack(value, length, &mut data);
+            self.write(addr, &mut data)
+        }
     }
 
     pub fn read(&mut self, addr: u64, length: usize, data: &mut [Value]) {
         if length == 0 {
             return;
         }
-        let make_sym = self.blank && !self.check_permission(addr, length as u64, 'i');
+        //let make_sym = self.blank && !self.check_permission(addr, length as u64, 'i');
+        
+        let size = READ_CACHE as u64;
+        let mask = -1i64 as u64 ^ (size - 1);
+        let not_mask = size - 1;
+        let chunks = (((addr & not_mask) + length as u64) / size) + 1;
 
-        //let mut data: Vec<Value> = Vec::with_capacity(length);
-        for count in 0..length as u64 {
-            let caddr = addr.wrapping_add(count);
-            let mem = self.mem.get(&caddr);
+        let mut index = 0;
+        for count in 0..chunks {
+            let caddr = (addr & mask) + size * count;
+            let mut offset = (addr & not_mask) * (count == 0) as u64;
 
-            match mem {
-                Some(byte) => {
-                    data[count as usize] = byte.to_owned();
-                }
-                None => {
-                    if make_sym {
-                        let sym_name = format!("mem_{:08x}", caddr);
-                        data[count as usize] =
-                            Value::Symbolic(self.solver.bv(sym_name.as_str(), 8), 0);
-                    } else {
-                        let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
-                        data[count as usize] = Value::Concrete(bytes[0] as u64, 0);
-                        for (c, byte) in bytes.into_iter().enumerate() {
-                            let new_data = Value::Concrete(byte as u64, 0);
-                            self.mem.entry(caddr.wrapping_add(c as u64)).or_insert(new_data);
-                        }
-                    }
-                }
+            let mem = if let Some(m) = self.mem.get(&caddr) {
+                m
+            } else {
+                let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
+                let vals = bytes.iter().map(|b| Value::Concrete(*b as u64, 0)).collect();
+                self.mem.entry(caddr).or_insert(vals)
+            };
+
+            while index < length && offset < size {
+                data[index] = mem[offset as usize].to_owned();
+                index += 1;
+                offset += 1;
             }
         }
     }
@@ -565,9 +573,32 @@ impl Memory {
 
     pub fn write(&mut self, addr: u64, data: &mut [Value]) {
         let length = data.len();
-        for (count, item) in data.iter_mut().enumerate().take(length) {
-            let caddr = addr + count as u64;
-            self.mem.insert(caddr, mem::take(item));
+        let size = READ_CACHE as u64;
+        let mask = -1i64 as u64 ^ (size - 1);
+        let not_mask = size - 1;
+        let chunks = (((addr & not_mask) + length as u64) / size) + 1;
+
+        let mut index = 0;
+        for count in 0..chunks {
+            let caddr = (addr & mask) + size * count;
+            let mut offset = (addr & not_mask) * (count == 0) as u64;
+
+            let mem = if let Some(m) = self.mem.get_mut(&caddr) {
+                m
+            } else {
+                let mut newmem = vec![Value::Concrete(0, 0); READ_CACHE];
+                // dont read if we are writing all
+                if addr % size != 0 || length % READ_CACHE != 0 {
+                    self.read(caddr, READ_CACHE, &mut newmem);
+                }
+                self.mem.entry(caddr).or_insert(newmem)
+            };
+
+            while index < length && offset < size {
+                mem[offset as usize] = mem::take(&mut data[index]);
+                index += 1;
+                offset += 1;
+            }
         }
     }
 
@@ -636,29 +667,31 @@ impl Memory {
         }
     }
 
-    pub fn unpack(&self, value: &Value, length: usize) -> Vec<Value> {
-        let mut data: Vec<Value> = Vec::with_capacity(length);
+    pub fn unpack(&self, value: &Value, length: usize, data: &mut [Value]) {
+        //let mut data: Vec<Value> = Vec::with_capacity(length);
+        if length == 0 {
+            return;
+        }
 
         match value {
             Value::Concrete(val, t) => {
                 for count in 0..length {
                     // TODO fix this for >64 bit length
-                    data.push(Value::Concrete((val.wrapping_shr(8 * count as u32)) & 0xff, *t));
+                    data[count] = Value::Concrete((val.wrapping_shr(8 * count as u32)) & 0xff, *t);
                 }
             }
             Value::Symbolic(val, t) => {
                 for count in 0..length {
                     //let trans_val = self.solver.translate(&val).unwrap();
                     let bv = val.slice(((count as u32) + 1) * 8 - 1, (count as u32) * 8);
-                    data.push(Value::Symbolic(bv, *t));
+                    data[count] = Value::Symbolic(bv, *t);
                 }
             }
         }
-
         if self.endian == Endian::Big {
             data.reverse();
         }
-        data
+        //data
     }
 
     pub fn addresses(&self) -> Vec<u64> {

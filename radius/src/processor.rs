@@ -206,9 +206,12 @@ impl Processor {
 
     /// print instruction if debug output is enabled
     pub fn print_instr(&self, state: &mut State, instr: &Instruction) {
-        if !self.color {
+        if self.sims.contains_key(&instr.offset) {
+            let flag = state.r2api.cmd(&format!("fd @ {}", instr.offset)).unwrap_or_default();
+            println!("\n0x{:08x}      ( {} )\n", instr.offset, "simulated ".to_owned() + &flag.trim());
+        } else if !self.color {
             println!(
-                "0x{:08x}    {:<40} |  {}",
+                "0x{:08x}      {:<40} |  {}",
                 instr.offset, instr.disasm, instr.esil
             );
         } else {

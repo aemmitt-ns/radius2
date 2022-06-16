@@ -1,4 +1,4 @@
-use crate::memory::Memory;
+use crate::memory::{Memory, READ_CACHE};
 use crate::r2_api::{Endian, Information, R2Api};
 use crate::registers::Registers;
 use crate::sims::fs::SimFilesytem;
@@ -217,8 +217,8 @@ impl State {
 
         let addrs = memory.addresses();
         for addr in addrs {
-            let value = memory.mem.remove(&addr).unwrap();
-            memory.mem.insert(addr, solver.translate_value(&value));
+            let values = memory.mem.remove(&addr).unwrap();
+            memory.mem.insert(addr, values.iter().map(|v| solver.translate_value(&v)).collect());
         }
 
         let mut context = HashMap::new();
@@ -642,7 +642,9 @@ impl State {
 
     /// unpack `Value` into vector of bytes
     pub fn unpack(&self, data: &Value, length: usize) -> Vec<Value> {
-        self.memory.unpack(data, length)
+        let mut values = vec![Value::Concrete(0, 0); length];
+        self.memory.unpack(data, length, &mut values);
+        values
     }
 
     pub fn fill_file(&mut self, fd: usize, data: &[Value]) {
@@ -718,29 +720,44 @@ impl State {
         let asserted = Value::Symbolic(assertion, 0);
 
         // merge registers
-        let mut new_regs = Vec::with_capacity(256);
         let reg_count = state.registers.values.len();
         for index in 0..reg_count {
             let reg = &self.registers.values[index];
             let curr_reg = &state.registers.values[index];
-            new_regs.push(state.solver.conditional(&asserted, curr_reg, reg));
+            //new_regs.push(state.solver.conditional(&asserted, curr_reg, reg));
+            self.registers.values[index] = state.solver.conditional(&asserted, curr_reg, reg);
         }
-        self.registers.values = new_regs;
 
         // merge memory
-        let mut new_mem = HashMap::with_capacity(1024);
+        //let mut new_mem = HashMap::with_capacity(1024);
         let merge_addrs = self.memory.addresses();
         let state_addrs = state.memory.addresses();
 
         let mut addrs = Vec::with_capacity(state.solver.eval_max);
         addrs.extend(merge_addrs);
         addrs.extend(state_addrs);
+
+        let mut tmp1 = Vec::with_capacity(READ_CACHE);
+        let mut tmp2 = Vec::with_capacity(READ_CACHE);
+        
         for addr in addrs {
-            let mem = &self.memory.read_value(addr, 1);
-            let curr_mem = state.memory.read_value(addr, 1);
-            new_mem.insert(addr, state.cond(&asserted, &curr_mem, mem));
+            let newvec = if let Some(m) = self.memory.mem.get_mut(&addr) {
+                m
+            } else {
+                self.memory.read(addr, READ_CACHE, &mut tmp1);
+                &mut tmp1
+            };
+            let curvec = if let Some(m) = state.memory.mem.get(&addr) {
+                m
+            } else {
+                state.memory.read(addr, READ_CACHE, &mut tmp2);
+                &tmp2
+            };
+            
+            for i in 0..READ_CACHE {
+                newvec[i] = state.cond(&asserted, &curvec[i], &newvec[i]);
+            }
         }
-        self.memory.mem = new_mem;
 
         // TODO merge context
 
