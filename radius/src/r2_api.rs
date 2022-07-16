@@ -902,6 +902,17 @@ impl R2Api {
         self.cmd(format!("e {}={}", key, value).as_str())
     }
 
+    // is.j returns a weird format
+    pub fn get_symbol(&mut self, addr: u64) -> R2Result<Symbol> {
+        let json = self.cmd(&format!("is.j @ {}", addr))?;
+        let result: Option<HashMap<String, Symbol>> = serde_json::from_str(json.as_str()).ok();
+        if let Some(mut symmap) = result {
+            Ok(symmap.remove("symbols").unwrap())
+        } else {
+            Err("symbol not found".to_owned())
+        }
+    }
+
     pub fn get_symbols(&mut self) -> R2Result<Vec<Symbol>> {
         let json = self.cmd("isj")?;
         r2_result(serde_json::from_str(json.as_str()))

@@ -696,21 +696,18 @@ impl State {
             }
         }
 
-        let mut addrs = self.memory.addresses();
-        addrs.sort_unstable();
+        let mut bvals = vec![Value::Concrete(0, 0); READ_CACHE];
+        for addr in self.memory.addresses() {
+            self.memory.read(addr, READ_CACHE, &mut bvals);
+            let bytes: Vec<u8> = bvals
+                .iter()
+                .map(|bval| self.solver.evalcon_to_u64(&bval).unwrap() as u8)
+                .collect();
 
-        let mut chunk: Vec<u8> = Vec::with_capacity(256);
-        for (i, addr) in addrs.iter().enumerate() {
-            let bval = self.memory.read_value(*addr, 1);
-            let b = self.solver.evalcon_to_u64(&bval).unwrap() as u8;
-            chunk.push(b);
-
-            if chunk.len() > 255 || i >= addrs.len() - 1 || addrs[i + 1] != addrs[i] + 1 {
-                self.r2api
-                    .write(1 + addr - chunk.len() as u64, chunk.clone());
-                chunk.clear();
-            }
+            self.r2api.write(addr, bytes.clone());
         }
+
+        // TODO: evaluate files and write to real FS? maybe a bad idea
     }
 
     /// merges the argument state into self

@@ -3,7 +3,7 @@ use crate::r2_api::{BasicBlock, FunctionInfo, Information, Instruction, R2Api, R
 use crate::state::State;
 //use crate::value::Value;
 use crate::sims::syscall::indirect;
-use crate::sims::{get_sims, zero, SimMethod};
+use crate::sims::{get_sims, zero, SimMethod, Sim};
 use crate::value::{vc, Value};
 
 // use std::collections::VecDeque;
@@ -409,14 +409,18 @@ impl Radius {
             for sim in &sims {
                 let addropt = symmap.remove(&sim.symbol);
                 if let Some(addr) = addropt {
-                    processor.sims.insert(addr, sim.function);
+                    processor.sims.insert(addr, sim.to_owned());
                 }
             }
 
             if sim_all {
-                for addr in symmap.values() {
-                    // we are gonna go with unconstrained by default
-                    processor.sims.insert(*addr, zero);
+                for name in symmap.keys() {
+                    // we are gonna go with zero by default
+                    processor.sims.insert(symmap[name], Sim {
+                        symbol: name.to_owned(),
+                        function: zero,
+                        arguments: 0,
+                    });
                 }
             }
         }
@@ -431,7 +435,7 @@ impl Radius {
     }
 
     /// Register a `SimMethod` for the provided function address
-    pub fn simulate(&mut self, addr: u64, sim: SimMethod) {
+    pub fn simulate(&mut self, addr: u64, sim: Sim) {
         self.processor.sims.insert(addr, sim);
     }
 

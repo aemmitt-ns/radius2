@@ -490,7 +490,7 @@ impl Memory {
         if length == 0 {
             return;
         }
-        //let make_sym = self.blank && !self.check_permission(addr, length as u64, 'i');
+        let make_sym = self.blank && !self.check_permission(addr, length as u64, 'i');
         
         let size = READ_CACHE as u64;
         let mask = -1i64 as u64 ^ (size - 1);
@@ -504,6 +504,13 @@ impl Memory {
 
             let mem = if let Some(m) = self.mem.get(&caddr) {
                 m
+            } else if make_sym {
+                let mut vals = Vec::with_capacity(READ_CACHE);
+                for i in 0..size {
+                    let sym_name = format!("mem_{:08x}", caddr+i);
+                    vals.push(Value::Symbolic(self.solver.bv(&sym_name, 8), 0));
+                }
+                self.mem.entry(caddr).or_insert(vals) 
             } else {
                 let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
                 let vals = bytes.iter().map(|b| Value::Concrete(*b as u64, 0)).collect();

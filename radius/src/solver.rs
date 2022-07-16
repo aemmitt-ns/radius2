@@ -124,6 +124,15 @@ impl Solver {
                 }
             }
         } else {
+            // add exception for if(c, y, y) for concrete y
+            if let Some(x) = if_val.as_u64() {
+                if let Some(y) = else_val.as_u64() {
+                    if x == y {
+                        return Value::Concrete(if_val.as_u64().unwrap(), 
+                            if_val.get_taint() | else_val.get_taint());
+                    }
+                }
+            }
             max_bit = 64;
         }
 

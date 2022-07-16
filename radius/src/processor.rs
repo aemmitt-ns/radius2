@@ -9,7 +9,7 @@ use crate::state::{
 };
 
 use crate::sims::syscall::syscall;
-use crate::sims::SimMethod;
+use crate::sims::{Sim, SimMethod};
 
 use std::collections::BinaryHeap;
 use std::mem;
@@ -47,7 +47,7 @@ pub struct Processor {
     pub instructions: BTreeMap<u64, InstructionEntry>,
     pub hooks: HashMap<u64, Vec<HookMethod>>,
     pub esil_hooks: HashMap<u64, Vec<String>>,
-    pub sims: HashMap<u64, SimMethod>,
+    pub sims: HashMap<u64, Sim>,
     pub traps: HashMap<u64, SimMethod>,
     pub interrupts: HashMap<u64, SimMethod>,
     pub syscalls: HashMap<u64, Syscall>,
@@ -206,9 +206,8 @@ impl Processor {
 
     /// print instruction if debug output is enabled
     pub fn print_instr(&self, state: &mut State, instr: &Instruction) {
-        if self.sims.contains_key(&instr.offset) {
-            let flag = state.r2api.cmd(&format!("fd @ {}", instr.offset)).unwrap_or_default();
-            println!("\n0x{:08x}      ( {} )\n", instr.offset, "simulated ".to_owned() + &flag.trim());
+        if let Some(sim) = self.sims.get(&instr.offset) {
+            println!("\n0x{:08x}      ( {} )\n", instr.offset, "simulated ".to_owned() + &sim.symbol);
         } else if !self.color {
             println!(
                 "0x{:08x}      {:<40} |  {}",
@@ -584,7 +583,7 @@ impl Processor {
                 let cc = state.r2api.get_cc(pc).unwrap_or_default();
                 let args = self.get_args(state, &cc);
 
-                let ret = sim(state, &args);
+                let ret = (sim.function)(state, &args);
                 state.registers.set_with_alias(cc.ret.as_str(), ret);
 
                 // don't ret if sim changes the PC value

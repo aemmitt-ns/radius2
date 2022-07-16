@@ -8,6 +8,7 @@ pub mod syscall;
 
 pub type SimMethod = fn(&mut State, &[Value]) -> Value;
 
+#[derive(Clone)]
 pub struct Sim {
     pub symbol: String,
     pub function: SimMethod,

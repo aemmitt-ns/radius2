@@ -1,5 +1,6 @@
 use radius2::state::State;
 use radius2::value::Value;
+use radius2::sims::Sim;
 use radius2::{Radius, RadiusOption};
 
 // simulates the scanf("%d", dst) calls with sym inputs
@@ -24,7 +25,11 @@ fn main() {
     let scanf = radius.get_address("sym.imp.__isoc99_scanf").unwrap();
 
     // register the custom sim
-    radius.simulate(scanf, scanf_sim);
+    radius.simulate(scanf, Sim{
+        symbol: "scanf".to_owned(),
+        function: scanf_sim,
+        arguments: 2 
+    });
 
     let state = radius.call_state(main); // start at main
     let new_state = radius.run_until(state, 0x004028e9, &[0x00402941]).unwrap();

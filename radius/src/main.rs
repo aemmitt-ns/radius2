@@ -585,17 +585,25 @@ fn main() {
     for i in 0..matches.occurrences_of("set") as usize {
         // easiest way to interpret the stuff is just to use
         let ind = 3 * i;
-        let length: u32 = sets[ind + 2].parse().unwrap();
+        let mut length: u32 = sets[ind + 2].parse().unwrap();
 
-        let lit = radius.processor.get_literal(sets[ind + 1]);
-        let value = if let Some(Word::Literal(val)) = lit {
+        let mut is_ref = false;
+        let valstr = if sets[ind + 1][0..1].to_owned() == "&" {
+            is_ref = true;
+            &sets[ind + 1][1..]
+        } else {
+            &sets[ind + 1][0..]
+        };
+
+        let lit = radius.processor.get_literal(valstr);
+        let mut value = if let Some(Word::Literal(val)) = lit {
             val
-        } else if let Some(bv) = symbol_map.get(sets[ind + 1]) {
+        } else if let Some(bv) = symbol_map.get(valstr) {
             Value::Symbolic(bv.slice(length - 1, 0), 0)
         } else {
             // this is a real workaround of the system
             // i need a better place for these kinds of utils
-            let bytes = sets[ind + 1].as_bytes();
+            let bytes = valstr.as_bytes();
             let bv = BV::from_hex_str(
                 state.solver.btor.clone(),
                 hex_encode(bytes).as_str(),
@@ -604,6 +612,13 @@ fn main() {
 
             Value::Symbolic(bv, 0)
         };
+
+        if is_ref {
+            let addr = state.memory_alloc(&Value::Concrete(length as u64/8, 0));
+            state.memory_write_value(&addr, &value, length as usize/8);
+            value = addr;
+            length = state.memory.bits as u32;
+        }
 
         let lit = radius.processor.get_literal(sets[ind]);
         if let Some(Word::Literal(address)) = lit {
