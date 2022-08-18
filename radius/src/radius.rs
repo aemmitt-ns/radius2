@@ -134,7 +134,7 @@ impl Radius {
             argv.push("-e asm.functions=false");
         }
 
-        let args = if !argv.is_empty() { Some(argv) } else { None };
+        let args = if !argv.is_empty() || filename.is_none() { Some(argv) } else { None };
 
         let mut r2api = R2Api::new(filename, args);
         r2api.set_option("io.cache", "true").unwrap();

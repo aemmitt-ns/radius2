@@ -1,4 +1,4 @@
-use r2pipe::{Error, R2Pipe, R2PipeSpawnOptions};
+use r2pipe::{R2Pipe, R2PipeSpawnOptions};
 use serde::{Deserializer, Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::u64;
@@ -496,9 +496,9 @@ impl R2Api {
         });
 
         let r2pipe = match (&filename, &opts) {
-            (None, None) => R2Pipe::open(),
+            (None, _) => R2Pipe::open(),
             (Some(name), _) => R2Pipe::spawn(name, options.to_owned()),
-            _ => Err(Error::NoSession),
+            // _ => Err(Error::NoSession),
         };
 
         let mut r2api = R2Api {

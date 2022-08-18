@@ -49,16 +49,10 @@ pub struct JsonOutput {
 
 fn main() {
     let matches = App::new("radius2")
+        .global_settings(&[clap::AppSettings::ColoredHelp])
         .version(env!("CARGO_PKG_VERSION"))
         .author("Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>")
-        .about("A symbolic execution tool using r2 and boolector
-        
-                             ooo  o88                           ooooooo   
- oo oooooo   ooooooo    ooooo888  oooo oooo  oooo   ooooooo88 o88     888 
-  888   888  ooooo888 888    888   888  888   888  888ooooooo       o888  
-  888      888    888 888    888   888  888   888          888   o888     
- o888o      88ooo88 8o  88ooo888o o888o  888o88 8o 88oooooo88 o8888oooo88 
-        ")
+        .about("A symbolic execution tool using r2 and boolector")
         .arg(
             Arg::with_name("path")
                 .short("p")
@@ -352,7 +346,7 @@ fn main() {
 
     let start = Instant::now();
 
-    let path = matches.value_of("path").unwrap_or_default();
+    let path = matches.value_of("path").unwrap_or("-");
     let dir = Path::new(matches.value_of("fuzz").unwrap_or("."));
 
     // just a guardrail cuz the error otherwise is vv unclear

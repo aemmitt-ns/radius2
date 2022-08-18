@@ -895,9 +895,8 @@ impl Processor {
 
     pub fn merge(&mut self, mut state: State) {
         let pc = state.registers.get_pc().as_u64().unwrap();
-        if let Some(mut merge_state) = self.merges.remove(&pc) {
+        if let Some(merge_state) = self.merges.get_mut(&pc) {
             merge_state.merge(&mut state);
-            self.merges.insert(pc, merge_state);
         } else {
             self.merges.insert(pc, state);
         }
