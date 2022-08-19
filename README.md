@@ -10,7 +10,7 @@ git clone https://github.com/radareorg/radare2.git
 radare2/sys/install.sh 
 ```
 
-Include radius2 as a dependency using `radius2 = "1.0.15"` or build locally with `cargo build --release`
+Include radius2 as a dependency using `radius2 = "1.0.17"` or build locally with `cargo build --release`
 
 ### Supported Architectures
 
@@ -56,16 +56,9 @@ fn main() {
 radius2 can also be installed from crates.io and easily included in packages. radius2 also has a CLI tool that can be installed with `cargo install radius2`
 
 ```
-radius2 1.0.16
+radius2 1.0.17
 Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>
 A symbolic execution tool using r2 and boolector
-        
-                             ooo  o88                           ooooooo   
- oo oooooo   ooooooo    ooooo888  oooo oooo  oooo   ooooooo88 o88     888 
-  888   888  ooooo888 888    888   888  888   888  888ooooooo       o888  
-  888      888    888 888    888   888  888   888          888   o888     
- o888o      88ooo88 8o  88ooo888o o888o  888o88 8o 88oooooo88 o8888oooo88 
-        
 
 USAGE:
     radius2 [FLAGS] [OPTIONS] --path <path>
