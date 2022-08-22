@@ -32,14 +32,14 @@ Also PCode can be translated to ESIL with r2ghidra with `pdgp` (currently broken
 ### Example
 
 ```rust
-use radius2::Radius;
+use radius2::{Radius, Value};
 
 fn main() {
-    let mut radius = Radius::new("tests/r100");
+    let mut radius = Radius::new("/tmp/r100");
     let mut state = radius.call_state(0x004006fd);
     let addr: u64 = 0x100000;
-    let flag_val = state.symbolic_value("flag", 12*8);
-    state.memory_write_value(addr, &flag_val, 12);
+    let flag_val = state.symbolic_value("flag", 12 * 8);
+    state.memory_write_value(&Value::Concrete(addr as u64, 0), &flag_val, 12);
     state.registers.set("rdi", state.concrete_value(addr, 64));
 
     radius.breakpoint(0x004007a1);
