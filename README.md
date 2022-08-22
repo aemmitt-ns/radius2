@@ -35,7 +35,7 @@ Also PCode can be translated to ESIL with r2ghidra with `pdgp` (currently broken
 use radius2::{Radius, Value};
 
 fn main() {
-    let mut radius = Radius::new("/tmp/r100");
+    let mut radius = Radius::new("tests/r100");
     let mut state = radius.call_state(0x004006fd);
     let addr: u64 = 0x100000;
     let flag_val = state.symbolic_value("flag", 12 * 8);
