@@ -247,8 +247,9 @@ impl Radius {
         let context = self.r2api.init_frida(addr).unwrap();
 
         for reg in context.keys() {
-            let val = u64::from_str_radix(&context[reg][2..], 16).unwrap_or(0);
-            state.registers.set(reg, vc(val));
+            if state.registers.regs.contains_key(reg) {
+                state.registers.set(reg, vc(context[reg]));
+            }
         }
         state
     }

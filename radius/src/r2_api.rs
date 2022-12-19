@@ -874,28 +874,43 @@ impl R2Api {
         let _r = self.cmd(&format!(".aeis {} {} {} @ SP", argc, argv, env));
     }
 
-    pub fn init_frida(&mut self, addr: u64) -> R2Result<HashMap<String, String>> {
+    pub fn init_frida(&mut self, addr: u64) -> R2Result<HashMap<String, u64>> {
         // we are reaching levels of jankiness previously thought to be impossible
-        let alloc = self.cmd(":dma 4096").unwrap();
+        let alloc = self.cmd(":dma 4096")?;
         let func = format!(
-            "{{ptr('{}').writeUtf8String(JSON.stringify(this.context))}}",
-            alloc.trim()
+            "{{ptr('{}').writeUtf8String(JSON.stringify(this.context,{}))}}",
+            alloc.trim(),
+            // need this to convert everything to strings oof
+            "function(k,v){return v && typeof v === 'object' && Object.keys(v).length ? v:''+v}"
         );
 
         let script_data = format!(
-            ": Interceptor.attach(ptr('0x{:x}'),function(){});:db {}",
-            addr, func, addr
+            ": Interceptor.attach(ptr('0x{:x}'),function(){});",
+            addr, func
         );
 
         self.cmd(&script_data).unwrap();
         loop {
             thread::sleep(time::Duration::from_millis(100));
-            if self.cmd(&format!("ps 1 @ {}", alloc))?.trim() == "{" {
-                let out = self.cmd(&format!("psz 4096 @ {}", alloc))?;
-                self.cmd(&format!(":dma- {}", alloc)).unwrap();
-                break r2_result(serde_json::from_str(&out));
+            let out = self.cmd(&format!(": ptr('{}').readUtf8String()", alloc.trim()))?;
+            if out.starts_with("{") {
+                self.cmd(&format!(":dma- {}", alloc.trim())).unwrap();
+                let context: Result<HashMap<String, String>, _> = serde_json::from_str(&out);
+                break Ok(self.parse_context(context.unwrap_or_default()));
             }
         }
+    }
+
+    fn parse_context(&self, context: HashMap<String, String>) -> HashMap<String, u64> {
+        let mut newcon = HashMap::new();
+        for reg in context.keys() {
+            if context[reg].starts_with("0x") {
+                newcon.insert(reg.to_owned(), u64::from_str_radix(&context[reg][2..], 16).unwrap_or(0));
+            } else if !context[reg].contains(".") && !context[reg].starts_with("[") {
+                newcon.insert(reg.to_owned(), u64::from_str_radix(&context[reg], 10).unwrap_or(0));
+            }
+        }
+        newcon
     }
 
     pub fn set_option(&mut self, key: &str, value: &str) -> R2Result<String> {

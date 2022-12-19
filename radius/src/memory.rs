@@ -487,7 +487,7 @@ impl Memory {
     }
 
     pub fn read(&mut self, addr: u64, length: usize, data: &mut [Value]) {
-        if length == 0 {
+        if length == 0 || data.len() == 0 {
             return;
         }
         let make_sym = self.blank && !self.check_permission(addr, length as u64, 'i');
@@ -517,7 +517,7 @@ impl Memory {
                 self.mem.entry(caddr).or_insert(vals)
             };
 
-            while index < length && offset < size {
+            while index < length && offset < size && data.len() > index {
                 data[index] = mem[offset as usize].to_owned();
                 index += 1;
                 offset += 1;

@@ -470,12 +470,12 @@ pub fn fclose(state: &mut State, args: &[Value]) -> Value {
 
 pub fn fread(state: &mut State, args: &[Value]) -> Value {
     let fd = fileno(state, &[args[3].to_owned()]);
-    syscall::read(state, &[fd, args[1].to_owned(), args[2].to_owned()])
+    syscall::read(state, &[fd, args[0].to_owned(), args[1].mul(&args[2]).to_owned()])
 }
 
 pub fn fwrite(state: &mut State, args: &[Value]) -> Value {
     let fd = fileno(state, &[args[3].to_owned()]);
-    syscall::write(state, &[fd, args[1].to_owned(), args[2].to_owned()])
+    syscall::write(state, &[fd, args[0].to_owned(), args[1].mul(&args[2]).to_owned()])
 }
 
 pub fn fseek(state: &mut State, args: &[Value]) -> Value {

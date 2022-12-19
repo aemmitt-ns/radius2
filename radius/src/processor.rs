@@ -358,23 +358,20 @@ impl Processor {
                         }
                         Operations::GoTo => {
                             let n = pop_concrete(state, false, false);
-                            if let Some(_cond) = &state.condition {
-                                println!("Hit symbolic GOTO");
-                                state.set_inactive(); // take the easy way out
-                                break;
-                                //cond.assert();
+                            if let Some(cond) = &state.condition.clone() {
+                                state.assert_bv(&cond.not());
+                            } else {
+                                state.esil.mode = ExecMode::Uncon;
+                                word_index = n as usize;
                             }
-                            state.esil.mode = ExecMode::Uncon;
-                            word_index = n as usize;
                         }
                         Operations::Break => {
-                            if let Some(_cond) = &state.condition {
-                                println!("Hit symbolic BREAK");
-                                state.set_inactive();
-                                //cond.assert();
+                            if let Some(cond) = &state.condition.clone() {
+                                state.assert_bv(&cond.not());
+                            } else {
+                                state.esil.mode = ExecMode::Uncon;
+                                break;
                             }
-                            state.esil.mode = ExecMode::Uncon;
-                            break;
                         }
                         Operations::Interrupt => {
                             let _value = pop_value(state, false, false);
