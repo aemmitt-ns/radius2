@@ -93,7 +93,7 @@ $ radius2 -p unbreakable -s flag 408 -c flag 'CTF{' -B 'Thank you' -z -A . flag
   flag : "CTF{0The1Quick2Brown3Fox4Jumped5Over6The7Lazy8Fox9}"
 ```
 
-This example also constrains the first four bytes of `flag` to be "CTF{" with `-c` and passes `-z` to enable lazy solving, which will significantly speed up runtime (from 1 second down to 0.4 or so). In some cases string XREFs may not be found, in this case try passing `-r aae` which will tell r2 to emulate the program to find addtional references. 
+This example also constrains the first four bytes of `flag` to be "CTF{" with `-c` and passes `-z` to enable lazy solving, which will significantly speed up runtime (from 1 second down to 0.4 or so). In some cases string XREFs may not be found, in this case try passing `-r aae` which will tell r2 to emulate the program to find additional references. 
 
 `radius2` also has a basic testcase generation option, `-F <dir>` which will generate files containing values of the defined symbols for each different execution path. 
 
