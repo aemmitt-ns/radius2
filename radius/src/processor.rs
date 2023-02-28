@@ -359,7 +359,12 @@ impl Processor {
                         Operations::GoTo => {
                             let n = pop_concrete(state, false, false);
                             if let Some(cond) = &state.condition.clone() {
-                                state.assert_bv(&cond.not());
+                                if !state.check(&Value::Symbolic(cond.not(), 0)) {
+                                    state.esil.mode = ExecMode::Uncon;
+                                    word_index = n as usize;
+                                } else {
+                                    state.assert_bv(&cond.not());
+                                }
                             } else {
                                 state.esil.mode = ExecMode::Uncon;
                                 word_index = n as usize;
@@ -367,7 +372,12 @@ impl Processor {
                         }
                         Operations::Break => {
                             if let Some(cond) = &state.condition.clone() {
-                                state.assert_bv(&cond.not());
+                                if !state.check(&Value::Symbolic(cond.not(), 0)) {
+                                    state.esil.mode = ExecMode::Uncon;
+                                    break;
+                                } else {
+                                    state.assert_bv(&cond.not());
+                                }
                             } else {
                                 state.esil.mode = ExecMode::Uncon;
                                 break;

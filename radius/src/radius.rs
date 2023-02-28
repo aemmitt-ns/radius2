@@ -632,6 +632,11 @@ impl Radius {
         self.r2api.cmd(cmd)
     }
 
+    /// continue real execution
+    pub fn cont(&mut self) {
+        self.r2api.cont().unwrap();
+    }
+
     /// close r2
     pub fn close(&mut self) {
         self.r2api.close()

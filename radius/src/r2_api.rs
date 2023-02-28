@@ -73,6 +73,7 @@ pub struct Instruction {
     #[serde(default)]
     pub esil: String,
 
+    #[serde(default = "blank")]
     pub bytes: String,
 
     #[serde(default = "invalid")]
@@ -842,6 +843,7 @@ impl R2Api {
         }
     }
 
+    /// continue concrete execution
     pub fn cont(&mut self) -> R2Result<String> {
         match self.mode {
             Mode::Debugger => self.cmd("dc"),
@@ -876,12 +878,14 @@ impl R2Api {
 
     pub fn init_frida(&mut self, addr: u64) -> R2Result<HashMap<String, u64>> {
         // we are reaching levels of jankiness previously thought to be impossible
-        let alloc = self.cmd(":dma 4096")?;
+        let _alloc = self.cmd(": global.mem = Memory.alloc(0x2000)")?;
         let func = format!(
-            "{{ptr('{}').writeUtf8String(JSON.stringify(this.context,{}))}}",
-            alloc.trim(),
+            // experimenting with increasingly shitty ways to suspend. 
+            "{{global.mem.writeUtf8String(JSON.stringify(this.context,{}))}}",
             // need this to convert everything to strings oof
-            "function(k,v){return v && typeof v === 'object' && Object.keys(v).length ? v:''+v}"
+            "function(k,v){return v && typeof v === 'object' && Object.keys(v).length ? v:''+v}",
+            // need this to wait for continue, nvmd doesnt work
+            // "(function(){while(global.mem.readU8()){Thread.sleep(1)}})()"
         );
 
         let script_data = format!(
@@ -892,9 +896,8 @@ impl R2Api {
         self.cmd(&script_data).unwrap();
         loop {
             thread::sleep(time::Duration::from_millis(100));
-            let out = self.cmd(&format!(": ptr('{}').readUtf8String()", alloc.trim()))?;
+            let out = self.cmd(": global.mem.readUtf8String()")?;
             if out.starts_with("{") {
-                self.cmd(&format!(":dma- {}", alloc.trim())).unwrap();
                 let context: Result<HashMap<String, String>, _> = serde_json::from_str(&out);
                 break Ok(self.parse_context(context.unwrap_or_default()));
             }
@@ -906,7 +909,10 @@ impl R2Api {
         for reg in context.keys() {
             if context[reg].starts_with("0x") {
                 newcon.insert(reg.to_owned(), u64::from_str_radix(&context[reg][2..], 16).unwrap_or(0));
-            } else if !context[reg].contains(".") && !context[reg].starts_with("[") {
+            } else if context[reg].contains(".") {
+                // cant know if these are f32 or f64 so this will be wrong half the time. this sucks
+                newcon.insert(reg.to_owned(), f64::to_bits(context[reg].parse::<f64>().unwrap_or(0.0)));
+            } else if !context[reg].starts_with("[") {
                 newcon.insert(reg.to_owned(), u64::from_str_radix(&context[reg], 10).unwrap_or(0));
             }
         }
