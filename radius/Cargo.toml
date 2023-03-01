@@ -16,4 +16,4 @@ serde = { version = "1.0.117", features = ["derive"] }
 boolector = { version = "0.4.3", features = ["vendor-lgl"] }
 clap = "2.33.3"
 rand = "0.8.4"
-mimalloc = { version = "*", default-features = false }
+mimalloc = { version = "0.1.34", default-features = false }
