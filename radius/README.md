@@ -1,27 +1,11 @@
 ## radius2 - fast symbolic execution with r2
 
-radius2 is symbolic execution and taint analysis framework using radare2 and its ESIL intermediate representation. It is essentially a rust rewrite of ESILSolve with some architectural improvements. It uses boolector as the SMT solver rather than z3. It executes about 1000x faster than ESILSolve on average. radius2 gains additional speed over other rust based symbex tools by using u64 primitives for concrete values instead of constant valued bitvectors which incur significant overhead for all operations. 
+`radius2` is a fast symbolic execution and taint analysis framework using `radare2` that is focused on covering many different architectures and executable formats. It also strives to be easy to use and has a CLI tool that makes some reversing tasks as easy as adding a symbolic value and setting a string to reach or avoid. Reversing challenges can be solved as easily as the example below. 
+```
+$ radius2 -p ais3 -A. flag -s flag 184 -X sorry
 
-### Example
+  flag : "ais3{I_tak3_g00d_n0t3s}"
 
-```rust
-use radius2::Radius;
-
-fn main() {
-    let mut radius = Radius::new("tests/r100");
-    let mut state = radius.call_state(0x004006fd);
-    let addr: u64 = 0x100000;
-    let flag_val = state.symbolic_value("flag", 12*8);
-    state.memory.write_value(addr, &flag_val, 12);
-    state.registers.set("rdi", state.concrete_value(addr, 64));
-
-    radius.breakpoint(0x004007a1);
-    radius.avoid(&[0x00400790]);
-    let mut new_state = radius.run(state, 1).unwrap();
-    let flag = new_state.evaluate_string(&flag_val).unwrap();
-    println!("FLAG: {}", flag);
-    assert_eq!(flag, "Code_Talkers");
-}
 ```
 
 ### Building
@@ -32,11 +16,7 @@ git clone https://github.com/radareorg/radare2.git
 radare2/sys/install.sh 
 ```
 
-Include radius2 as a dependency using `radius2 = "1.0.17"` or build locally with `cargo build --release`. 
-
-### Termux
-
-On Termux install with the commands `pkg install radare2; pkg install rust; pkg install ndk-multilib; cargo install radius2` 
+Install radius2 with `cargo install radius2` or include radius2 as a dependency using `radius2 = "1.0.18"`
 
 ### Supported Architectures
 
@@ -54,6 +34,28 @@ radius2 can execute **Dalvik** bytecode only involving static methods and variab
 Finally there is also a varying amount of support for **6502**, **8051**, **AVR**, **h8300**, **PIC**, **RISCV**, **SH-4**, **V810**, **V850**, **Xtensa**.
 
 Also PCode can be translated to ESIL with r2ghidra with `pdgp` (currently broken, actually maybe fixed now) so potentially more archs could be supported that way.
+
+### Example
+
+```rust
+use radius2::{Radius, Value};
+
+fn main() {
+    let mut radius = Radius::new("tests/r100");
+    let mut state = radius.call_state(0x004006fd);
+    let addr: u64 = 0x100000;
+    let flag_val = state.symbolic_value("flag", 12 * 8);
+    state.memory_write_value(&Value::Concrete(addr, 0), &flag_val, 12);
+    state.registers.set("rdi", state.concrete_value(addr, 64));
+
+    radius.breakpoint(0x004007a1);
+    radius.avoid(&[0x00400790]);
+    let mut new_state = radius.run(state, 1).unwrap();
+    let flag = new_state.evaluate_string(&flag_val).unwrap();
+    println!("FLAG: {}", flag);
+    assert_eq!(flag, "Code_Talkers");
+}
+```
 
 ### radius2 CLI tool
 

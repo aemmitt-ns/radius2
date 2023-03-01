@@ -1,6 +1,12 @@
 ## radius2 - fast symbolic execution with r2
 
-radius2 is symbolic execution and taint analysis framework using radare2 and its ESIL intermediate representation. It is essentially a rust rewrite of ESILSolve with some architectural improvements. It uses boolector as the SMT solver rather than z3. It executes about 1000x faster than ESILSolve on average. radius2 gains additional speed over other rust based symbex tools by using u64 primitives for concrete values instead of constant valued bitvectors which incur significant overhead for all operations. 
+`radius2` is a fast symbolic execution and taint analysis framework using `radare2` that is focused on covering many different architectures and executable formats. It also strives to be easy to use and has a CLI tool that makes some reversing tasks as easy as adding a symbolic value and setting a string to reach or avoid. Reversing challenges can be solved as easily as the example below. 
+```
+$ radius2 -p ais3 -A. flag -s flag 184 -X sorry
+
+  flag : "ais3{I_tak3_g00d_n0t3s}"
+
+```
 
 ### Building
 
@@ -10,7 +16,7 @@ git clone https://github.com/radareorg/radare2.git
 radare2/sys/install.sh 
 ```
 
-Include radius2 as a dependency using `radius2 = "1.0.17"` or build locally with `cargo build --release`
+Install radius2 with `cargo install radius2` or include radius2 as a dependency using `radius2 = "1.0.18"`
 
 ### Supported Architectures
 
