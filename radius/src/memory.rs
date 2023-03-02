@@ -18,10 +18,10 @@ const HEAP_CANARY_SIZE: u64 = 0x10;
 // const HEAP_CHUNK: u64 = 0x100;
 
 // i think these are different on darwin
-const PROT_NONE: u64 = 0x0;
-const PROT_READ: u64 = 0x1;
+const PROT_NONE:  u64 = 0x0;
+const PROT_READ:  u64 = 0x1;
 const PROT_WRITE: u64 = 0x2;
-const PROT_EXEC: u64 = 0x4;
+const PROT_EXEC:  u64 = 0x4;
 
 #[derive(Clone)]
 pub struct Memory {
@@ -425,32 +425,22 @@ impl Memory {
         let data2 = self.read_sym_len(addr2, &Value::Concrete(len, length.get_taint()), solver);
 
         let mut result = Value::Concrete(0, 0);
-        let mut same = Value::Concrete(1, 0);
 
         for ind in 0..len as usize {
-            let d1 = &data1[ind];
-            let d2 = &data2[ind];
+
+            let d1 = &data1[ind].uext(&Value::Concrete(8, 0));
+            let d2 = &data2[ind].uext(&Value::Concrete(8, 0));
 
             let ind_val = Value::Concrete(ind as u64, 0);
-            let gt = !d1.ult(d2) & !d1.eq(d2);
-            let lt = d1.ult(d2) & !d1.eq(d2);
             let len_cond = ind_val.ult(length);
 
-            let lt_val = solver.conditional(
-                &(lt & same.clone() & len_cond.clone()),
-                &Value::Concrete(-1i64 as u64, 0),
+            result = solver.conditional(
+                &(result.eq(&Value::Concrete(0, 0)) & len_cond),
+                &d1.sub(d2),
                 &result,
             );
 
-            result = solver.conditional(
-                &(gt & same.clone() & len_cond),
-                &Value::Concrete(1, 0),
-                &lt_val,
-            );
-
-            same = same & result.eq(&Value::Concrete(0, 0));
-
-            if let Value::Concrete(res, _t) = &same {
+            if let Value::Concrete(res, _t) = &result {
                 if *res != 0 {
                     break;
                 }
