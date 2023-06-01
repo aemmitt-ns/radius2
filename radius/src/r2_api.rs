@@ -297,10 +297,19 @@ pub struct Symbol {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Import {
+    #[serde(default)]
     pub ordinal: usize,
+
+    #[serde(default)]
     pub bind: String,
+
+    #[serde(default)]
     pub r#type: String,
+    
+    #[serde(default)]
     pub name: String,
+
+    #[serde(default)]
     pub plt: u64,
 }
 
