@@ -2,16 +2,18 @@
 `radius2` is a command line utility that can be installed with `cargo install radius2`. It allows users to solve reversing problems quickly using symbolic execution and aims to be both user friendly and flexible enough to do nearly any task straight from the terminal. Running `radius2 -h` outputs the usage information
 
 ```
-radius2 1.0.10
+radius2 1.0.19
 Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>
-Symbolic Execution tool using r2 and boolector
+A symbolic execution tool using r2 and boolector
 
 USAGE:
     radius2 [FLAGS] [OPTIONS] --path <path>
 
 FLAGS:
-    -C, --color         Use color output
+    -V, --color         Use color output
+        --crash         Execution stops on invalid memory access
     -h, --help          Prints help information
+    -j, --json          Output JSON
     -z, --lazy          Evaluate symbolic PC values lazily
         --no-sims       Do not simulate imports
         --plugins       Load r2 plugins
@@ -21,7 +23,7 @@ FLAGS:
     -0, --stdin         Use stdin for target program
     -1, --stdout        Show stdout output
         --strict        Panic on invalid instructions and ESIL
-    -V, --version       Prints version information
+        --version       Prints version information
     -v, --verbose       Show verbose / debugging output
 
 OPTIONS:
@@ -32,19 +34,20 @@ OPTIONS:
     -B, --break-strings <break_strings>...    Breakpoint code xrefs to strings
     -b, --break <breakpoint>...               Breakpoint at some target address
     -c, --constrain <SYMBOL> <EXPR>           Constrain symbol values with string or pattern
+    -C, --constrain-after <SYMBOL> <EXPR>     Constrain symbol or file values after execution
         --env <env>...                        Environment variable for the target program
     -e, --eval <ESIL>...                      Evaluate ESIL expression
     -E, --eval-after <ESIL>...                Evaluate ESIL expression after execution
     -f, --file <PATH> <SYMBOL>                Add a symbolic file
     -F, --fuzz <fuzz>                         Generate testcases and write to supplied dir
     -H, --hook <ADDR> <EXPR>                  Hook the provided address with an ESIL expression
-    -L, --libs <libs>                         Load libraries from path
+    -L, --libs <libs>...                      Load libraries from path
         --max <max>                           Maximum number of states to keep at a time
     -m, --merge <merge>...                    Set address as a mergepoint
     -p, --path <path>                         Path to the target binary
     -r, --r2-cmd <CMD>...                     Run r2 command on launch
     -S, --set <REG/ADDR> <VALUE> <BITS>       Set memory or register values
-    -s, --symbol <NAME> <BITS> <num|str>      Create a symbolic value
+    -s, --symbol <NAME> <BITS>                Create a symbolic value
     -t, --threads <threads>                   Number of threads to execute [default: 1]
 ```
 

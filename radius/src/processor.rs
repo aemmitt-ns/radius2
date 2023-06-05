@@ -830,6 +830,21 @@ impl Processor {
             }
             state.registers.set_pc(Value::Concrete(new_pc_val, 0));
             states
+        } else if self.selfmodify {
+            let mut states: Vec<State> = Vec::with_capacity(pc_allocs);
+
+            // this is bad, 8 bytes is not enough, but this is what it is for now
+            let mem = state.memory_read_value(&new_pc, 8);
+            if let Value::Symbolic(bv, _t) = mem.clone() {
+                let possible = state.evaluate_many(&bv);
+
+                for pos in possible {
+                    let mut new_state = state.clone();
+                    new_state.assert(&mem.eq(&vc(pos)));
+                    states.push(new_state);
+                }
+            }
+            states
         } else {
             vec![]
         }
