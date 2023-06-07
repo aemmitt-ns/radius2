@@ -694,6 +694,10 @@ impl Memory {
     pub fn addresses(&self) -> Vec<u64> {
         self.mem.keys().cloned().collect::<Vec<u64>>()
     }
+
+    pub fn in_memory(&self, addr: u64) -> bool {
+        self.mem.contains_key(&(addr & -(READ_CACHE as i64) as u64))
+    }
 }
 
 #[derive(Clone)]

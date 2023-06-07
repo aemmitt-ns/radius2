@@ -11,7 +11,9 @@ pub fn log2(x: u32) -> u32 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    /// A concrete u64 value and an optional taint value
     Concrete(u64, u64),
+    /// A symbolic bitvector value and an optional taint value
     Symbolic(BitVec, u64),
 }
 

@@ -51,7 +51,7 @@ OPTIONS:
     -t, --threads <threads>                   Number of threads to execute [default: 1]
 ```
 
-The only required argument is `--path` and the default behaviour of `radius2` is simply to begin execution from an `entry_state`, a state at the entrypoint of the program and run until the program exits, so `radius2 -p /bin/ls` will run, print nothing, and finish. To see what is "going on" the `-v` option can be used to view the instructions as they execute (`-C` will output with color)
+The only required argument is `--path` and the default behaviour of `radius2` is simply to begin execution from an `entry_state`, a state at the entrypoint of the program and run until the program exits, so `radius2 -p /bin/ls` will run, print nothing, and finish. To see what is "going on" the `-v` option can be used to view the instructions as they execute (`-V` will output with color)
 
 ```
 $ radius2 -p /bin/ls -v
@@ -66,7 +66,7 @@ $ radius2 -p /bin/ls -v
 
 The string on the right is ESIL, the intermediate language that is actually being executed by radius. It will be explained more below. By default no libraries are loaded and standard c functions are emulated (see the contents of radius/sims/libc.rs). Shared libraries can be loaded by using the `-L` argument to specify directories to load from. 
 
-Symbolic values can be defined with `-s <name> <bits> <type>` where type can either be `num` or `str` to determine how the symbol is printed after evaluation. `stdin` is a special name that is automatically treated as the content of stdin, equivalent to `-s stdin 32 -f 0 stdin` (numeric file names are treated as file descriptors). A simple crackme can be solved as easily as 
+Symbolic values can be defined with `-s <name> <bits>[n]` where n is appended to the bits in order to force printing the value as a number after evaluation. `stdin` is a special name that is automatically treated as the content of stdin, equivalent to `-s stdin 32 -f 0 stdin` (numeric file names are treated as file descriptors). A simple crackme can be solved as easily as 
 
 ```
 $ radius2 -p r100 -s stdin 96 -X Incorrect
@@ -96,7 +96,7 @@ $ radius2 -p unbreakable -s flag 408 -c flag 'CTF{' -B 'Thank you' -z -A . flag
   flag : "CTF{0The1Quick2Brown3Fox4Jumped5Over6The7Lazy8Fox9}"
 ```
 
-This example also constrains the first four bytes of `flag` to be "CTF{" with `-c` and passes `-z` to enable lazy solving, which will significantly speed up runtime (from 1 second down to 0.4 or so). In some cases string XREFs may not be found, in this case try passing `-r aae` which will tell r2 to emulate the program to find addtional references. 
+This example also constrains the first four bytes of `flag` to be "CTF{" with `-c` and passes `-z` to enable lazy solving, which will significantly speed up runtime (from 1 second down to 0.4 or so). In some cases string XREFs may not be found, in this case try passing `-r aae` which will tell r2 to emulate the program to find additional references. 
 
 `radius2` also has a basic testcase generation option, `-F <dir>` which will generate files containing values of the defined symbols for each different execution path. 
 

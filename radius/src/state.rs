@@ -10,10 +10,9 @@ use std::rc::Rc;
 use std::u8;
 use std::collections::HashMap;
 
-// use backtrace::Backtrace;
-
 // event hooks could be a performance issue at some point
 // prolly not now cuz there are 10000 slower things
+// but also i hate the code for them and want to remove it
 pub const DO_EVENT_HOOKS: bool = false;
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
@@ -103,6 +102,7 @@ pub enum StateStatus {
     Exit,
 }
 
+/// A program state, including memory, registers, and solver data
 #[derive(Clone)]
 pub struct State {
     pub solver: Solver,
@@ -201,6 +201,8 @@ impl State {
         }
     }
 
+    /// duplicate state is different from clone as it creates
+    /// a duplicate solver instead of another reference to the old one
     pub fn duplicate(&mut self) -> Self {
         let solver = self.solver.duplicate();
 

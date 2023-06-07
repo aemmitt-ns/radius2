@@ -50,21 +50,18 @@ pub enum RadiusOption {
     LibPath(String),
 }
 
-/**
- * Main Radius struct that coordinates and configures
- * the symbolic execution of a binary.
- *
- * Radius can be instantiated using either `Radius::new(filename: &str)`
- * or `Radius::new_with_options(...)`
- *
- * **Example**
- *
- * ```
- * use radius2::radius::Radius;
- * let mut radius = Radius::new("../tests/r200");
- * ```
- *
- */
+/// Main Radius struct that coordinates and configures
+/// the symbolic execution of a binary.
+///
+/// Radius can be instantiated using either `Radius::new(filename: &str)`
+/// or `Radius::new_with_options(...)`
+///
+///  ## Example
+///
+/// ```
+/// use radius2::radius::Radius;
+/// let mut radius = Radius::new("/bin/sh");
+/// ```
 pub struct Radius {
     pub r2api: R2Api,
     pub processor: Processor,
@@ -76,32 +73,34 @@ pub struct Radius {
 }
 
 impl Radius {
-    /**
-     * Create a new Radius instance for the provided binary
-     *
-     * **Example**
-     *
-     * ```
-     * use radius2::radius::Radius;
-     * let mut radius = Radius::new("../tests/r100");
-     * ```
-     */
+    /// Create a new Radius instance for the provided binary
+    /// 
+    /// ## Arguments
+    /// * `filename` - path to the target binary
+    /// 
+    /// ## Example
+    /// ```
+    /// use radius2::radius::Radius;
+    /// let mut radius = Radius::new("/bin/sh");
+    /// ```
     pub fn new<T: AsRef<str>>(filename: T) -> Self {
         // no radius options and no r2 errors by default
         Radius::new_with_options(Some(filename), &[])
     }
 
-    /**
-     * Create a new Radius instance for the provided binary with a vec of `RadiusOption`
-     *
-     * **Example**
-     *
-     * ```
-     * use radius2::radius::{Radius, RadiusOption};
-     * let options = [RadiusOption::Optimize(false), RadiusOption::Sims(false)];
-     * let mut radius = Radius::new_with_options(Some("../tests/baby-re"), &options);
-     * ```
-     */
+
+    /// Create a new Radius instance for the provided binary with a vec of `RadiusOption`
+    /// 
+    /// ## Arguments
+    /// * `filename` - path to the target binary
+    /// * `options` - array of options to configure radius2
+    /// 
+    /// ## Example
+    /// ```
+    ///   use radius2::radius::{Radius, RadiusOption};
+    ///   let options = [RadiusOption::Optimize(false), RadiusOption::Sims(false)];
+    ///   let mut radius = Radius::new_with_options(Some("/bin/sh"), &options);
+    /// ```
     pub fn new_with_options<T: AsRef<str>>(filename: Option<T>, options: &[RadiusOption]) -> Self {
         let mut argv = vec!["-2"];
         let mut eval_max = 256;
@@ -190,18 +189,19 @@ impl Radius {
         }
     }
 
-    /**
-     * Initialized state at the provided function address with an initialized stack
-     * (if applicable)
-     *
-     * **Example**
-     *
-     * ```
-     * use radius2::radius::Radius;
-     * let mut radius = Radius::new("../tests/r100");
-     * let mut state = radius.call_state(0x004006fd);
-     * ```
-     */
+
+    /// Initialized state at the provided function address with an initialized stack
+    /// (if applicable)
+    /// 
+    /// ## Arguments
+    /// * `addr` - the address of the function 
+    /// 
+    /// ## Example
+    /// ```
+    /// use radius2::radius::Radius;
+    /// let mut radius = Radius::new("/bin/sh");
+    /// let mut state = radius.call_state(0x004006fd);
+    /// ```
     pub fn call_state(&mut self, addr: u64) -> State {
         self.r2api.seek(addr);
         self.r2api.init_vm();
@@ -212,18 +212,18 @@ impl Radius {
         state
     }
 
-    /**
-     * Initialized state at the provided function name with an initialized stack
-     * equivalent to `call_state(get_address(sym))`
-     *
-     * **Example**
-     *
-     * ```
-     * use radius2::radius::Radius;
-     * let mut radius = Radius::new("../tests/r100");
-     * let mut state = radius.callsym_state("sym.imp.printf");
-     * ```
-     */
+    /// Initialized state at the provided function name with an initialized stack
+    /// equivalent to `call_state(get_address(sym))`
+    /// 
+    /// ## Arguments 
+    /// * `sym` - the name of the function
+    /// 
+    /// ## Example
+    ///  ```
+    ///  use radius2::radius::Radius;
+    ///  let mut radius = Radius::new("/bin/sh");
+    ///  let mut state = radius.callsym_state("printf");
+    ///  ```
     pub fn callsym_state<T: AsRef<str>>(&mut self, sym: T) -> State {
         let addr = self.get_address(sym).unwrap_or_default();
         self.call_state(addr)
@@ -254,17 +254,15 @@ impl Radius {
         state
     }
 
-    /**
-     * Initialized state at the program entry point (the first if multiple).
-     *
-     * **Example**
-     *
-     * ```
-     * use radius2::radius::Radius;
-     * let mut radius = Radius::new("../tests/r100");
-     * let mut state = radius.entry_state();
-     * ```
-     */
+    /// Initialized state at the program entry point (the first if multiple).
+    /// 
+    /// ## Example
+    /// 
+    /// ```
+    /// use radius2::radius::Radius;
+    /// let mut radius = Radius::new("/bin/sh");
+    /// let mut state = radius.entry_state();
+    /// ```
     pub fn entry_state(&mut self) -> State {
         // get the entrypoint
         let entrypoints = self.r2api.get_entrypoints().unwrap_or_default();
@@ -283,7 +281,7 @@ impl Radius {
         state
     }
 
-    /// Set argv and env with values instead of the dumb string way
+    /// Set argv and env with arrays of values
     pub fn set_argv_env(&mut self, state: &mut State, args: &[Value], env: &[Value]) {
         // we write args to both regs and stack
         // i think this is ok
@@ -326,6 +324,7 @@ impl Radius {
         }
     }
 
+    /// A default initial state
     pub fn init_state(&mut self) -> State {
         State::new(
             &mut self.r2api,
@@ -337,6 +336,7 @@ impl Radius {
         )
     }
 
+    /// A "blank" state with uninitialized values set to be symbolic
     pub fn blank_state(&mut self) -> State {
         State::new(
             &mut self.r2api,
@@ -348,7 +348,7 @@ impl Radius {
         )
     }
 
-    /// Blank except for PC and SP
+    /// A blank state except for PC and SP
     pub fn blank_call_state(&mut self, addr: u64) -> State {
         self.r2api.seek(addr);
         self.r2api.init_vm();
@@ -365,6 +365,10 @@ impl Radius {
     }
 
     /// Hook an address with a callback that is passed the `State`
+    /// 
+    /// ## Arguments
+    /// * `addr` - the address to hook
+    /// * `hook_callback` - the function to call once the address is reached
     pub fn hook(&mut self, addr: u64, hook_callback: HookMethod) {
         self.processor
             .hooks
@@ -373,7 +377,12 @@ impl Radius {
             .push(hook_callback);
     }
 
-    /// Hook an address with an esil expression
+    /// Hook an address with an esil expression. The instruction 
+    /// at the address is skipped if the last value on the stack is nonzero
+    /// 
+    /// ## Arguments
+    /// * `addr` - the address to hook
+    /// * `esil` - the ESIL expression to evaluate
     pub fn esil_hook(&mut self, addr: u64, esil: &str) {
         self.processor
             .esil_hooks
@@ -454,12 +463,16 @@ impl Radius {
 
     /// Add addresses that will be avoided during execution. Any
     /// `State` that reaches these addresses will be marked inactive
+    /// 
+    /// ## Arguments
+    /// * `addrs` - slice of addresses to avoid during execution
     pub fn avoid(&mut self, addrs: &[u64]) {
         for addr in addrs {
             self.processor.avoidpoints.insert(*addr);
         }
     }
 
+    /// Get total number of steps from all processors
     pub fn get_steps(&self) -> u64 {
         self.processor.steps
             + self
@@ -471,13 +484,13 @@ impl Radius {
                 .sum::<u64>()
     }
 
-    /// execute function
+    /// execute function and return the resulting state
     pub fn call_function(&mut self, sym: &str, state: State, args: Vec<Value>) -> Option<State> {
         let addr = self.r2api.get_address(sym).unwrap_or_default();
         self.call_address(addr, state, args)
     }
 
-    /// execute function at address
+    /// execute function at address and return the resulting state
     pub fn call_address(&mut self, addr: u64, mut state: State, args: Vec<Value>) -> Option<State> {
         state.set_args(args);
         state.registers.set_pc(vc(addr));
@@ -485,6 +498,11 @@ impl Radius {
     }
 
     /// Simple way to execute until a given target address while avoiding a vec of other addrs
+    /// 
+    /// ## Arguments
+    /// * `state` - the program state to begin running from
+    /// * `target` - the goal address where execution should stop and return the result state
+    /// * `avoid` - slice of addresses to avoid, states that reach them will be marked inactive
     pub fn run_until(&mut self, state: State, target: u64, avoid: &[u64]) -> Option<State> {
         self.breakpoint(target);
         self.avoid(avoid);
@@ -496,69 +514,14 @@ impl Radius {
         self.processor.run(state, RunMode::Multiple)
     }
 
-    /**
-     * Main run method, start or continue a symbolic execution
-     *
-     * More words
-     *
-     */
+    /// Main run method, start or continue a symbolic execution
+    /// 
+    /// ## Arguments
+    /// * `state` - the program state to begin executing from
+    /// * `threads` - number of threads (currently unused)
     pub fn run(&mut self, state: State, _threads: usize) -> Option<State> {
         // we are gonna scrap threads for now cuz theyre currently useless.
         self.processor.run(state, RunMode::Single).pop()
-
-        // if there are multiple threads we need to duplicate solvers
-        // else there will be race conditions. Unfortunately this
-        // will prevent mergers from happening. this sucks
-
-        /*if threads == 1 || !self.processor.mergepoints.is_empty() {
-            return self.processor.run(state, RunMode::Single).pop();
-        }
-
-        let mut handles = Vec::with_capacity(threads);
-        let statevector = Arc::new(Mutex::new(VecDeque::with_capacity(threads * self.eval_max)));
-        statevector.lock().unwrap().push_back(state);
-
-        loop {
-            let mut count = 0;
-            let _state_count = statevector.lock().unwrap().len();
-            while count < threads && !statevector.lock().unwrap().is_empty() {
-                //println!("on thread {}!", thread_count);
-                let procs = self.processors.clone();
-                let states = statevector.clone();
-                let state = states.lock().unwrap().pop_front().unwrap().duplicate();
-
-                let mut processor = if !procs.lock().unwrap().is_empty() {
-                    procs.lock().unwrap().pop().unwrap()
-                } else {
-                    self.processor.clone()
-                };
-
-                let handle = thread::spawn(move || {
-                    let new_states = processor.run(state, RunMode::Single);
-                    states.lock().unwrap().extend(new_states);
-                    procs.lock().unwrap().push(processor);
-                });
-                handles.push(handle);
-                count += 1;
-            }
-
-            while !handles.is_empty() {
-                handles.pop().unwrap().join().unwrap();
-            }
-
-            if statevector.lock().unwrap().is_empty() {
-                break None;
-            }
-
-            if let Some(state) = statevector
-                .lock()
-                .unwrap()
-                .iter()
-                .find(|s| s.status == StateStatus::Break)
-            {
-                break Some(state.to_owned());
-            }
-        }*/
     }
 
     /// Run radare2 analysis
