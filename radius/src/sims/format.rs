@@ -417,7 +417,7 @@ pub fn atoi_helper(state: &mut State, addr: &Value, base: &Value, size: u64) -> 
     }
     // this assertion is much faster than slicing dx
     if size < 64 {
-        let mask = (1i64.wrapping_shl(size as u32) - 1) as u64 ;
+        let mask = (1i64.wrapping_shl(size as u32) - 1) as u64;
         state.assert(&result.ulte(&Value::Concrete(mask, 0)));
     }
 
@@ -464,7 +464,6 @@ pub fn itoa_helper(
     sign: bool,
     size: usize,
 ) -> Value {
-
     if value.is_concrete() && base.is_concrete() {
         return itoa_concrete(state, value, string, base, sign, size);
     }

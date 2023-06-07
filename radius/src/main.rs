@@ -3,6 +3,7 @@ use crate::r2_api::hex_encode;
 use crate::radius::{Radius, RadiusOption, RunMode};
 use boolector::BV;
 use clap::{App, Arg};
+use colored::*;
 use std::path::Path;
 use std::time::Instant;
 use std::{fs, process};
@@ -14,8 +15,8 @@ use std::collections::HashMap;
 
 //use ahash::AHashMap;
 //type HashMap<P, Q> = AHashMap<P, Q>;
-use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 
 pub mod memory;
 pub mod operations;
@@ -44,7 +45,7 @@ macro_rules! collect {
 pub struct JsonOutput {
     pub symbols: HashMap<String, String>,
     pub stdout: String,
-    pub stderr: String
+    pub stderr: String,
 }
 
 fn main() {
@@ -608,8 +609,8 @@ fn main() {
         };
 
         if is_ref {
-            let addr = state.memory_alloc(&Value::Concrete(length as u64/8, 0));
-            state.memory_write_value(&addr, &value, length as usize/8);
+            let addr = state.memory_alloc(&Value::Concrete(length as u64 / 8, 0));
+            state.memory_write_value(&addr, &value, length as usize / 8);
             value = addr;
             length = state.memory.bits as u32;
         }
@@ -651,18 +652,13 @@ fn main() {
         }
 
         if let Some(mut end_state) = result {
-
             // collect the ESIL strings to evaluate after running
             let constraints: Vec<&str> = collect!(matches, "constrain_after");
             for i in 0..matches.occurrences_of("constrain_after") as usize {
                 let name = constraints[2 * i];
                 let con = constraints[2 * i + 1];
 
-                let cons = if con.starts_with('@') {
-                    &con[1..]
-                } else {
-                    con
-                };
+                let cons = if con.starts_with('@') { &con[1..] } else { con };
 
                 if symbol_map.contains_key(name) {
                     let bv = &symbol_map[name];
@@ -681,7 +677,9 @@ fn main() {
             }
             let solve_start = Instant::now();
 
-            if !do_json { println!() };
+            if !do_json {
+                println!()
+            };
             for symbol in symbol_map.keys() {
                 let val = Value::Symbolic(end_state.translate(&symbol_map[symbol]).unwrap(), 0);
 
@@ -691,20 +689,26 @@ fn main() {
                     let hex = end_state.solver.hex_solution(&bv).unwrap_or_default();
                     if !do_json {
                         if sym_type == "str" && str_opt.is_some() {
-                            println!("  {} : {:?}", symbol, str_opt.unwrap());
+                            println!("  {} : {:?}", symbol.green(), str_opt.unwrap());
                         } else {
-                            println!("  {} : 0x{}", symbol, hex);
+                            println!("  {} : 0x{}", symbol.green(), hex);
                         }
                     } else {
-                        json_out.symbols.insert(symbol.to_owned().to_owned(), hex.to_owned());
+                        json_out
+                            .symbols
+                            .insert(symbol.to_owned().to_owned(), hex.to_owned());
                     }
                 } else if !do_json {
-                    println!("  {} : no satisfiable value", symbol);
+                    println!("  {} : no satisfiable value", symbol.red());
                 } else {
-                    json_out.symbols.insert(symbol.to_owned().to_owned(), "unsat".to_owned());
-                }   
+                    json_out
+                        .symbols
+                        .insert(symbol.to_owned().to_owned(), "unsat".to_owned());
+                }
             }
-            if !do_json { println!() };
+            if !do_json {
+                println!()
+            };
 
             if profile {
                 println!("solve time:\t{}", solve_start.elapsed().as_micros());
@@ -712,10 +716,17 @@ fn main() {
 
             // dump program output
             let head = "=".repeat(37);
+            let foot = "=".repeat(80);
             if occurs!(matches, "stdout") {
                 let out = end_state.dump_file_string(1).unwrap_or_default();
                 if !do_json {
-                    println!("{}stdout{}\n{}\n{}======{}", head, head, out, head, head);
+                    println!(
+                        "{}stdout{}\n{}\n{}",
+                        head.blue(),
+                        head.blue(),
+                        out,
+                        foot.blue()
+                    );
                 } else {
                     json_out.stdout = out;
                 }
@@ -723,17 +734,24 @@ fn main() {
             if occurs!(matches, "stderr") {
                 let out = end_state.dump_file_string(2).unwrap_or_default();
                 if !do_json {
-                    println!("\n{}stderr{}\n{}\n{}======{}", head, head, out, head, head);
+                    println!(
+                        "{}stderr{}\n{}\n{}",
+                        head.red(),
+                        head.red(),
+                        out,
+                        foot.red()
+                    );
                 } else {
                     json_out.stderr = out;
                 }
             }
         }
-        
+
         if do_json {
             println!("{}", serde_json::to_string(&json_out).unwrap_or_default());
         }
-    } else { // TODO this is temporary until I integrate a real testcase gen mode in processor
+    } else {
+        // TODO this is temporary until I integrate a real testcase gen mode in processor
         let mut pcs: HashMap<u64, usize> = HashMap::new();
         let mut states = VecDeque::new();
         let mut solutions: HashMap<Vec<u8>, usize> = HashMap::new();

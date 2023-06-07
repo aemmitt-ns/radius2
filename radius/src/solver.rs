@@ -77,7 +77,7 @@ impl Solver {
             // what the fuck
             BV::from_u64(self.btor.clone(), v, n)
         } else {
-            BV::from_u64(self.btor.clone(), v, 64).uext(n-64)
+            BV::from_u64(self.btor.clone(), v, 64).uext(n - 64)
         }
     }
 
@@ -128,8 +128,10 @@ impl Solver {
             if let Some(x) = if_val.as_u64() {
                 if let Some(y) = else_val.as_u64() {
                     if x == y {
-                        return Value::Concrete(if_val.as_u64().unwrap(), 
-                            if_val.get_taint() | else_val.get_taint());
+                        return Value::Concrete(
+                            if_val.as_u64().unwrap(),
+                            if_val.get_taint() | else_val.get_taint(),
+                        );
                     }
                 }
             }
@@ -265,9 +267,8 @@ impl Solver {
 
     // evaluate and constrain the symbol to the value
     pub fn evalcon(&mut self, lbv: &BitVec) -> Option<u64> {
-
-        // TODO this is a stupid fix to 128 bit float reg evalcon-ing 
-        // all of this code needs to be reorganized around Values instead of 
+        // TODO this is a stupid fix to 128 bit float reg evalcon-ing
+        // all of this code needs to be reorganized around Values instead of
         // returning u64s, except for circumstances explicitly involving addresses
         let bv = if lbv.get_width() <= 64 {
             lbv.to_owned()
@@ -395,8 +396,9 @@ impl Solver {
     pub fn hex_solution(&self, bv: &BitVec) -> Option<String> {
         if let Some(bin) = self.solution(bv) {
             let mut hex = "".to_owned();
-            for i in 0..bin.len()/8 { // 
-                let byte = u64::from_str_radix(&bin[8*i .. 8*(i+1)], 2);
+            for i in 0..bin.len() / 8 {
+                //
+                let byte = u64::from_str_radix(&bin[8 * i..8 * (i + 1)], 2);
                 hex += &format!("{:02x}", byte.unwrap_or_default());
             }
             Some(hex)

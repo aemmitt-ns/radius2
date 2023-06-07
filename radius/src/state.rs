@@ -3,12 +3,12 @@ use crate::r2_api::{Endian, Information, R2Api};
 use crate::registers::Registers;
 use crate::sims::fs::SimFilesytem;
 use crate::solver::{BitVec, Solver};
-use crate::value::{vc, Value, byte_values};
+use crate::value::{byte_values, vc, Value};
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::u8;
-use std::collections::HashMap;
 
 // event hooks could be a performance issue at some point
 // prolly not now cuz there are 10000 slower things
@@ -220,7 +220,10 @@ impl State {
         let addrs = memory.addresses();
         for addr in addrs {
             let values = memory.mem.remove(&addr).unwrap();
-            memory.mem.insert(addr, values.iter().map(|v| solver.translate_value(&v)).collect());
+            memory.mem.insert(
+                addr,
+                values.iter().map(|v| solver.translate_value(&v)).collect(),
+            );
         }
 
         let mut context = HashMap::new();
@@ -396,7 +399,7 @@ impl State {
         ret
     }
 
-    /// Read `length` byte value from `address`
+    /// Read `length` byte `value` from `address`
     #[inline]
     pub fn memory_read_value(&mut self, address: &Value, length: usize) -> Value {
         if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
@@ -422,7 +425,7 @@ impl State {
         ret
     }
 
-    /// Write `length` byte value to `address`
+    /// Write `length` byte `value` to `address`
     #[inline]
     pub fn memory_write_value(&mut self, address: &Value, value: &Value, length: usize) {
         if DO_EVENT_HOOKS && self.has_event_hooks && address.is_symbolic() {
@@ -607,7 +610,7 @@ impl State {
         self.memory_read_value(address, ptr_len)
     }
 
-    /// Read pointer from `address`
+    /// Write pointer `value` to `address`
     pub fn memory_write_ptr(&mut self, address: &Value, value: &Value) {
         let ptr_len = self.memory.bits as usize / 8;
         self.memory_write_value(address, value, ptr_len)
@@ -712,7 +715,7 @@ impl State {
         // TODO: evaluate files and write to real FS? maybe a bad idea
     }
 
-    /// merges the argument state into self
+    /// Merges `state` into self
     pub fn merge(&mut self, state: &mut State) {
         let state_asserts = &state.solver.assertions;
         let assertion = state.solver.and_all(state_asserts);
@@ -738,7 +741,7 @@ impl State {
 
         let mut tmp1 = Vec::with_capacity(READ_CACHE);
         let mut tmp2 = Vec::with_capacity(READ_CACHE);
-        
+
         for addr in addrs {
             let newvec = if let Some(m) = self.memory.mem.get_mut(&addr) {
                 m
@@ -752,7 +755,7 @@ impl State {
                 state.memory.read(addr, READ_CACHE, &mut tmp2);
                 &tmp2
             };
-            
+
             for i in 0..READ_CACHE {
                 newvec[i] = state.cond(&asserted, &curvec[i], &newvec[i]);
             }
@@ -787,14 +790,12 @@ impl State {
     }
 
     /// Create a `Value::Concrete` from a value `v` and bit width `n`
-    #[inline]
     pub fn concrete_value(&self, v: u64, n: u32) -> Value {
         let mask = if n < 64 { (1 << n) - 1 } else { -1i64 as u64 };
         Value::Concrete(v & mask, 0)
     }
 
     /// Create a `Value::Symbolic` from a name `s` and bit width `n`
-    #[inline]
     pub fn symbolic_value(&self, s: &str, n: u32) -> Value {
         Value::Symbolic(self.bv(s, n), 0)
     }
@@ -840,6 +841,7 @@ impl State {
         self.solver.translate(bv)
     }
 
+    /// Translate `value` to this states solver
     pub fn translate_value(&self, value: &Value) -> Value {
         self.solver.translate_value(value)
     }
@@ -859,8 +861,8 @@ impl State {
         self.solver.evalcon(bv)
     }
 
-    /// constrain bytes of bitvector to be an exact string eg. "ABC"
-    /// or use "[...]" to match a simple pattern eg. "[XYZa-z0-9]"
+    /// Constrain bytes of bitvector to be an exact string eg. "ABC"
+    /// or use "\[...\]" to match a simple pattern eg. "\[XYZa-z0-9\]"
     pub fn constrain_bytes_bv(&mut self, bv: &BitVec, pattern: &str) {
         if &pattern[..1] != "[" {
             for (i, c) in pattern.chars().enumerate() {
@@ -896,28 +898,22 @@ impl State {
         }
     }
 
-    /// constrain bytes of bitvector to be an exact string eg. "ABC"
-    /// or use "[...]" to match a simple pattern eg. "[XYZa-z0-9]"
+    /// Constrain bytes of bitvector to be an exact string eg. "ABC"
+    /// or use "\[...\]" to match a simple pattern eg. "\[XYZa-z0-9\]"
     pub fn constrain_bytes(&mut self, bv: &Value, pattern: &str) {
         if let Value::Symbolic(s, _) = bv {
             self.constrain_bytes_bv(s, pattern)
         }
     }
 
-    /// constrain bytes of file with file descriptor
+    /// Constrain bytes of file with file descriptor `fd` and pattern
     pub fn constrain_fd(&mut self, fd: usize, content: &str) {
         let fbytes = self.dump_file(fd);
         let fbv = self.pack(&fbytes);
         self.constrain_bytes(&fbv, content);
-        //let cbytes = byte_values(content);
-        /*for i in 0..cbytes.len() {
-            if i < fbytes.len() {
-                self.assert(&cbytes[i].eq(&fbytes[i]));
-            }
-        }*/
     }
 
-    /// constrain bytes of file 
+    /// Constrain bytes of file at `path` with pattern
     pub fn constrain_file(&mut self, path: &str, content: &str) {
         if let Some(fd) = self.filesystem.getfd(path) {
             self.constrain_fd(fd, content);
@@ -934,14 +930,14 @@ impl State {
         }
     }
 
-    /// increment visit counter
+    /// Increment visit counter
     pub fn visit(&mut self) {
         if let Some(pc) = self.registers.get_pc().as_u64() {
             self.visits.entry(pc).and_modify(|c| *c += 1).or_insert(1);
         }
     }
 
-    /// get visit counter
+    /// Get visit counter
     pub fn get_visit(&self) -> usize {
         if let Some(pc) = self.registers.get_pc().as_u64() {
             *self.visits.get(&pc).unwrap_or(&0)
@@ -950,7 +946,7 @@ impl State {
         }
     }
 
-    /// print backtrace
+    /// Print backtrace
     pub fn print_backtrace(&mut self) {
         for (i, bt) in self.backtrace.iter().rev().enumerate() {
             let name = self.r2api.get_flag(bt.1).unwrap_or_default();
@@ -958,22 +954,22 @@ impl State {
         }
     }
 
-    /// set status of state (active, inactive, merge, unsat...)
+    /// Set status of state (active, inactive, merge, unsat...)
     pub fn set_status(&mut self, status: StateStatus) {
         self.status = status;
     }
 
-    /// get status of state (active, inactive, merge, unsat...)
+    /// Get status of state (active, inactive, merge, unsat...)
     pub fn get_status(&mut self) -> StateStatus {
         self.status.clone()
     }
 
-    /// convenience method to mark state inactive
+    /// Convenience method to mark state inactive
     pub fn set_inactive(&mut self) {
         self.set_status(StateStatus::Inactive);
     }
 
-    /// convenience method to mark state crashed
+    /// Convenience method to mark state crashed
     pub fn set_crash(&mut self, addr: u64, perm: char) {
         self.set_status(StateStatus::Crash(addr, perm));
     }

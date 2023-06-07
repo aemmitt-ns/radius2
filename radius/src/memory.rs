@@ -18,11 +18,14 @@ const HEAP_CANARY_SIZE: u64 = 0x10;
 // const HEAP_CHUNK: u64 = 0x100;
 
 // i think these are different on darwin
-const PROT_NONE:  u64 = 0x0;
-const PROT_READ:  u64 = 0x1;
+const PROT_NONE: u64 = 0x0;
+const PROT_READ: u64 = 0x1;
 const PROT_WRITE: u64 = 0x2;
-const PROT_EXEC:  u64 = 0x4;
+const PROT_EXEC: u64 = 0x4;
 
+/// The virtual memory of the program state
+///
+/// Values in Memory can be either Concrete or Symbolic
 #[derive(Clone)]
 pub struct Memory {
     pub solver: Solver,
@@ -35,7 +38,7 @@ pub struct Memory {
     pub bits: u64,
     pub endian: Endian,
     pub segs: Vec<MemorySegment>,
-    pub blank: bool
+    pub blank: bool,
 }
 
 pub enum Permission {
@@ -56,6 +59,7 @@ pub struct MemorySegment {
 }
 
 impl Memory {
+    /// Create a new Memory struct to hold memory values for symbolic execution
     pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool) -> Memory {
         let segments = r2api.get_segments().unwrap();
         let mut segs = Vec::with_capacity(64);
@@ -94,10 +98,10 @@ impl Memory {
             endian: Endian::from_string(endian),
             segs,
             blank,
-
         }
     }
 
+    /// Allocate memory `length` bytes long. Returns the address of the allocation.
     pub fn alloc(&mut self, length: &Value) -> u64 {
         let len = length.as_u64().unwrap();
         let addr = self.heap.alloc(len);
@@ -112,6 +116,7 @@ impl Memory {
         Value::Concrete(self.heap.alloc(len), 0)
     }
 
+    /// Free allocated memory
     pub fn free(&mut self, addr: &Value) -> Value {
         let address = addr.as_u64().unwrap();
         if let Some(ret) = self.heap.free(address) {
@@ -127,6 +132,7 @@ impl Memory {
         self.free(&Value::Concrete(address, 0))
     }
 
+    /// Check the permissions `perm` (r/w/x) of the memory at `addr`
     #[inline]
     pub fn check_permission(&self, addr: u64, length: u64, perm: char) -> bool {
         for seg in &self.segs {
@@ -157,7 +163,8 @@ impl Memory {
     }
 
     pub fn add_heap(&mut self) {
-        self.mem.insert(HEAP_START, vec![Value::Concrete(0, 0); READ_CACHE]);
+        self.mem
+            .insert(HEAP_START, vec![Value::Concrete(0, 0); READ_CACHE]);
         self.add_segment("heap", HEAP_START, HEAP_SIZE, "rw--");
     }
 
@@ -166,6 +173,7 @@ impl Memory {
         self.add_segment("stack", STACK_START, STACK_SIZE, "rw--");
     }
 
+    // its hard to overstate how much all of this sucks
     pub fn add_std_streams(&mut self) {
         let mut fd = 0;
         let stds = ["stdin", "stdout", "stderr"];
@@ -193,7 +201,7 @@ impl Memory {
             }
         }
 
-        // Also put the macos canary here idk
+        // Also put the macos canary here idk. this 100% sucks
         let stk_chk = self.r2api.get_address("reloc.__stack_chk_guard").unwrap();
         if stk_chk != 0 {
             let chk_value_addr = self.heap.alloc(8);
@@ -427,7 +435,6 @@ impl Memory {
         let mut result = Value::Concrete(0, 0);
 
         for ind in 0..len as usize {
-
             let d1 = &data1[ind].uext(&Value::Concrete(8, 0));
             let d2 = &data2[ind].uext(&Value::Concrete(8, 0));
 
@@ -450,7 +457,7 @@ impl Memory {
         result
     }
 
-    #[inline]
+    /// read a Value of `length` bytes from memory at `addr`
     pub fn read_value(&mut self, addr: u64, length: usize) -> Value {
         if length <= 32 {
             let mut data: [Value; 32] = Default::default();
@@ -463,7 +470,7 @@ impl Memory {
         }
     }
 
-    #[inline]
+    /// write a Value of `length` bytes to memory at `addr`
     pub fn write_value(&mut self, addr: u64, value: &Value, length: usize) {
         if length <= 32 {
             let mut data: [Value; 32] = Default::default();
@@ -476,12 +483,13 @@ impl Memory {
         }
     }
 
+    /// read `length` bytes from memory at `addr` into `data`
     pub fn read(&mut self, addr: u64, length: usize, data: &mut [Value]) {
         if length == 0 || data.len() == 0 {
             return;
         }
         let make_sym = self.blank && !self.check_permission(addr, length as u64, 'i');
-        
+
         let size = READ_CACHE as u64;
         let mask = -1i64 as u64 ^ (size - 1);
         let not_mask = size - 1;
@@ -497,13 +505,16 @@ impl Memory {
             } else if make_sym {
                 let mut vals = Vec::with_capacity(READ_CACHE);
                 for i in 0..size {
-                    let sym_name = format!("mem_{:08x}", caddr+i);
+                    let sym_name = format!("mem_{:08x}", caddr + i);
                     vals.push(Value::Symbolic(self.solver.bv(&sym_name, 8), 0));
                 }
-                self.mem.entry(caddr).or_insert(vals) 
+                self.mem.entry(caddr).or_insert(vals)
             } else {
                 let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
-                let vals = bytes.iter().map(|b| Value::Concrete(*b as u64, 0)).collect();
+                let vals = bytes
+                    .iter()
+                    .map(|b| Value::Concrete(*b as u64, 0))
+                    .collect();
                 self.mem.entry(caddr).or_insert(vals)
             };
 
@@ -568,6 +579,7 @@ impl Memory {
         self.write(addr, &mut data_value);
     }
 
+    /// write `length` bytes to memory at `addr` from `data`
     pub fn write(&mut self, addr: u64, data: &mut [Value]) {
         let length = data.len();
         let size = READ_CACHE as u64;
@@ -609,6 +621,7 @@ impl Memory {
     }
 
     // jesus this got huge
+    /// Pack the bytes in `data` into a Value according to the endianness of the target
     pub fn pack(&self, data: &[Value]) -> Value {
         let new_data = data;
         let length = new_data.len();
@@ -664,6 +677,7 @@ impl Memory {
         }
     }
 
+    /// Unpack the Value into `length` bytes and store them in the `data` ref
     pub fn unpack(&self, value: &Value, length: usize, data: &mut [Value]) {
         //let mut data: Vec<Value> = Vec::with_capacity(length);
         if length == 0 {
@@ -700,6 +714,7 @@ impl Memory {
     }
 }
 
+/// An extremely simple heap
 #[derive(Clone)]
 pub struct Heap {
     pub start: u64,
@@ -707,6 +722,7 @@ pub struct Heap {
     pub chunks: Vec<Chunk>,
 }
 
+/// A chunk within the Heap
 #[derive(Clone, PartialEq)]
 pub struct Chunk {
     pub addr: u64,
@@ -729,7 +745,10 @@ impl Heap {
     pub fn alloc(&mut self, size: u64) -> u64 {
         let last = &self.chunks[self.chunks.len() - 1];
         let addr = last.addr + last.size;
-        self.chunks.push(Chunk { addr, size: size + HEAP_CANARY_SIZE});
+        self.chunks.push(Chunk {
+            addr,
+            size: size + HEAP_CANARY_SIZE,
+        });
         addr
     }
 
@@ -744,6 +763,5 @@ impl Heap {
         } else {
             None
         }
-        
     }
 }

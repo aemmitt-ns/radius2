@@ -134,7 +134,7 @@ impl ops::Div<Value> for Value {
     fn div(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
-                // boolector makes /0 always -1 so 
+                // boolector makes /0 always -1 so
                 if b != 0 {
                     Value::Concrete(a.wrapping_div(b), t1 | t2)
                 } else {
@@ -339,7 +339,7 @@ impl Value {
     pub fn sdiv(self, rhs: Value) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
-                // boolector makes /0 always -1 so 
+                // boolector makes /0 always -1 so
                 if b != 0 {
                     Value::Concrete(((a as i64).wrapping_div(b as i64)) as u64, t1 | t2)
                 } else {
@@ -646,7 +646,10 @@ impl Value {
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
                 //let bv = make_bv(&a, b, a.get_width());
-                Value::Symbolic(a.slice(*b as u32 - 1, 0).sext(64 - (*b % 64) as u32), *t1 | *t2)
+                Value::Symbolic(
+                    a.slice(*b as u32 - 1, 0).sext(64 - (*b % 64) as u32),
+                    *t1 | *t2,
+                )
             }
             (Value::Concrete(a, t), Value::Symbolic(_b, _t)) => {
                 // uh hopefully this doesnt happen
@@ -664,7 +667,11 @@ impl Value {
     pub fn slice(&self, high: u64, low: u64) -> Value {
         match self {
             Value::Concrete(a, t) => {
-                let mask = if (high - low) < 63 { (1 << (high - low + 1)) - 1 } else { -1i64 as u64 };
+                let mask = if (high - low) < 63 {
+                    (1 << (high - low + 1)) - 1
+                } else {
+                    -1i64 as u64
+                };
                 Value::Concrete((*a >> low) & mask, *t)
             }
             Value::Symbolic(a, t) => Value::Symbolic(a.slice(high as u32, low as u32), *t),

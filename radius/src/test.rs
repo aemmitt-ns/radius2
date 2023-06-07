@@ -208,11 +208,7 @@ fn format() {
     //state.assert_value(&dx.eq(&vc('x' as u64)));
 
     // symbolic format
-    let fmt = [
-        vc('%' as u64),
-        dx,
-        vc(0)
-    ];
+    let fmt = [vc('%' as u64), dx, vc(0)];
     state.memory_write(&fmt_addr, &fmt, &vc(8));
 
     //state.memory_write_string(fmt_addr.as_u64().unwrap(), "%02x");
@@ -244,7 +240,7 @@ fn symmem() {
         Event::SymbolicRead(EventTrigger::Before),
         Rc::new(|_s, _e| {
             println!("hit event hook");
-        })
+        }),
     );
 
     let x = state.bv("x", 64);

@@ -1,5 +1,5 @@
 use crate::state::{StackItem, State};
-use crate::value::{Value, vc};
+use crate::value::{vc, Value};
 use std::f64;
 
 pub const OPS: [&str; 16] = [
@@ -164,8 +164,8 @@ impl Operations {
             "=[4]" => Operations::Poke(4),
             "=[8]" => Operations::Poke(8),
             "=[16]" => Operations::Poke(16),
-            "=[]" => Operations::PokeBits, 
-            "[]" => Operations::PeekBits, 
+            "=[]" => Operations::PokeBits,
+            "[]" => Operations::PeekBits,
             "=[n]" => Operations::PokeSize,
             "[n]" => Operations::PeekSize,
             "=[*]" => Operations::PokeMany,
@@ -211,7 +211,7 @@ impl Operations {
             "_+" => Operations::ConstraintPush,
             "_-" => Operations::ConstraintPop,
             "!!" => Operations::Terminate, // state.set_break()
-            "!_" => Operations::Discard,  // state.set_inactive()
+            "!_" => Operations::Discard,   // state.set_inactive()
 
             "$z" => Operations::Zero,
             "$c" => Operations::Carry,
@@ -244,7 +244,6 @@ pub fn get_size(state: &mut State) -> u32 {
     state.stack.push(item);
     sz
 }
-
 
 #[inline]
 pub fn pop_bv(state: &mut State, n: u32) -> Value {
@@ -437,7 +436,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::Interrupt => {}
         Operations::Syscall => {}
         Operations::PcAddress => {
-            push_value(state, state.esil.prev_pc.clone()); 
+            push_value(state, state.esil.prev_pc.clone());
         }
         Operations::If => {} // these are handled in processor
         Operations::Else => {}
@@ -643,7 +642,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             state.esil.last_sz = 8 * (*n);
         }
         Operations::PeekBits => {
-            let n = (state.memory.bits/8) as usize;
+            let n = (state.memory.bits / 8) as usize;
             let addr = pop_value(state, false, false);
 
             let val = state.memory_read_value(&addr, n);
@@ -654,7 +653,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             state.esil.last_sz = 8 * n;
         }
         Operations::PokeBits => {
-            let n = (state.memory.bits/8) as usize;
+            let n = (state.memory.bits / 8) as usize;
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
 
@@ -715,7 +714,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             for _ in 0..num {
                 if let Some(StackItem::StackRegister(ind)) = state.stack.pop() {
                     let reg = state.registers.indexes[ind].clone();
-                    let val = state.memory_read_value(&addr, reg.reg_info.size as usize/8);
+                    let val = state.memory_read_value(&addr, reg.reg_info.size as usize / 8);
                     do_equal(state, StackItem::StackRegister(ind), val, false);
                     addr = addr + vc(reg.reg_info.size);
                 }
@@ -729,7 +728,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                 if let Some(StackItem::StackRegister(ind)) = state.stack.pop() {
                     let reg = state.registers.indexes[ind].clone();
                     let val = state.registers.get_value(ind);
-                    state.memory_write_value(&addr, &val, reg.reg_info.size as usize/8);
+                    state.memory_write_value(&addr, &val, reg.reg_info.size as usize / 8);
                     addr = addr + vc(reg.reg_info.size);
                 }
             }
@@ -894,7 +893,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         }
         Operations::PrintStack => {
             for value in state.stack.iter().rev() {
-                    println!("{:?}", value);
+                println!("{:?}", value);
             }
         }
         Operations::Break => {}

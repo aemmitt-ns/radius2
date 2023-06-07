@@ -1,5 +1,5 @@
 use r2pipe::{R2Pipe, R2PipeSpawnOptions};
-use serde::{Deserializer, Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::{Arc, Mutex};
 use std::u64;
 use std::u8;
@@ -305,7 +305,7 @@ pub struct Import {
 
     #[serde(default)]
     pub r#type: String,
-    
+
     #[serde(default)]
     pub name: String,
 
@@ -319,7 +319,7 @@ pub struct FridaImport {
     pub module: String,
     pub r#type: String,
     pub name: String,
-    
+
     #[serde(deserialize_with = "from_hex")]
     pub address: u64,
 }
@@ -372,19 +372,17 @@ pub struct ObjCClassInfo {
     #[serde(default)]
     pub fields: Vec<ObjCClassField>,
 
-    pub addr: u64
+    pub addr: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JavaClassInfo {
-    
     pub classname: String,
     pub vaddr: u64,
 
     #[serde(default)]
     pub index: i64,
     //pub r#super: String,
-
     #[serde(default)]
     pub methods: Vec<JavaClassMethod>,
 
@@ -530,7 +528,7 @@ impl R2Api {
         };
 
         if r2api.mode == Mode::Frida {
-            let info  = r2api.get_frida_info().unwrap();
+            let info = r2api.get_frida_info().unwrap();
             r2api.info.bin.arch = info.arch;
             r2api.info.bin.bits = info.bits;
         }
@@ -723,12 +721,12 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }*/
 
-    pub fn get_objc_class(&mut self, class:  &str) -> R2Result<ObjCClassInfo> {
+    pub fn get_objc_class(&mut self, class: &str) -> R2Result<ObjCClassInfo> {
         let json = self.cmd(&format!("icj {}", class))?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn get_java_class(&mut self, class:  &str) -> R2Result<JavaClassInfo> {
+    pub fn get_java_class(&mut self, class: &str) -> R2Result<JavaClassInfo> {
         let json = self.cmd(&format!("icj {}", class))?;
         r2_result(serde_json::from_str(json.as_str()))
     }
@@ -822,7 +820,7 @@ impl R2Api {
         let cmd = format!("aer {}={}", reg, value);
         let _r = self.cmd(cmd.as_str());
     }
-    
+
     pub fn get_syscall_str(&mut self, sys_num: u64) -> R2Result<String> {
         let cmd = format!("asl {}", sys_num);
         let ret = self.cmd(cmd.as_str())?;
@@ -869,7 +867,8 @@ impl R2Api {
                 self.mode = Mode::Debugger;
                 self.cmd(&format!("doo {};db {};dc", args.join(" "), addr))
             }
-        }).unwrap_or_default();
+        })
+        .unwrap_or_default();
     }
 
     pub fn init_vm(&mut self) {
@@ -889,7 +888,7 @@ impl R2Api {
         // we are reaching levels of jankiness previously thought to be impossible
         let _alloc = self.cmd(": global.mem = Memory.alloc(0x2000)")?;
         let func = format!(
-            // experimenting with increasingly shitty ways to suspend. 
+            // experimenting with increasingly shitty ways to suspend.
             "{{global.mem.writeUtf8String(JSON.stringify(this.context,{}))}}",
             // need this to convert everything to strings oof
             "function(k,v){return v && typeof v === 'object' && Object.keys(v).length ? v:''+v}",
@@ -917,12 +916,21 @@ impl R2Api {
         let mut newcon = HashMap::new();
         for reg in context.keys() {
             if context[reg].starts_with("0x") {
-                newcon.insert(reg.to_owned(), u64::from_str_radix(&context[reg][2..], 16).unwrap_or(0));
+                newcon.insert(
+                    reg.to_owned(),
+                    u64::from_str_radix(&context[reg][2..], 16).unwrap_or(0),
+                );
             } else if context[reg].contains(".") {
                 // cant know if these are f32 or f64 so this will be wrong half the time. this sucks
-                newcon.insert(reg.to_owned(), f64::to_bits(context[reg].parse::<f64>().unwrap_or(0.0)));
+                newcon.insert(
+                    reg.to_owned(),
+                    f64::to_bits(context[reg].parse::<f64>().unwrap_or(0.0)),
+                );
             } else if !context[reg].starts_with("[") {
-                newcon.insert(reg.to_owned(), u64::from_str_radix(&context[reg], 10).unwrap_or(0));
+                newcon.insert(
+                    reg.to_owned(),
+                    u64::from_str_radix(&context[reg], 10).unwrap_or(0),
+                );
             }
         }
         newcon
@@ -960,13 +968,13 @@ impl R2Api {
             Ok(f_imps
                 .iter()
                 .map(|f| Import {
-                    name: f.name.to_owned(), 
-                    r#type: f.r#type.to_owned(), 
-                    ordinal: f.index, 
-                    plt: f.address, 
-                    bind: f.name.to_owned()
-                }).collect()
-            )
+                    name: f.name.to_owned(),
+                    r#type: f.r#type.to_owned(),
+                    ordinal: f.index,
+                    plt: f.address,
+                    bind: f.name.to_owned(),
+                })
+                .collect())
         }
     }
 
@@ -980,7 +988,6 @@ impl R2Api {
         let json = self.cmd(cmd.as_str())?;
         r2_result(serde_json::from_str(json.as_str()))
     }
-
 
     pub fn disassemble_function(&mut self, addr: u64) -> R2Result<Vec<Instruction>> {
         let cmd = format!("af @ {};pdfj @ {}", addr, addr);

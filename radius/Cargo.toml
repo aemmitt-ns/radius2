@@ -1,7 +1,7 @@
 [package]
 name = "radius2"
 description = "a fast symbolic execution framework using r2"
-version = "1.0.22"
+version = "1.0.23"
 authors = ["aemmitt-ns <aemmitt@nowsecure.com>"]
 license = "MIT"
 edition = "2018"
@@ -16,6 +16,7 @@ serde = { version = "1.0.117", features = ["derive"] }
 boolector = "0.4.3"
 clap = "2.33.3"
 rand = "0.8.4"
+colored = "2.0.0"
 
 [features]
 default = ["boolector/vendor-lgl"]

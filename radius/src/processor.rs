@@ -15,8 +15,8 @@ use std::collections::BinaryHeap;
 use std::mem;
 use std::rc::Rc;
 
-use std::collections::{HashMap, HashSet};
 use std::collections::BTreeMap;
+use std::collections::{HashMap, HashSet};
 
 const INSTR_NUM: usize = 64;
 // const COLOR: bool = true;
@@ -207,7 +207,11 @@ impl Processor {
     /// print instruction if debug output is enabled
     pub fn print_instr(&self, state: &mut State, instr: &Instruction) {
         if let Some(sim) = self.sims.get(&instr.offset) {
-            println!("\n0x{:08x}      ( {} )\n", instr.offset, "simulated ".to_owned() + &sim.symbol);
+            println!(
+                "\n0x{:08x}      ( {} )\n",
+                instr.offset,
+                "simulated ".to_owned() + &sim.symbol
+            );
         } else if !self.color {
             println!(
                 "0x{:08x}      {:<40} |  {}",
@@ -440,8 +444,8 @@ impl Processor {
                         match op {
                             Operations::WeakEqual | Operations::Equal => {
                                 regs_written.push(*index);
-                            } 
-                            _ => regs_read.push(*index)
+                            }
+                            _ => regs_read.push(*index),
                         }
                     } else {
                         regs_read.push(*index);
@@ -631,7 +635,8 @@ impl Processor {
             if state.backtrace.is_empty() && new_flags.is_empty() {
                 // try to avoid returning outside valid context
                 if let Value::Concrete(v, _) = state.registers.get_pc() {
-                    if !state.memory.check_permission(v, 1, 'x') { // if it looks invalid
+                    if !state.memory.check_permission(v, 1, 'x') {
+                        // if it looks invalid
                         if !self.breakpoints.is_empty() || !self.esil_hooks.is_empty() {
                             state.status = StateStatus::Inactive;
                         } else {
@@ -676,9 +681,15 @@ impl Processor {
                         return;
                     }
                 }
-                state.r2api.disassemble_bytes(pc_val, &data, 1).unwrap_or_default()
+                state
+                    .r2api
+                    .disassemble_bytes(pc_val, &data, 1)
+                    .unwrap_or_default()
             } else {
-                state.r2api.disassemble(pc_val, INSTR_NUM).unwrap_or_default()
+                state
+                    .r2api
+                    .disassemble(pc_val, INSTR_NUM)
+                    .unwrap_or_default()
             };
 
             let mut prev: Option<u64> = None;

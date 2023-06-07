@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use crate::r2_api::{AliasInfo, R2Api, RegisterInfo};
 use crate::solver::Solver;
-use crate::value::{Value, vc};
+use crate::value::{vc, Value};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Bounds {
@@ -179,7 +179,6 @@ impl Registers {
         start2 >= start1 && end2 <= end1
     }
 
-    #[inline]
     pub fn get_value(&self, index: usize) -> Value {
         let register = &self.indexes[index];
         if register.reg_info.offset == -1i64 as u64 {
@@ -194,7 +193,6 @@ impl Registers {
         }
     }
 
-    #[inline]
     pub fn set_value(&mut self, index: usize, value: Value) {
         let register = &self.indexes[index];
 
@@ -212,7 +210,8 @@ impl Registers {
                 let v = Value::Symbolic(bv, value.get_taint());
                 self.values[register.value_index] = v;
             }
-        } else if size == 32 { // this sux
+        } else if size == 32 {
+            // this sux
             self.values[register.value_index] = value.slice(size - 1, 0).uext(&vc(32));
         } else {
             let bound_size = register.bounds.size as u32;

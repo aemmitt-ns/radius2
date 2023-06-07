@@ -470,12 +470,18 @@ pub fn fclose(state: &mut State, args: &[Value]) -> Value {
 
 pub fn fread(state: &mut State, args: &[Value]) -> Value {
     let fd = fileno(state, &[args[3].to_owned()]);
-    syscall::read(state, &[fd, args[0].to_owned(), args[1].mul(&args[2]).to_owned()])
+    syscall::read(
+        state,
+        &[fd, args[0].to_owned(), args[1].mul(&args[2]).to_owned()],
+    )
 }
 
 pub fn fwrite(state: &mut State, args: &[Value]) -> Value {
     let fd = fileno(state, &[args[3].to_owned()]);
-    syscall::write(state, &[fd, args[0].to_owned(), args[1].mul(&args[2]).to_owned()])
+    syscall::write(
+        state,
+        &[fd, args[0].to_owned(), args[1].mul(&args[2]).to_owned()],
+    )
 }
 
 pub fn fseek(state: &mut State, args: &[Value]) -> Value {
@@ -507,7 +513,7 @@ pub fn atoll(state: &mut State, args: &[Value]) -> Value {
     format::atoi_helper(state, &args[0], &vc(10), 64)
 }
 
-pub fn strto_helper(state: &mut State, args: &[Value], bits: u64) -> Value {
+fn strto_helper(state: &mut State, args: &[Value], bits: u64) -> Value {
     // not perfect but idk
     if let Value::Concrete(addr, _) = args[1] {
         if addr != 0 {
@@ -519,7 +525,7 @@ pub fn strto_helper(state: &mut State, args: &[Value], bits: u64) -> Value {
             );
         }
     }
-    
+
     format::atoi_helper(state, &args[0], &args[2], bits)
 }
 
@@ -530,7 +536,11 @@ pub fn strtoll(state: &mut State, args: &[Value]) -> Value {
 // this is string to double not int... do something horrific for now
 pub fn strtod(state: &mut State, args: &[Value]) -> Value {
     let addr = state.solver.evalcon_to_u64(&args[0]).unwrap_or_default();
-    vc(state.memory_read_cstring(addr).parse::<f64>().unwrap_or_default().to_bits())
+    vc(state
+        .memory_read_cstring(addr)
+        .parse::<f64>()
+        .unwrap_or_default()
+        .to_bits())
 }
 
 pub fn strtol(state: &mut State, args: &[Value]) -> Value {
