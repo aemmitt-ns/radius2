@@ -868,7 +868,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         }
         Operations::Pick => {
             let n = pop_concrete(state, false, false);
-            let item = state.stack[(state.stack.len() - n as usize)].to_owned();
+            let item = state.stack[state.stack.len() - n as usize].to_owned();
             state.stack.push(item);
         }
         Operations::ReversePick => {
