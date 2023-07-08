@@ -1,6 +1,8 @@
 use crate::processor::Word;
 use crate::r2_api::hex_encode;
-use crate::radius::{Radius, RadiusOption, RunMode};
+use crate::radius::{Radius, RadiusOption};
+use crate::processor::RunMode;
+
 use boolector::BV;
 use clap::{App, Arg};
 use colored::*;

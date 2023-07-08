@@ -448,6 +448,29 @@ pub struct Reference {
     pub refname: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StringEntry {
+    pub vaddr: u64,
+    pub paddr: u64,
+
+    #[serde(default)]
+    pub ordinal: u64,
+
+    #[serde(default)]
+    pub size: usize,
+    
+    pub length: usize,
+
+    #[serde(default)]
+    pub section: String,
+
+    #[serde(default)]
+    pub r#type: String,
+
+    #[serde(default)]
+    pub string: String,
+}
+
 fn from_hex<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: Deserializer<'de>,
@@ -765,10 +788,10 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }
 
-    /*pub fn get_strings(&mut self) -> R2Result<Vec<Reference>> {
+    pub fn get_strings(&mut self) -> R2Result<Vec<StringEntry>> {
         let json = self.cmd("izzj")?;
         r2_result(serde_json::from_str(json.as_str()))
-    }*/
+    }
 
     pub fn search(&mut self, string: &str) -> R2Result<Vec<SearchResult>> {
         let json = self.cmd(&format!("/j {}", string))?;
@@ -786,7 +809,7 @@ impl R2Api {
         Ok(result
             .trim()
             .split('\n')
-            .map(|x| u64::from_str_radix(&x[2..], 16).unwrap_or_default())
+            .map(|x| u64::from_str_radix(x.trim_start_matches("0x"), 16).unwrap_or_default())
             .filter(|x| *x != 0)
             .collect())
     }

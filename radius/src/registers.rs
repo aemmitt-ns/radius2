@@ -11,6 +11,7 @@ pub struct Bounds {
     size: u64,
 }
 
+/// Struct of info for a single register (may be part of another register eg. eax and rax)
 #[derive(Debug, Clone)]
 pub struct Register {
     pub reg_info: RegisterInfo,
@@ -19,6 +20,7 @@ pub struct Register {
     pub value_index: usize,
 }
 
+/// Metadata and values of every register in the program state
 #[derive(Clone)]
 pub struct Registers {
     pub solver: Solver,

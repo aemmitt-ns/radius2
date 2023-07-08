@@ -1,4 +1,4 @@
-pub use crate::processor::{HookMethod, Processor, RunMode};
+use crate::processor::{HookMethod, Processor, RunMode};
 use crate::r2_api::{BasicBlock, FunctionInfo, Information, Instruction, R2Api, R2Result};
 use crate::state::State;
 //use crate::value::Value;
@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 
 // use std::thread;
 
+/// Configuration options for the symbolic execution
 #[derive(Debug, Clone, PartialEq)]
 pub enum RadiusOption {
     /// Use simulated syscalls
