@@ -2,7 +2,7 @@
 `radius2` is a command line utility that can be installed with `cargo install radius2`. It allows users to solve reversing problems quickly using symbolic execution and aims to be both user friendly and flexible enough to do nearly any task straight from the terminal. Running `radius2 -h` outputs the usage information
 
 ```
-radius2 1.0.23
+radius2 1.0.24
 Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>
 A symbolic execution tool using r2 and boolector
 
@@ -10,21 +10,21 @@ USAGE:
     radius2 [FLAGS] [OPTIONS] --path <path>
 
 FLAGS:
-    -V, --color         Use color output
-        --crash         Execution stops on invalid memory access
-    -h, --help          Prints help information
-    -j, --json          Output JSON
-    -z, --lazy          Evaluate symbolic PC values lazily
-        --no-sims       Do not simulate imports
-        --plugins       Load r2 plugins
-    -P, --profile       Get performance and runtime information
-    -M, --selfmodify    Allow selfmodifying code (slower)
-    -2, --stderr        Show stderr output
-    -0, --stdin         Use stdin for target program
-    -1, --stdout        Show stdout output
-        --strict        Panic on invalid instructions and ESIL
-        --version       Prints version information
-    -v, --verbose       Show verbose / debugging output
+    -V, --color        Use color output
+        --crash        Execution stops on invalid memory access
+    -h, --help         Prints help information
+    -j, --json         Output JSON
+    -z, --lazy         Evaluate symbolic PC values lazily
+        --no-sims      Do not simulate imports
+    -N, --no-modify    Disallow self-modifying code (faster)
+        --no-strict    Don't avoid invalid instructions and ESIL
+        --plugins      Load r2 plugins
+    -P, --profile      Get performance and runtime information
+    -2, --stderr       Show stderr output
+    -0, --stdin        Use stdin for target program
+    -1, --stdout       Show stdout output
+        --version      Prints version information
+    -v, --verbose      Show verbose / debugging output
 
 OPTIONS:
     -a, --address <address>                   Address to begin execution at
@@ -48,7 +48,6 @@ OPTIONS:
     -r, --r2-cmd <CMD>...                     Run r2 command on launch
     -S, --set <REG/ADDR> <VALUE> <BITS>       Set memory or register values
     -s, --symbol <NAME> <BITS>                Create a symbolic value
-    -t, --threads <threads>                   Number of threads to execute [default: 1]
 ```
 
 The only required argument is `--path` and the default behaviour of `radius2` is simply to begin execution from an `entry_state`, a state at the entrypoint of the program and run until the program exits, so `radius2 -p /bin/ls` will run, print nothing, and finish. To see what is "going on" the `-v` option can be used to view the instructions as they execute (`-V` will output with color)
