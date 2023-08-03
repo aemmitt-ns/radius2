@@ -14,6 +14,7 @@ use crate::sims::{Sim, SimMethod};
 use std::collections::BinaryHeap;
 use std::mem;
 use std::rc::Rc;
+use colored::*;
 
 use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
@@ -208,9 +209,9 @@ impl Processor {
     pub fn print_instr(&self, state: &mut State, instr: &Instruction) {
         if let Some(sim) = self.sims.get(&instr.offset) {
             println!(
-                "\n0x{:08x}      ( {} )\n",
+                "\n0x{:08x}      ( {} {} )\n",
                 instr.offset,
-                "simulated ".to_owned() + &sim.symbol
+                "simulated", sim.symbol.blue()
             );
         } else if !self.color {
             println!(
@@ -751,10 +752,11 @@ impl Processor {
             self.print_instr(state, &instr.instruction);
         }
         if state.strict && instr.instruction.disasm == "invalid" {
-            panic!("Executed invalid instruction");
+            //panic!("Executed invalid instruction");
+            state.set_inactive();
+        } else {
+            self.execute(state, &instr.instruction, &instr.flags, &instr.tokens);
         }
-
-        self.execute(state, &instr.instruction, &instr.flags, &instr.tokens);
     }
 
     /// Take single step with the state provided
@@ -782,7 +784,7 @@ impl Processor {
         } else {
             let pc_val = new_pc.as_bv().unwrap();
             if self.debug {
-                println!("\nsymbolic PC: {:?}\n", pc_val);
+                println!("\n{} : {:?}\n", "symbolic PC".red(), pc_val);
             }
 
             if DO_EVENT_HOOKS && state.has_event_hooks {
@@ -848,13 +850,15 @@ impl Processor {
             let mem = state.memory_read_value(&new_pc, 8);
             if let Value::Symbolic(bv, _t) = mem.clone() {
                 let possible = state.evaluate_many(&bv);
-                let last = possible.len() - 1;
-                for pos in &possible[..last] {
-                    let mut new_state = state.clone();
-                    new_state.assert(&mem.eq(&vc(*pos)));
-                    states.push(new_state);
+                if !possible.is_empty() {
+                    let last = possible.len() - 1;
+                    for pos in &possible[..last] {
+                        let mut new_state = state.clone();
+                        new_state.assert(&mem.eq(&vc(*pos)));
+                        states.push(new_state);
+                    }
+                    state.assert(&mem.eq(&vc(possible[last])));
                 }
-                state.assert(&mem.eq(&vc(possible[last])));
             }
             states
         } else {

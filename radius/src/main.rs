@@ -1,8 +1,6 @@
 use crate::processor::Word;
 use crate::r2_api::hex_encode;
-use crate::radius::{Radius, RadiusOption};
-use crate::processor::RunMode;
-
+use crate::radius::{Radius, RadiusOption, RunMode};
 use boolector::BV;
 use clap::{App, Arg};
 use colored::*;
@@ -11,12 +9,9 @@ use std::time::Instant;
 use std::{fs, process};
 
 use crate::state::StateStatus;
-use crate::value::Value;
+use crate::value::{Value, vc};
 
 use std::collections::HashMap;
-
-//use ahash::AHashMap;
-//type HashMap<P, Q> = AHashMap<P, Q>;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -109,15 +104,15 @@ fn main() {
                 .help("Execution stops on invalid memory access"),
         )
         .arg(
-            Arg::with_name("selfmodify")
-                .short("M")
-                .long("selfmodify")
-                .help("Allow selfmodifying code (slower)"),
+            Arg::with_name("noselfmodify")
+                .short("N")
+                .long("no-modify")
+                .help("Disallow self-modifying code (faster)"),
         )
         .arg(
-            Arg::with_name("strict")
-                .long("strict")
-                .help("Panic on invalid instructions and ESIL"),
+            Arg::with_name("nostrict")
+                .long("no-strict")
+                .help("Don't avoid invalid instructions and ESIL"),
         )
         .arg(
             Arg::with_name("no_sims")
@@ -173,14 +168,6 @@ fn main() {
                 .long("address")
                 .takes_value(true)
                 .help("Address to begin execution at"),
-        )
-        .arg(
-            Arg::with_name("threads")
-                .short("t")
-                .long("threads")
-                .takes_value(true)
-                .default_value("1")
-                .help("Number of threads to execute"),
         )
         .arg(
             Arg::with_name("breakpoint")
@@ -327,8 +314,8 @@ fn main() {
     let mut options = vec![
         RadiusOption::Debug(debug),
         RadiusOption::Lazy(occurs!(matches, "lazy")),
-        RadiusOption::Strict(occurs!(matches, "strict")),
-        RadiusOption::SelfModify(occurs!(matches, "selfmodify")),
+        RadiusOption::Strict(!occurs!(matches, "nostrict")),
+        RadiusOption::SelfModify(!occurs!(matches, "noselfmodify")),
         RadiusOption::ColorOutput(occurs!(matches, "color")),
         RadiusOption::Permissions(occurs!(matches, "crash")),
         RadiusOption::Sims(!no_sims),
@@ -341,12 +328,7 @@ fn main() {
         options.push(RadiusOption::LibPath(lib.to_owned()));
     }
 
-    let threads: usize = matches
-        .value_of("threads")
-        .unwrap_or_default()
-        .parse()
-        .unwrap();
-
+    let threads: usize = 1;
     let start = Instant::now();
 
     let path = matches.value_of("path").unwrap_or("-");
@@ -453,13 +435,7 @@ fn main() {
             radius.call_state(addr)
         }
     } else {
-        // workaround for stupid reloc.__libc_start_main issue
-        let addr = radius.get_address("main").unwrap_or(0);
-        if addr != 0 {
-            radius.call_state(addr)
-        } else {
-            radius.entry_state()
-        }
+        radius.entry_state()
     };
 
     // collect the symbol declarations
@@ -669,6 +645,13 @@ fn main() {
                     end_state.constrain_file(name, cons);
                 } else if let Ok(fd) = name.parse::<usize>() {
                     end_state.constrain_fd(fd, cons);
+                } else if let Some(_reg) = end_state.registers.get_register(name) {
+                    let val = radius.r2api.get_address(cons).unwrap();
+                    end_state.assert(&end_state.registers.get_with_alias(name).eq(&vc(val)));
+                } else if let Ok(addr) = radius.r2api.get_address(name) {
+                    let mem = end_state.memory.read_value(addr, 4);
+                    let val = radius.r2api.get_address(cons).unwrap();
+                    end_state.assert(&mem.eq(&vc(val)));
                 }
             }
 

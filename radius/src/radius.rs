@@ -1,4 +1,4 @@
-use crate::processor::{HookMethod, Processor, RunMode};
+pub use crate::processor::{HookMethod, Processor, RunMode};
 use crate::r2_api::{BasicBlock, FunctionInfo, Information, Instruction, R2Api, R2Result};
 use crate::state::State;
 //use crate::value::Value;
@@ -132,7 +132,7 @@ impl Radius {
         if debug && color {
             // pretty print disasm + esil
             argv.push("-e scr.color=3");
-            argv.push("-e asm.cmt.esil=true");
+            //argv.push("-e asm.cmt.esil=true");
             argv.push("-e asm.lines=false");
             argv.push("-e asm.emu=false");
             argv.push("-e asm.xrefs=false");
@@ -284,9 +284,14 @@ impl Radius {
         state.memory.add_heap();
         state.memory.add_std_streams();
 
-        let start_main_reloc = self.r2api.get_address("reloc.__libc_start_main").unwrap();
-
-        self.hook(start_main_reloc, __libc_start_main);
+        let start_main_reloc = self.r2api.get_address("reloc.__libc_start_main").unwrap_or(0);
+        if start_main_reloc != 0 {
+            self.r2api.cmd("af").unwrap(); // analyze entrypoint
+            let callers = self.r2api.get_references(start_main_reloc).unwrap_or_default();
+            if !callers.is_empty() {
+                self.hook(callers[0].from, __libc_start_main);
+            }
+        }
         state
     }
 

@@ -164,7 +164,8 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("gethostname", libc::gethostname, 0),
         make_sim("getpagesize", libc::getpagesize, 0),
         make_sim("__stack_chk_fail", ret, 0),
-        make_sim("__libc_start_main", libc::__libc_start_main, 5),
+        // this is covered by the hook in radius.rs
+        // make_sim("__libc_start_main", libc::__libc_start_main, 5),
         make_sim("__cfi_slowpath", zero, 0),
         make_sim("__errno_location", libc::__errno_location, 0),
     ]

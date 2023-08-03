@@ -957,7 +957,8 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         }
         Operations::ToDo => {
             if state.strict {
-                unimplemented!();
+                //unimplemented!();
+                state.set_inactive();
             }
         }
 
@@ -1034,6 +1035,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         }
         Operations::Unknown => {
             if state.strict {
+                // still panic here, we should support all ESIL
                 panic!("Encountered an unknown word!");
             }
         }
