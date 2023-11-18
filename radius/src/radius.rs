@@ -12,7 +12,6 @@ use std::sync::{Arc, Mutex};
 
 // use std::thread;
 
-/// Configuration options for the symbolic execution
 #[derive(Debug, Clone, PartialEq)]
 pub enum RadiusOption {
     /// Use simulated syscalls

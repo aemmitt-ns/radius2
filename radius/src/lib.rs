@@ -1,6 +1,3 @@
-//! radius2 is a symbolic execution framework,
-//! for more info see the [README](https://github.com/aemmitt-ns/radius/blob/main/radius/README.md).
-
 extern crate boolector;
 extern crate r2pipe;
 extern crate serde_json;
@@ -26,13 +23,8 @@ mod test;
 /// Asbstraction for concrete and symbolic values used during execution
 pub mod value;
 
-/// Start a symbolic execution run with `Radius`
 pub use crate::radius::{Radius, RadiusOption};
-/// Manage register values in `Registers`
 pub use crate::registers::Registers;
-/// Simulate functions by registering a `Sim`
 pub use crate::sims::{Sim, SimMethod};
-/// Access the program state with a `State`
 pub use crate::state::State;
-/// `Value` holds concrete and symbolic values
 pub use crate::value::{vc, Value};

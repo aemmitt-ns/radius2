@@ -12,6 +12,9 @@ use crate::state::StateStatus;
 use crate::value::{Value, vc};
 
 use std::collections::HashMap;
+
+//use ahash::AHashMap;
+//type HashMap<P, Q> = AHashMap<P, Q>;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -107,7 +110,7 @@ fn main() {
             Arg::with_name("noselfmodify")
                 .short("N")
                 .long("no-modify")
-                .help("Disallow self-modifying code (faster)"),
+                .help("Disallow self-modifying code (faster sometimes)"),
         )
         .arg(
             Arg::with_name("nostrict")
@@ -442,6 +445,8 @@ fn main() {
     let mut files: Vec<&str> = collect!(matches, "file");
     let mut symbol_map = HashMap::new();
     let mut symbol_types = HashMap::new();
+    let mut has_stdin = false;
+
     let symbols: Vec<&str> = collect!(matches, "symbol");
     for i in 0..matches.occurrences_of("symbol") as usize {
         // use get_address so hex / simple ops can be used
@@ -463,12 +468,22 @@ fn main() {
 
         if sym_name.to_lowercase() == "stdin" {
             files.extend(vec!["0", sym_name]);
+            has_stdin = true;
         }
     }
 
-    if occurs!(matches, "arg") || occurs!(matches, "env") {
-        let argvs: Vec<&str> = collect!(matches, "arg");
-        let envs: Vec<&str> = collect!(matches, "env");
+    let mut argvs: Vec<&str> = collect!(matches, "arg");
+    let envs: Vec<&str> = collect!(matches, "env");
+    let has_argv_env = !argvs.is_empty() || !envs.is_empty();
+
+    // if theres no input, default argv[0] to first symbol
+    let default_args = !has_argv_env && files.is_empty() && !has_stdin && !symbols.is_empty();
+
+    if default_args || has_argv_env {
+        if default_args {
+            argvs = vec![path, symbols[0]];
+        }
+
         let mut argv = vec![];
         let mut envv = vec![];
 

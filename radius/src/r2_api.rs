@@ -448,29 +448,6 @@ pub struct Reference {
     pub refname: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StringEntry {
-    pub vaddr: u64,
-    pub paddr: u64,
-
-    #[serde(default)]
-    pub ordinal: u64,
-
-    #[serde(default)]
-    pub size: usize,
-    
-    pub length: usize,
-
-    #[serde(default)]
-    pub section: String,
-
-    #[serde(default)]
-    pub r#type: String,
-
-    #[serde(default)]
-    pub string: String,
-}
-
 fn from_hex<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: Deserializer<'de>,
@@ -536,7 +513,7 @@ impl R2Api {
             r2p: Arc::new(Mutex::new(r2pipe.unwrap())),
             info: Information::default(),
             mode: Mode::Default,
-            do_cache: false,
+            do_cache: true,
             cache: HashMap::new(),
         };
 
@@ -599,7 +576,7 @@ impl R2Api {
     }
 
     pub fn get_cc(&mut self, pc: u64) -> R2Result<CallingConvention> {
-        let json = self.cmd(format!("af @ {}; afcrj @ {}", pc, pc).as_str())?;
+        let json = self.ccmd(format!("af @ {}; afcrj @ {}", pc, pc).as_str())?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
@@ -745,12 +722,12 @@ impl R2Api {
     }*/
 
     pub fn get_objc_class(&mut self, class: &str) -> R2Result<ObjCClassInfo> {
-        let json = self.cmd(&format!("icj {}", class))?;
+        let json = self.ccmd(&format!("icj {}", class))?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
     pub fn get_java_class(&mut self, class: &str) -> R2Result<JavaClassInfo> {
-        let json = self.cmd(&format!("icj {}", class))?;
+        let json = self.ccmd(&format!("icj {}", class))?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
@@ -764,7 +741,7 @@ impl R2Api {
     }*/
 
     pub fn get_segments(&mut self) -> R2Result<Vec<Segment>> {
-        let json = self.cmd("iSj")?;
+        let json = self.ccmd("iSj")?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
@@ -788,10 +765,10 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }
 
-    pub fn get_strings(&mut self) -> R2Result<Vec<StringEntry>> {
+    /*pub fn get_strings(&mut self) -> R2Result<Vec<Reference>> {
         let json = self.cmd("izzj")?;
         r2_result(serde_json::from_str(json.as_str()))
-    }
+    }*/
 
     pub fn search(&mut self, string: &str) -> R2Result<Vec<SearchResult>> {
         let json = self.cmd(&format!("/j {}", string))?;
@@ -805,11 +782,11 @@ impl R2Api {
 
     /// Gets all strings then filters, slower than search
     pub fn search_strings(&mut self, string: &str) -> R2Result<Vec<u64>> {
-        let result = self.cmd(&format!("izz~[2]~{}", string))?;
+        let result = self.ccmd(&format!("izz~[2]~{}", string))?;
         Ok(result
             .trim()
             .split('\n')
-            .map(|x| u64::from_str_radix(x.trim_start_matches("0x"), 16).unwrap_or_default())
+            .map(|x| u64::from_str_radix(&x[2..], 16).unwrap_or_default())
             .filter(|x| *x != 0)
             .collect())
     }
@@ -822,7 +799,7 @@ impl R2Api {
 
     pub fn get_ret(&mut self) -> R2Result<String> {
         // simple as that?
-        let ret = self.cmd("pae ret")?;
+        let ret = self.ccmd("pae ret")?;
         if ret.is_empty() {
             if self.info.bin.arch == "bpf" {
                 Ok("8,sp,+=,sp,[8],pc,=".to_owned())
@@ -846,13 +823,13 @@ impl R2Api {
 
     pub fn get_syscall_str(&mut self, sys_num: u64) -> R2Result<String> {
         let cmd = format!("asl {}", sys_num);
-        let ret = self.cmd(cmd.as_str())?;
+        let ret = self.ccmd(cmd.as_str())?;
         Ok(ret[0..ret.len() - 1].to_owned())
     }
 
     pub fn get_syscall_num(&mut self, sys_str: &str) -> R2Result<u64> {
         let cmd = format!("asl {}", sys_str);
-        let ret = self.cmd(cmd.as_str())?;
+        let ret = self.ccmd(cmd.as_str())?;
         Ok((&ret[0..ret.len() - 1]).parse::<u64>().unwrap())
     }
 
@@ -965,7 +942,7 @@ impl R2Api {
 
     // is.j returns a weird format
     pub fn get_symbol(&mut self, addr: u64) -> R2Result<Symbol> {
-        let json = self.cmd(&format!("is.j @ {}", addr))?;
+        let json = self.ccmd(&format!("is.j @ {}", addr))?;
         let result: Option<HashMap<String, Symbol>> = serde_json::from_str(json.as_str()).ok();
         if let Some(mut symmap) = result {
             Ok(symmap.remove("symbols").unwrap())
@@ -975,13 +952,13 @@ impl R2Api {
     }
 
     pub fn get_symbols(&mut self) -> R2Result<Vec<Symbol>> {
-        let json = self.cmd("isj")?;
+        let json = self.ccmd("isj")?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
     pub fn get_imports(&mut self) -> R2Result<Vec<Import>> {
         if self.mode != Mode::Frida {
-            let json = self.cmd("iij")?;
+            let json = self.ccmd("iij")?;
             r2_result(serde_json::from_str(json.as_str()))
         } else {
             // so jank i dont even know
@@ -1002,7 +979,7 @@ impl R2Api {
     }
 
     pub fn get_exports(&mut self) -> R2Result<Vec<Export>> {
-        let json = self.cmd("iEj")?;
+        let json = self.ccmd("iEj")?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
@@ -1033,7 +1010,7 @@ impl R2Api {
 
     pub fn assemble(&mut self, instruction: &str) -> R2Result<Vec<u8>> {
         let cmd = format!("pa {}", instruction);
-        let hexpairs = self.cmd(cmd.as_str())?;
+        let hexpairs = self.ccmd(cmd.as_str())?;
         Ok(hex_decode(&hexpairs))
     }
 
@@ -1087,17 +1064,17 @@ impl R2Api {
     }
 
     pub fn get_libraries(&mut self) -> R2Result<Vec<String>> {
-        let json = self.cmd("ilj")?;
+        let json = self.ccmd("ilj")?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
     pub fn get_relocations(&mut self) -> R2Result<Vec<Relocation>> {
-        let json = self.cmd("irj")?;
+        let json = self.ccmd("irj")?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
     pub fn get_entrypoints(&mut self) -> R2Result<Vec<Entrypoint>> {
-        let json = self.cmd("iej")?;
+        let json = self.ccmd("iej")?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 

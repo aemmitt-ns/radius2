@@ -2,7 +2,7 @@
 
 `radius2` is a fast symbolic execution and taint analysis framework using `radare2` that is focused on covering many different architectures and executable formats. It also strives to be easy to use and has a CLI tool that makes some reversing tasks as easy as adding a symbolic value and setting a string to reach or avoid. Reversing challenges can be solved as easily as the example below. 
 ```
-$ radius2 -p ais3 -A. flag -s flag 184 -X sorry
+$ radius2 -p ais3 -s flag 184 -X sorry
 
   flag : "ais3{I_tak3_g00d_n0t3s}"
 
@@ -16,7 +16,7 @@ git clone https://github.com/radareorg/radare2.git
 radare2/sys/install.sh 
 ```
 
-Install radius2 with `cargo install radius2` or include radius2 as a dependency using `radius2 = "1.0.23"`
+Install radius2 with `cargo install radius2` or include radius2 as a dependency using `radius2 = "1.0.25"`
 
 ### Supported Architectures
 
@@ -62,7 +62,7 @@ fn main() {
 radius2 can also be installed from crates.io and easily included in packages. radius2 also has a CLI tool that can be installed with `cargo install radius2`
 
 ```
-radius2 1.0.24
+radius2 1.0.25
 Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>
 A symbolic execution tool using r2 and boolector
 
@@ -70,21 +70,21 @@ USAGE:
     radius2 [FLAGS] [OPTIONS] --path <path>
 
 FLAGS:
-    -V, --color        Use color output
-        --crash        Execution stops on invalid memory access
-    -h, --help         Prints help information
-    -j, --json         Output JSON
-    -z, --lazy         Evaluate symbolic PC values lazily
-        --no-sims      Do not simulate imports
-    -N, --no-modify    Disallow self-modifying code (faster)
-        --no-strict    Don't avoid invalid instructions and ESIL
-        --plugins      Load r2 plugins
-    -P, --profile      Get performance and runtime information
-    -2, --stderr       Show stderr output
-    -0, --stdin        Use stdin for target program
-    -1, --stdout       Show stdout output
-        --version      Prints version information
-    -v, --verbose      Show verbose / debugging output
+    -V, --color         Use color output
+        --crash         Execution stops on invalid memory access
+    -h, --help          Prints help information
+    -j, --json          Output JSON
+    -z, --lazy          Evaluate symbolic PC values lazily
+        --no-sims       Do not simulate imports
+        --plugins       Load r2 plugins
+    -P, --profile       Get performance and runtime information
+    -M, --selfmodify    Allow selfmodifying code (slower)
+    -2, --stderr        Show stderr output
+    -0, --stdin         Use stdin for target program
+    -1, --stdout        Show stdout output
+        --strict        Panic on invalid instructions and ESIL
+        --version       Prints version information
+    -v, --verbose       Show verbose / debugging output
 
 OPTIONS:
     -a, --address <address>                   Address to begin execution at
@@ -108,6 +108,7 @@ OPTIONS:
     -r, --r2-cmd <CMD>...                     Run r2 command on launch
     -S, --set <REG/ADDR> <VALUE> <BITS>       Set memory or register values
     -s, --symbol <NAME> <BITS>                Create a symbolic value
+    -t, --threads <threads>                   Number of threads to execute [default: 1]
 ```
 
 This tool can be used to solve the same `r100` crackme as above like 
