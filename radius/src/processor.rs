@@ -25,6 +25,10 @@ const CALL_TYPE: i64 = 3;
 const RETN_TYPE: i64 = 5;
 // const NOP_TYPE: i64 = 8;
 
+// limit of states before automerging
+// uhhh it works best with 2... idk why
+const MERGE_MAXX: usize = 2;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Word {
     Literal(Value),
@@ -56,13 +60,15 @@ pub struct Processor {
     pub mergepoints: HashSet<u64>,
     pub avoidpoints: HashSet<u64>,
     pub visited: HashSet<u64>,
-    pub merges: HashMap<u64, State>,
+    pub merges: BTreeMap<u64, State>,
     pub crashes: Vec<State>,
     pub selfmodify: bool,
     pub optimized: bool,
     pub debug: bool,
     pub lazy: bool,
     pub force: bool,
+    pub mergemaxx: bool,
+    pub automerge: bool,
     pub color: bool,
     pub topological: bool, // execute blocks in topological sort order
     pub steps: u64,        // number of state steps
@@ -94,6 +100,7 @@ impl Processor {
         lazy: bool,
         force: bool,
         topological: bool,
+        mergemaxx: bool,
         color: bool,
     ) -> Self {
         Processor {
@@ -108,7 +115,7 @@ impl Processor {
             mergepoints: HashSet::new(),
             avoidpoints: HashSet::new(),
             visited: HashSet::new(),
-            merges: HashMap::new(),
+            merges: BTreeMap::new(),
             crashes: vec![],
             selfmodify,
             optimized,
@@ -116,6 +123,8 @@ impl Processor {
             lazy,
             force,
             topological,
+            mergemaxx,
+            automerge: false,
             color,
             steps: 0, //states: vec!()
         }
@@ -649,6 +658,8 @@ impl Processor {
             } else {
                 state.backtrace.pop();
             }
+        } else if self.automerge && (instr.r#type == "cjmp" || instr.r#type == "jmp") {
+            state.status = StateStatus::Merge;
         }
     }
 
@@ -848,8 +859,8 @@ impl Processor {
 
             // this is bad, 8 bytes is not enough, but this is what it is for now
             let mem = state.memory_read_value(&new_pc, 8);
-            if let Value::Symbolic(bv, _t) = mem.clone() {
-                let possible = state.evaluate_many(&bv);
+            if let Value::Symbolic(bv, _t) = &mem {
+                let possible = state.evaluate_many(bv);
                 if !possible.is_empty() {
                     let last = possible.len() - 1;
                     for pos in &possible[..last] {
@@ -886,12 +897,16 @@ impl Processor {
                     return results;
                 } else {
                     // pop one out of mergers
-                    let key = *self.merges.keys().next().unwrap();
-                    let mut merge = self.merges.remove(&key).unwrap();
+                    // let key = *self.merges.keys().next().unwrap();
+                    // let mut merge = self.merges.remove(&key).unwrap();
+                    let (_k, mut merge) = self.merges.pop_first().unwrap();
                     merge.status = StateStatus::PostMerge;
                     states.push(Rc::new(merge));
                 }
-            }
+            } else if self.mergemaxx && !self.automerge && states.len() >= MERGE_MAXX {
+                self.automerge = true;
+            } 
+            //println!("states: {}", states.len());
 
             let mut current_rc = states.pop().unwrap();
             let current_state = Rc::make_mut(&mut current_rc);

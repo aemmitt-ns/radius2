@@ -757,7 +757,9 @@ impl State {
             };
 
             for i in 0..READ_CACHE {
-                newvec[i] = state.cond(&asserted, &curvec[i], &newvec[i]);
+                if newvec.len() > i && curvec.len() > i {   
+                    newvec[i] = state.cond(&asserted, &curvec[i], &newvec[i]);
+                }
             }
         }
 

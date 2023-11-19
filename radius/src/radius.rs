@@ -34,6 +34,8 @@ pub enum RadiusOption {
     Force(bool),
     /// Execute blocks in topological order
     Topological(bool),
+    /// Enable merge-maxxing, automatic state merging
+    AutoMerge(bool),
     /// Maximum values to evaluate for sym PCs
     EvalMax(usize),
     /// Radare2 argument, must be static
@@ -162,8 +164,9 @@ impl Radius {
         let sim_all = options.contains(&RadiusOption::SimAll(true));
         let selfmod = options.contains(&RadiusOption::SelfModify(true));
         let strict = options.contains(&RadiusOption::Strict(true));
+        let mergemaxx = options.contains(&RadiusOption::AutoMerge(true));
 
-        let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topo, color);
+        let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topo, mergemaxx, color);
         let processors = Arc::new(Mutex::new(vec![]));
 
         if !options.contains(&RadiusOption::Syscalls(false)) {

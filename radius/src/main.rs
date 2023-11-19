@@ -213,6 +213,12 @@ fn main() {
                 .help("Set address as a mergepoint"),
         )
         .arg(
+            Arg::with_name("automerge")
+                .short("M")
+                .long("automerge")
+                .help("Automatically merge states"),
+        )
+        .arg(
             Arg::with_name("arg")
                 .short("A")
                 .long("arg")
@@ -321,6 +327,7 @@ fn main() {
         RadiusOption::SelfModify(!occurs!(matches, "noselfmodify")),
         RadiusOption::ColorOutput(occurs!(matches, "color")),
         RadiusOption::Permissions(occurs!(matches, "crash")),
+        RadiusOption::AutoMerge(occurs!(matches, "automerge")),
         RadiusOption::Sims(!no_sims),
         RadiusOption::SimAll(all_sims),
         RadiusOption::LoadLibs(!libpaths.is_empty()),
