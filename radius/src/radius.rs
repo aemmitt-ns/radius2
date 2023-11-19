@@ -164,9 +164,9 @@ impl Radius {
         let sim_all = options.contains(&RadiusOption::SimAll(true));
         let selfmod = options.contains(&RadiusOption::SelfModify(true));
         let strict = options.contains(&RadiusOption::Strict(true));
-        let mergemaxx = options.contains(&RadiusOption::AutoMerge(true));
+        let automerge = options.contains(&RadiusOption::AutoMerge(true));
 
-        let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topo, mergemaxx, color);
+        let mut processor = Processor::new(selfmod, opt, debug, lazy, force, topo, automerge, color);
         let processors = Arc::new(Mutex::new(vec![]));
 
         if !options.contains(&RadiusOption::Syscalls(false)) {

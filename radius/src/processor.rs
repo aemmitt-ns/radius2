@@ -25,10 +25,6 @@ const CALL_TYPE: i64 = 3;
 const RETN_TYPE: i64 = 5;
 // const NOP_TYPE: i64 = 8;
 
-// limit of states before automerging
-// uhhh it works best with 2... idk why
-const MERGE_MAXX: usize = 2;
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Word {
     Literal(Value),
@@ -67,7 +63,6 @@ pub struct Processor {
     pub debug: bool,
     pub lazy: bool,
     pub force: bool,
-    pub mergemaxx: bool,
     pub automerge: bool,
     pub color: bool,
     pub topological: bool, // execute blocks in topological sort order
@@ -100,7 +95,7 @@ impl Processor {
         lazy: bool,
         force: bool,
         topological: bool,
-        mergemaxx: bool,
+        automerge: bool,
         color: bool,
     ) -> Self {
         Processor {
@@ -123,8 +118,7 @@ impl Processor {
             lazy,
             force,
             topological,
-            mergemaxx,
-            automerge: false,
+            automerge,
             color,
             steps: 0, //states: vec!()
         }
@@ -658,7 +652,7 @@ impl Processor {
             } else {
                 state.backtrace.pop();
             }
-        } else if self.automerge && (instr.r#type == "cjmp" || instr.r#type == "jmp") {
+        } else if self.automerge && instr.type_num < 2 { 
             state.status = StateStatus::Merge;
         }
     }
@@ -903,9 +897,10 @@ impl Processor {
                     merge.status = StateStatus::PostMerge;
                     states.push(Rc::new(merge));
                 }
-            } else if self.mergemaxx && !self.automerge && states.len() >= MERGE_MAXX {
-                self.automerge = true;
-            } 
+            }
+            // } else if self.mergemaxx {//  && !self.automerge && states.len() >= MERGE_MAXX {
+            //     self.automerge = states.len() >= MERGE_MAXX ; // true;
+            // } 
             //println!("states: {}", states.len());
 
             let mut current_rc = states.pop().unwrap();
