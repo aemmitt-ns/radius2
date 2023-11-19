@@ -581,7 +581,7 @@ impl R2Api {
     }
 
     pub fn get_shellcode(&mut self, cmd: &str) -> R2Result<Vec<u8>> {
-        let result = self.cmd(&format!("gr;gi exec;gc cmd={};g", cmd))?;
+        let result = self.ccmd(&format!("gr;gi exec;gc cmd={};g", cmd))?;
         Ok(hex_decode(&result))
     }
 

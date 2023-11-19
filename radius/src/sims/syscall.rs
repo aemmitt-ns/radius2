@@ -234,8 +234,9 @@ pub fn lstat(state: &mut State, args: &[Value]) -> Value {
 pub fn lseek(state: &mut State, args: &[Value]) -> Value {
     let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
     let pos = state.solver.evalcon_to_u64(&args[1]).unwrap();
-    state.filesystem.seek(fd as usize, pos as usize);
-    Value::Concrete(pos, 0)
+    let whence = state.solver.evalcon_to_u64(&args[2]).unwrap();
+    let result = state.filesystem.seek(fd as usize, pos as usize, whence as usize);
+    result.unwrap_or(Value::Concrete(-1i64 as u64, 0))
 }
 
 pub fn error(_state: &mut State, _args: &[Value]) -> Value {

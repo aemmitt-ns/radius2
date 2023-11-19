@@ -75,6 +75,7 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("fseek", libc::fseek, 2),
         make_sim("ftell", libc::ftell, 1),
         make_sim("fclose", libc::fgets, 1),
+        make_sim("rewind", libc::rewind, 2),
         make_sim("strlen", libc::strlen, 1),
         make_sim("strnlen", libc::strnlen, 2),
         make_sim("strstr", libc::strstr, 2),

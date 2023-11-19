@@ -495,6 +495,11 @@ pub fn ftell(state: &mut State, args: &[Value]) -> Value {
     vc(state.filesystem.files[fdn].position as u64)
 }
 
+pub fn rewind(state: &mut State, args: &[Value]) -> Value {
+    let fd = fileno(state, &[args[0].to_owned()]);
+    syscall::lseek(state, &[fd, vc(0), vc(0)])
+}
+
 // is whitespace
 fn _isws(c: &Value) -> Value {
     c.eq(&vc(0x09)) | c.eq(&vc(0x20)) | c.eq(&vc(0x0d)) | c.eq(&vc(0x0a))

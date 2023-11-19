@@ -674,7 +674,20 @@ impl Value {
                 };
                 Value::Concrete((*a >> low) & mask, *t)
             }
-            Value::Symbolic(a, t) => Value::Symbolic(a.slice(high as u32, low as u32), *t),
+            Value::Symbolic(a, t) => {
+                let width = a.get_width() as u64;
+                let h = if high < width {
+                    high
+                } else {
+                    width - 1
+                };
+                let l = if low < width { 
+                    low
+                } else {
+                    width - 1
+                };
+                Value::Symbolic(a.slice(h as u32, l as u32), *t)
+            }
         }
     }
 

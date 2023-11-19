@@ -121,16 +121,29 @@ impl SimFilesytem {
         self.files[fd].content.clone()
     }
 
-    pub fn write(&mut self, fd: usize, data: Vec<Value>) {
+    pub fn write(&mut self, fd: usize, data: Vec<Value>) -> Option<Value> {
         if let Some(file) = &mut self.files.get_mut(fd) {
-            file.position += data.len();
+            let length = data.len();
+            file.position += length;
             file.content.extend(data);
+            Some(Value::Concrete(length as u64, 0))
+        } else {
+            None
         }
     }
 
-    pub fn seek(&mut self, fd: usize, pos: usize) {
+    pub fn seek(&mut self, fd: usize, pos: usize, whence: usize) -> Option<Value> {
         if let Some(file) = &mut self.files.get_mut(fd) {
-            file.position = pos;
+            if whence == 0 {
+                file.position = pos;
+            } else if whence == 1 {
+                file.position += pos;
+            } else if whence == 2 {
+                file.position = file.content.len() + pos;
+            }
+            Some(Value::Concrete(file.position as u64, 0))
+        } else {
+            None
         }
     }
 
@@ -220,7 +233,7 @@ impl SimFilesytem {
     }
 
     pub fn close(&mut self, fd: usize) {
-        self.seek(fd, 0); // uhh just go to 0 for now
+        self.seek(fd, 0, 0); // uhh just go to 0 for now
     }
 
     pub fn add_file(&mut self, path: &str, data: &[Value]) {
