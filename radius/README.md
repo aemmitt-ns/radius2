@@ -16,7 +16,7 @@ git clone https://github.com/radareorg/radare2.git
 radare2/sys/install.sh 
 ```
 
-Install radius2 with `cargo install radius2` or include radius2 as a dependency using `radius2 = "1.0.26"`
+Install radius2 with `cargo install radius2` or include radius2 as a dependency using `radius2 = "1.0.27"`
 
 ### Supported Architectures
 
@@ -62,29 +62,31 @@ fn main() {
 radius2 can also be installed from crates.io and easily included in packages. radius2 also has a CLI tool that can be installed with `cargo install radius2`
 
 ```
-radius2 1.0.26
-Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>
+radius2 1.0.27
+Austin Emmitt (@alkalinesec) <alkali@alkalinesecurity.com>
 A symbolic execution tool using r2 and boolector
 
 USAGE:
     radius2 [FLAGS] [OPTIONS] --path <path>
 
 FLAGS:
-    -V, --color         Use color output
-        --crash         Execution stops on invalid memory access
-    -h, --help          Prints help information
-    -j, --json          Output JSON
-    -z, --lazy          Evaluate symbolic PC values lazily
-        --no-sims       Do not simulate imports
-        --plugins       Load r2 plugins
-    -P, --profile       Get performance and runtime information
-    -M, --selfmodify    Allow selfmodifying code (slower)
-    -2, --stderr        Show stderr output
-    -0, --stdin         Use stdin for target program
-    -1, --stdout        Show stdout output
-        --strict        Panic on invalid instructions and ESIL
-        --version       Prints version information
-    -v, --verbose       Show verbose / debugging output
+    -M, --automerge    Automatically merge states
+    -V, --color        Use color output
+        --crash        Execution stops on invalid memory access
+    -h, --help         Prints help information
+    -j, --json         Output JSON
+    -z, --lazy         Evaluate symbolic PC values lazily
+    -K, --merge-all    Merge all finished states
+        --no-sims      Do not simulate imports
+    -N, --no-modify    Disallow self-modifying code (faster sometimes)
+        --no-strict    Don't avoid invalid instructions and ESIL
+        --plugins      Load r2 plugins
+    -P, --profile      Get performance and runtime information
+    -2, --stderr       Show stderr output
+    -0, --stdin        Use stdin for target program
+    -1, --stdout       Show stdout output
+        --version      Prints version information
+    -v, --verbose      Show verbose / debugging output
 
 OPTIONS:
     -a, --address <address>                   Address to begin execution at
@@ -101,14 +103,15 @@ OPTIONS:
     -f, --file <PATH> <SYMBOL>                Add a symbolic file
     -F, --fuzz <fuzz>                         Generate testcases and write to supplied dir
     -H, --hook <ADDR> <EXPR>                  Hook the provided address with an ESIL expression
+    -i, --include <SYMBOL> <EXPR>             Assert symbol contains a string
     -L, --libs <libs>...                      Load libraries from path
         --max <max>                           Maximum number of states to keep at a time
     -m, --merge <merge>...                    Set address as a mergepoint
+    -I, --not-include <SYMBOL> <EXPR>         Assert symbol does not contain a string
     -p, --path <path>                         Path to the target binary
     -r, --r2-cmd <CMD>...                     Run r2 command on launch
     -S, --set <REG/ADDR> <VALUE> <BITS>       Set memory or register values
     -s, --symbol <NAME> <BITS>                Create a symbolic value
-    -t, --threads <threads>                   Number of threads to execute [default: 1]
 ```
 
 This tool can be used to solve the same `r100` crackme as above like 

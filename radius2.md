@@ -16,7 +16,7 @@ This document will cover the many different ways `radius2` can be used to perfor
 `radius2 -h` outputs the usage information:
 
 ```
-radius2 1.0.26
+radius2 1.0.27
 Austin Emmitt (@alkalinesec) <alkali@alkalinesecurity.com>
 A symbolic execution tool using r2 and boolector
 
@@ -30,6 +30,7 @@ FLAGS:
     -h, --help         Prints help information
     -j, --json         Output JSON
     -z, --lazy         Evaluate symbolic PC values lazily
+    -K, --merge-all    Merge all finished states
         --no-sims      Do not simulate imports
     -N, --no-modify    Disallow self-modifying code (faster sometimes)
         --no-strict    Don't avoid invalid instructions and ESIL
@@ -56,9 +57,11 @@ OPTIONS:
     -f, --file <PATH> <SYMBOL>                Add a symbolic file
     -F, --fuzz <fuzz>                         Generate testcases and write to supplied dir
     -H, --hook <ADDR> <EXPR>                  Hook the provided address with an ESIL expression
+    -i, --include <SYMBOL> <EXPR>             Assert symbol contains a string
     -L, --libs <libs>...                      Load libraries from path
         --max <max>                           Maximum number of states to keep at a time
     -m, --merge <merge>...                    Set address as a mergepoint
+    -I, --not-include <SYMBOL> <EXPR>         Assert symbol does not contain a string
     -p, --path <path>                         Path to the target binary
     -r, --r2-cmd <CMD>...                     Run r2 command on launch
     -S, --set <REG/ADDR> <VALUE> <BITS>       Set memory or register values
