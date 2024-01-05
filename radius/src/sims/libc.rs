@@ -79,7 +79,8 @@ pub fn fprintf(state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn sprintf(state: &mut State, args: &[Value]) -> Value {
-    let formatted = format::format(state, &args[1..]);
+    let mut formatted = format::format(state, &args[1..]);
+    formatted.push(vc(0));
     let ret = vc(formatted.len() as u64);
     state.memory_write(&args[0], &formatted, &vc(formatted.len() as u64));
     ret

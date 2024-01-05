@@ -14,8 +14,9 @@ pub const READ_CACHE: usize = 256;
 // today is not that day
 const HEAP_START: u64 = 0x40000000;
 const HEAP_SIZE: u64 = 0x040000;
-const HEAP_CANARY_SIZE: u64 = 0x10;
+// const HEAP_CANARY_SIZE: u64 = 0x10;
 // const HEAP_CHUNK: u64 = 0x100;
+const ALIGN: u64 = 16;
 
 // i think these are different on darwin
 const PROT_NONE: u64 = 0x0;
@@ -104,6 +105,9 @@ impl Memory {
     /// Allocate memory `length` bytes long. Returns the address of the allocation.
     pub fn alloc(&mut self, length: &Value) -> u64 {
         let len = length.as_u64().unwrap();
+        // aligning makes some runs take much longer wtaf
+        let len = len + if len % ALIGN != 0 { ALIGN - len % ALIGN } else { 0 };
+
         let addr = self.heap.alloc(len);
         //let canary = self.heap_canary.clone();
         //self.write_value(addr, &canary, HEAP_CANARY_SIZE as usize);
@@ -160,6 +164,8 @@ impl Memory {
             exec: perms.contains('x'),
             init: perms.contains('i'),
         });
+        // zero mem for new segment
+        self.r2api.cmd(&format!("w0 {} @ {}", size, addr)).unwrap();
     }
 
     pub fn add_heap(&mut self) {
@@ -387,27 +393,33 @@ impl Memory {
         } as usize;
 
         let mut result = Value::Concrete(0, 0);
-        let mut cond = Value::Concrete(0, 0);
+        let mut found = Value::Concrete(0, 0);
+
+        if needlen > len {
+            return result;
+        }
 
         for pos in 0..(len - needlen) {
             // get value to test
-            let mut pos_val = addr.clone() + Value::Concrete(pos as u64, 0);
+            let pos_val = if reverse {
+                addr.clone() + length.clone() - Value::Concrete(pos as u64, 0)
+            } else {
+                addr.clone() + Value::Concrete(pos as u64, 0)
+            };
             let value = self.read_sym(&pos_val, needlen, solver);
-            if reverse {
-                pos_val = addr.clone() + length.clone() - Value::Concrete(pos as u64, 0);
-            }
 
             let pos_cond = pos_val.ult(&(addr.clone() + length.clone())) & !pos_val.ult(addr);
-            let new_cond = value.eq(needle) & pos_cond & !cond.clone();
-            //println!("{:?}", new_cond);
+            let new_cond = value.eq(needle) & pos_cond & !found.clone();
             result = solver.conditional(&new_cond, &pos_val, &result);
-            cond = value.eq(needle) | cond;
+            found = value.eq(needle) | found;
 
+            // println!("result {:?} {:?} {:?}", result, value, needle);
             if let Value::Concrete(res, _t) = &result {
                 if *res != 0 {
                     break;
                 }
-            } else if value.id(needle).as_u64().unwrap() == 1 {
+            } 
+            if value.id(needle).as_u64().unwrap() == 1 {
                 // this is weird but cuts searches on identical values
                 break;
             }
@@ -747,7 +759,7 @@ impl Heap {
         let addr = last.addr + last.size;
         self.chunks.push(Chunk {
             addr,
-            size: size + HEAP_CANARY_SIZE,
+            size //: size + HEAP_CANARY_SIZE,
         });
         addr
     }

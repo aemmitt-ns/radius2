@@ -105,6 +105,7 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("memchr", libc::memchr, 3),
         make_sim("memrchr", libc::memrchr, 3),
         make_sim("memcmp", libc::memcmp, 3),
+        make_sim("bcmp", libc::memcmp, 3),
         make_sim("memmem", libc::memmem, 3),
         make_sim("bcopy", libc::bcopy, 3),
         make_sim("bzero", libc::bzero, 2),

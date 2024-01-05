@@ -639,9 +639,10 @@ impl Processor {
             if state.backtrace.is_empty() && new_flags.is_empty() {
                 // try to avoid returning outside valid context
                 if let Value::Concrete(v, _) = state.registers.get_pc() {
-                    if !state.memory.check_permission(v, 1, 'x') {
+                    if v == 0 || !state.memory.check_permission(v, 1, 'x') {
                         // if it looks invalid
-                        if !self.breakpoints.is_empty() || !self.esil_hooks.is_empty() {
+                        let avoid = !self.breakpoints.is_empty() || (!self.automerge && !self.esil_hooks.is_empty());
+                        if  avoid {
                             state.status = StateStatus::Inactive;
                         } else {
                             // break if there are no other breakpoints/hooks
@@ -898,10 +899,6 @@ impl Processor {
                     states.push(Rc::new(merge));
                 }
             }
-            // } else if self.mergemaxx {//  && !self.automerge && states.len() >= MERGE_MAXX {
-            //     self.automerge = states.len() >= MERGE_MAXX ; // true;
-            // } 
-            //println!("states: {}", states.len());
 
             let mut current_rc = states.pop().unwrap();
             let current_state = Rc::make_mut(&mut current_rc);

@@ -12,6 +12,8 @@ use crate::state::StateStatus;
 use crate::value::{Value, vc};
 
 use std::collections::HashMap;
+use std::ascii::escape_default;
+use std::str;
 
 //use ahash::AHashMap;
 //type HashMap<P, Q> = AHashMap<P, Q>;
@@ -41,6 +43,19 @@ macro_rules! collect {
     };
 }
 
+fn show(bs: &[u8]) -> String {
+    if let Ok(s) = String::from_utf8(bs.to_owned()) {
+        s
+    } else {
+    let mut visible = String::new();
+        for &b in bs {
+            let part: Vec<u8> = escape_default(b).collect();
+            visible.push_str(str::from_utf8(&part).unwrap());
+        }
+        visible
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonOutput {
     pub symbols: HashMap<String, String>,
@@ -52,7 +67,7 @@ fn main() {
     let matches = App::new("radius2")
         .global_settings(&[clap::AppSettings::ColoredHelp])
         .version(env!("CARGO_PKG_VERSION"))
-        .author("Austin Emmitt (@alkalinesec) <aemmitt@nowsecure.com>")
+        .author("Austin Emmitt (@alkalinesec) <alkali@alkalinesecurity.com>")
         .about("A symbolic execution tool using r2 and boolector")
         .arg(
             Arg::with_name("path")
@@ -219,6 +234,12 @@ fn main() {
                 .help("Automatically merge states"),
         )
         .arg(
+            Arg::with_name("merge_all")
+                .short("K")
+                .long("merge-all")
+                .help("Merge all finished states"),
+        )
+        .arg(
             Arg::with_name("arg")
                 .short("A")
                 .long("arg")
@@ -264,6 +285,22 @@ fn main() {
                 .value_names(&["SYMBOL", "EXPR"])
                 .multiple(true)
                 .help("Constrain symbol or file values after execution"),
+        )
+        .arg(
+            Arg::with_name("include")
+                .short("i")
+                .long("include")
+                .value_names(&["SYMBOL", "EXPR"])
+                .multiple(true)
+                .help("Assert symbol contains a string"),
+        )
+        .arg(
+            Arg::with_name("not_include")
+                .short("I")
+                .long("not-include")
+                .value_names(&["SYMBOL", "EXPR"])
+                .multiple(true)
+                .help("Assert symbol does not contain a string"),
         )
         .arg(
             Arg::with_name("hook")
@@ -638,7 +675,22 @@ fn main() {
     let run_start = Instant::now();
 
     if !fuzz {
-        let result = radius.run(state, threads);
+        let result = if !occurs!(matches, "merge_all") {
+            radius.run(state, threads)
+        } else {
+            let mut states = radius.run_all(state);
+            let count = states.len();
+
+            if !states.is_empty() {
+                let mut end = states.remove(0);
+                for _ in 1..count {
+                    end.merge(&mut states.remove(0));
+                }
+                Some(end)
+            } else {
+                None
+            }
+        };
 
         if profile {
             let usecs = run_start.elapsed().as_micros();
@@ -674,6 +726,29 @@ fn main() {
                     let mem = end_state.memory.read_value(addr, 4);
                     let val = radius.r2api.get_address(cons).unwrap();
                     end_state.assert(&mem.eq(&vc(val)));
+                }
+            }
+
+            for inc in &["include", "not_include"] {
+                let constraints: Vec<&str> = collect!(matches, inc);
+
+                for i in 0..matches.occurrences_of(inc) as usize {
+                    let name = constraints[2 * i];
+                    let con = constraints[2 * i + 1];
+
+                    let index = if files.contains(&name) {
+                        end_state.search_file(name, con)
+                    } else if let Ok(fd) = name.parse::<usize>() {
+                        end_state.search_fd(fd, con)
+                    } else {
+                        vc(-1i64 as u64)
+                    };
+
+                    if inc.to_owned() == "include" {
+                        end_state.assert(&!index.eq(&vc(-1i64 as u64)));
+                    } else {
+                        end_state.assert(&index.eq(&vc(-1i64 as u64)));
+                    }
                 }
             }
 
@@ -725,7 +800,7 @@ fn main() {
             let head = "=".repeat(37);
             let foot = "=".repeat(80);
             if occurs!(matches, "stdout") {
-                let out = end_state.dump_file_string(1).unwrap_or_default();
+                let out = show(&end_state.dump_file_bytes(1));
                 if !do_json {
                     println!(
                         "{}stdout{}\n{}\n{}",
@@ -739,7 +814,7 @@ fn main() {
                 }
             }
             if occurs!(matches, "stderr") {
-                let out = end_state.dump_file_string(2).unwrap_or_default();
+                let out = show(&end_state.dump_file_bytes(2));
                 if !do_json {
                     println!(
                         "{}stderr{}\n{}\n{}",

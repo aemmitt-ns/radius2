@@ -1,8 +1,9 @@
-use radius2::{Radius, State, Value, vc};
+use radius2::{Radius, State, vc};
+use std::io::{self, Write};
 
 // output: 
 // FLAG: mirror_mirror_on_the_wall_whos_the_ugliest_handler_of_them_all?!
-// target/release/ollvm  0.92s user 0.04s system 99% cpu 0.964 total
+// target/release/ollvm  0.80s user 0.06s system 99% cpu 0.869 total
 
 const HASHES:[u64; 8] = [
     0x875cd4f2e18f8fc4, 0xbb093e17e5d3fa42, 
@@ -27,14 +28,17 @@ fn main() {
 
     let mut end_state = radius.run(state, 1).unwrap();
     let rcx = end_state.registers.get("rcx");
-    let mut solution = "".to_owned();
+
+    print!("FLAG: ");
+    io::stdout().flush().unwrap();
 
     for hash in HASHES {
         end_state.solver.push();
-        end_state.assert(&rcx.eq(&Value::Concrete(hash, 0)));
+        end_state.assert(&rcx.eq(&vc(hash)));
         let reved = end_state.evaluate_string(&flag).unwrap();
-        solution += &reved.chars().rev().collect::<String>();
+        print!("{}", &reved.chars().rev().collect::<String>());
         end_state.solver.pop();
+        io::stdout().flush().unwrap();
     }
-    println!("FLAG: {}", solution);
+    println!();
 }

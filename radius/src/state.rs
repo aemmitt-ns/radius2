@@ -763,9 +763,41 @@ impl State {
             }
         }
 
-        // TODO merge context
+        // merge context
+        for (k, v) in &state.context {
+            for i in 0..v.len() {
+                if let Some(nv) = self.context.get_mut(k) {
+                    if i < nv.len() {
+                        nv[i] = state.cond(&asserted, &v[i], &nv[i]);
+                    } else {
+                        nv.push(state.cond(&asserted, &v[i], &vc(0)))
+                    }
+                }
+            }
+        }
 
-        // TODO merge filesystem
+        // merge filesystem
+        for file in &state.filesystem.files {
+            for cfile in &mut self.filesystem.files {
+                if file.path == cfile.path {
+                    let mlen = if file.content.len() > cfile.content.len() { 
+                        file.content.len()
+                    } else {
+                        cfile.content.len()
+                    };
+                    for i in 0..mlen {
+                        let space = vc(0x20); // fill overflow with spaces, uhhh cuz
+                        let v = file.content.get(i).unwrap_or(&space);
+                        let cv = cfile.content.get(i).unwrap_or(&space);
+                        if i < cfile.content.len() {
+                            cfile.content[i] = state.cond(&asserted, &v, &cv);
+                        } else {
+                            cfile.content.push(state.cond(&asserted, &v, &cv));
+                        }
+                    }
+                }
+            }
+        }
 
         // merge solvers
         let assertions = &self.solver.assertions;
@@ -920,6 +952,27 @@ impl State {
         if let Some(fd) = self.filesystem.getfd(path) {
             self.constrain_fd(fd, content);
         }
+    }
+
+    // search for string in file
+    pub fn search_file(&mut self, path: &str, content: &str) -> Value {
+        if let Some(fd) = self.filesystem.getfd(path) {
+            self.search_fd(fd, content)
+        } else {
+            vc(-1i64 as u64)
+        }
+    }
+
+    // TODO this is hacky as fuck, make it better
+    pub fn search_fd(&mut self, fd: usize, content: &str) -> Value {
+        let data = self.dump_file(fd);
+        let length = vc(data.len() as u64);
+        let addr = self.memory_alloc(&length);
+        self.memory_write(&addr, &data, &length);
+        let needle = self.pack(&byte_values(content));
+        let result = self.memory_search(&addr, &needle, &length, false);
+        self.memory_free(&addr);
+        self.cond(&result.eq(&vc(0)), &vc(-1i64 as u64), &result)
     }
 
     /// Check if this state is satisfiable and mark the state `Unsat` if not

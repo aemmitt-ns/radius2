@@ -35,7 +35,6 @@ pub fn format(state: &mut State, args: &[Value]) -> Vec<Value> {
             count += 1
         }
     }
-    result.push(vc(0));
     result
 }
 
