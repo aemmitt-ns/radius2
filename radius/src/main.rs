@@ -181,6 +181,12 @@ fn main() {
                 .help("Show stderr output"),
         )
         .arg(
+            Arg::with_name("ghidra")
+                .short("G")
+                .long("ghidra")
+                .help("Use r2ghidra to translate pcode to ESIL"),
+        )
+        .arg(
             Arg::with_name("address")
                 .short("a")
                 .long("address")
@@ -351,7 +357,7 @@ fn main() {
 
     let do_json = occurs!(matches, "json");
 
-    let plugins = occurs!(matches, "plugins")
+    let plugins = occurs!(matches, "plugins") || occurs!(matches, "ghidra")
         || matches
             .value_of("path")
             .unwrap_or_default()
@@ -398,6 +404,11 @@ fn main() {
         .unwrap_or("256")
         .parse()
         .unwrap_or(256);
+
+    // translate pcode to ESIL
+    if occurs!(matches, "ghidra") {
+        radius.cmd("pdgp").unwrap_or_default();
+    }
 
     // execute provided r2 commands
     let cmds: Vec<&str> = collect!(matches, "r2_command");

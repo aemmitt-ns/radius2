@@ -534,9 +534,10 @@ impl R2Api {
         }
 
         // if we are on arm64 default to v35 plugin
-        if r2api.info.bin.arch == "arm" && r2api.info.bin.bits == 64 {
-            r2api.set_option("asm.arch", "arm.v35").unwrap_or_default();
-        }
+        // nevermind its very broken due to changes to post/pre indexes?
+        // if r2api.info.bin.arch == "arm" && r2api.info.bin.bits == 64 {
+        //     r2api.set_option("asm.arch", "arm.v35").unwrap_or_default();
+        // }
 
         r2api
     }
@@ -813,7 +814,11 @@ impl R2Api {
 
     pub fn get_register_value(&mut self, reg: &str) -> R2Result<u64> {
         let val = self.cmd(&format!("aer {}", reg))?;
-        Ok(u64::from_str_radix(&val[2..val.len() - 1], 16).unwrap_or_default())
+        if val.len() > 2 {
+            Ok(u64::from_str_radix(&val[2..val.len() - 1], 16).unwrap_or_default())
+        } else {
+            Ok(0) // return 0 if the reg doesnt exist (pdgp hax)
+        }
     }
 
     pub fn set_register_value(&mut self, reg: &str, value: u64) {

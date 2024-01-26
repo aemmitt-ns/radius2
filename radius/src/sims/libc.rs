@@ -94,11 +94,23 @@ pub fn printf(state: &mut State, args: &[Value]) -> Value {
 }
 
 pub fn scanf(state: &mut State, args: &[Value]) -> Value {
-    let buf = state.memory_alloc(&vc(MAX_LEN));
-    gets(state, &[buf.clone()]);
-    let result = format::scan(state, &[&[buf.clone()], args].concat());
-    state.memory_free(&buf);
-    result
+    let addr = state.solver.evalcon_to_u64(&args[0]).unwrap_or(0);
+    let fmt = state.memory_read_cstring(addr);
+    let length = if fmt.starts_with("%") && fmt.ends_with("s") && fmt.len() > 2 {
+        vc(fmt[1..fmt.len()-1].parse::<u64>().unwrap_or(MAX_LEN))
+    } else {
+        vc(MAX_LEN)
+    };
+
+    if length.as_u64().unwrap() == MAX_LEN {
+        let buf = state.memory_alloc(&length.add(&vc(1)));
+        read(state, &[vc(0), buf.clone(), length]);
+        let result = format::scan(state, &[&[buf.clone()], args].concat());
+        state.memory_free(&buf);
+        result
+    } else {
+        read(state, &[vc(0), args[1].clone(), length.clone()])
+    }
 }
 
 pub fn sscanf(state: &mut State, args: &[Value]) -> Value {
@@ -547,6 +559,15 @@ pub fn strtod(state: &mut State, args: &[Value]) -> Value {
         .parse::<f64>()
         .unwrap_or_default()
         .to_bits())
+}
+
+pub fn strtof(state: &mut State, args: &[Value]) -> Value {
+    let addr = state.solver.evalcon_to_u64(&args[0]).unwrap_or_default();
+    vc(state
+        .memory_read_cstring(addr)
+        .parse::<f32>()
+        .unwrap_or_default()
+        .to_bits() as u64)
 }
 
 pub fn strtol(state: &mut State, args: &[Value]) -> Value {

@@ -6,7 +6,7 @@ use crate::solver::{BitVec, Solver};
 use crate::value::{byte_values, vc, Value};
 
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::u8;
 
@@ -732,10 +732,11 @@ impl State {
 
         // merge memory
         //let mut new_mem = HashMap::with_capacity(1024);
+
         let merge_addrs = self.memory.addresses();
         let state_addrs = state.memory.addresses();
 
-        let mut addrs = Vec::with_capacity(state.solver.eval_max);
+        let mut addrs = HashSet::with_capacity(READ_CACHE);
         addrs.extend(merge_addrs);
         addrs.extend(state_addrs);
 
