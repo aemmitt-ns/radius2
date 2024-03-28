@@ -11,7 +11,7 @@ use std::{fs, process};
 use crate::state::StateStatus;
 use crate::value::{Value, vc};
 
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::ascii::escape_default;
 use std::str;
 
@@ -498,6 +498,7 @@ fn main() {
 
     // collect the symbol declarations
     let mut files: Vec<&str> = collect!(matches, "file");
+    let mut symbol_names = vec![];
     let mut symbol_map = HashMap::new();
     let mut symbol_types = HashMap::new();
     let mut has_stdin = false;
@@ -506,6 +507,7 @@ fn main() {
     for i in 0..matches.occurrences_of("symbol") as usize {
         // use get_address so hex / simple ops can be used
         let sym_name = symbols[2 * i];
+        symbol_names.push(sym_name);
         let mut len = symbols[2 * i + 1];
 
         if len.ends_with('n') {
@@ -536,7 +538,8 @@ fn main() {
 
     if default_args || has_argv_env {
         if default_args {
-            argvs = vec![path, symbols[0]];
+            argvs = vec![path];
+            argvs.extend(symbol_names.clone())
         }
 
         let mut argv = vec![];
@@ -773,7 +776,7 @@ fn main() {
             if !do_json {
                 println!()
             };
-            for symbol in symbol_map.keys() {
+            for symbol in symbol_names {
                 let val = Value::Symbolic(end_state.translate(&symbol_map[symbol]).unwrap(), 0);
 
                 if let Some(bv) = end_state.solver.eval_to_bv(&val) {
@@ -783,6 +786,9 @@ fn main() {
                     if !do_json {
                         if sym_type == "str" && str_opt.is_some() {
                             println!("  {} : {:?}", symbol.green(), str_opt.unwrap());
+                        } else if sym_type == "str" {
+                            let bytes = end_state.evaluate_bytes_bv(&bv).unwrap();
+                            println!("  {} : \"{}\"", symbol.green(), show(&bytes));
                         } else {
                             println!("  {} : 0x{}", symbol.green(), hex);
                         }
@@ -847,7 +853,7 @@ fn main() {
         // TODO this is temporary until I integrate a real testcase gen mode in processor
         let mut pcs: HashMap<u64, usize> = HashMap::new();
         let mut states = VecDeque::new();
-        let mut solutions: HashMap<Vec<u8>, usize> = HashMap::new();
+        let mut solutions: HashSet<Vec<u8>> = HashSet::new();
         states.push_back(state);
 
         let mut file_counts: HashMap<&str, usize> = HashMap::new();
@@ -882,12 +888,12 @@ fn main() {
                         let val = new_state.translate(&symbol_map[symbol]).unwrap();
 
                         if let Some(bytes) = new_state.evaluate_bytes_bv(&val) {
-                            if !solutions.contains_key(&bytes) {
+                            if !solutions.contains(&bytes) {
                                 let c = file_counts[symbol];
                                 let filename = &format!("{}{:04}", symbol, c);
                                 fs::write(dir.join(filename), &bytes).unwrap();
                                 file_counts.insert(symbol, c + 1);
-                                solutions.insert(bytes, 1);
+                                solutions.insert(bytes);
                             }
                         }
                     }

@@ -1009,7 +1009,7 @@ impl R2Api {
         // this is unfortunately necessary as there is no padj @, i need to make one
         let cmd = format!("wx {} @ {}; pij {} @ {}", hex_encode(data), addr, num, addr);
 
-        let json = self.cmd(cmd.as_str())?;
+        let json = self.ccmd(cmd.as_str())?;
         r2_result(serde_json::from_str(json.as_str()))
     }
 
@@ -1022,6 +1022,7 @@ impl R2Api {
     pub fn read(&mut self, addr: u64, length: usize) -> R2Result<Vec<u8>> {
         let cmd = format!("p8 {} @ {}", length, addr);
         let out = self.cmd(cmd.as_str())?;
+        // println!("{}", out);
         Ok(hex_decode(&out))
     }
 

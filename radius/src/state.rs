@@ -918,7 +918,7 @@ impl State {
                 let mut i = 0;
                 while i < patlen - 2 {
                     let c = newpat.as_bytes()[i] as u64;
-                    if i < patlen - 4 && &newpat[i + 1..i + 2] == "-" {
+                    if patlen > 4 && i < patlen - 4 && &newpat[i + 1..i + 2] == "-" {
                         let n = newpat.as_bytes()[i + 2] as u64;
                         i += 3;
                         assertions.push(s.ugte(&self.bvv(c, 8)).and(&s.ulte(&self.bvv(n, 8))));

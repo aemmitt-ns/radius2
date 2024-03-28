@@ -523,6 +523,7 @@ impl Memory {
                 self.mem.entry(caddr).or_insert(vals)
             } else {
                 let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
+                // println!("{:x} {:?}", caddr, bytes);
                 let vals = bytes
                     .iter()
                     .map(|b| Value::Concrete(*b as u64, 0))

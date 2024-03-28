@@ -92,6 +92,7 @@ pub enum Operations {
     PrintDebug, // Tool for cli hooks
     Backtrace,  // Tool for cli hooks
     Constrain,
+    ConstrainEqual,
     ConstraintPush,
     ConstraintPop,
     Terminate,
@@ -208,6 +209,7 @@ impl Operations {
             ".." => Operations::PrintDebug,
             "BT" => Operations::Backtrace,
             "_" => Operations::Constrain,
+            "_=" => Operations::ConstrainEqual,
             "_+" => Operations::ConstraintPush,
             "_-" => Operations::ConstraintPop,
             "!!" => Operations::Terminate, // state.set_break()
@@ -934,6 +936,12 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::Constrain => {
             let value = pop_value(state, false, false);
             state.assert(&value);
+        }
+        // im gettin tired of writing x,y,-,!,_
+        Operations::ConstrainEqual => {
+            let val1 = pop_value(state, false, false);
+            let val2 = pop_value(state, false, false);
+            state.assert(&val1.eq(&val2));
         }
         Operations::ConstraintPush => {
             state.solver.push();

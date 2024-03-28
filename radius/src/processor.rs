@@ -807,10 +807,17 @@ impl Processor {
                     .pcs
                     .clone()
                     .into_iter()
-                    .filter(|x| state.check(&new_pc.eq(&Value::Concrete(*x, 0))))
+                    .filter(|x| state.check(&new_pc.eq(&vc(*x))))
                     .collect();
             } else if state.esil.pcs.is_empty() {
-                state.esil.pcs = state.evaluate_many(&pc_val);
+                let bps = self.breakpoints.clone();
+                state.esil.pcs = bps.into_iter()
+                    .filter(|bp| state.check(&new_pc.eq(&vc(*bp))))
+                    .collect();
+
+                if state.esil.pcs.is_empty() {
+                    state.esil.pcs = state.evaluate_many(&pc_val);
+                }
             }
 
             if DO_EVENT_HOOKS && state.has_event_hooks {
