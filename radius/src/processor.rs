@@ -396,8 +396,6 @@ impl Processor {
                         }
                         Operations::Trap => {
                             let trap = pop_concrete(state, false, false);
-                            //let pc = state.registers.get_pc().as_u64().unwrap();
-
                             let sys_val = state.registers.get_with_alias("SN");
                             if let Some(trap_sim) = self.traps.get(&trap) {
                                 // provide syscall args
@@ -632,7 +630,12 @@ impl Processor {
         }
 
         if !skip {
-            self.parse(state, words);
+            if state.strict && instr.disasm == "invalid" {
+                //panic!("Executed invalid instruction");
+                state.set_inactive();
+            } else {
+                self.parse(state, words);
+            }
         }
 
         if instr.type_num == RETN_TYPE {
@@ -757,12 +760,7 @@ impl Processor {
         if self.debug {
             self.print_instr(state, &instr.instruction);
         }
-        if state.strict && instr.instruction.disasm == "invalid" {
-            //panic!("Executed invalid instruction");
-            state.set_inactive();
-        } else {
-            self.execute(state, &instr.instruction, &instr.flags, &instr.tokens);
-        }
+        self.execute(state, &instr.instruction, &instr.flags, &instr.tokens);
     }
 
     /// Take single step with the state provided
@@ -913,7 +911,20 @@ impl Processor {
             match current_state.status {
                 StateStatus::Active | StateStatus::PostMerge => {
                     let new_states = self.step(current_state);
-                    for state in new_states {
+                    // ugly but prevents lots of wasted effort, needs serious refactor
+                    if current_state.status == StateStatus::Break && current_state.is_sat() {
+                        if mode != RunMode::Multiple {
+                            results.push(current_state.to_owned());
+                            return results;
+                        }
+                    }
+                    for mut state in new_states {
+                        if state.status == StateStatus::Break && state.is_sat() {
+                            if mode != RunMode::Multiple {
+                                results.push(state.to_owned());
+                                return results;
+                            }
+                        }
                         states.push(Rc::new(state));
                     }
                     states.push(current_rc);

@@ -62,7 +62,7 @@ fn main() {
 radius2 can also be installed from crates.io and easily included in packages. radius2 also has a CLI tool that can be installed with `cargo install radius2`
 
 ```
-radius2 1.0.27
+radius2 1.0.28
 Austin Emmitt (@alkalinesec) <alkali@alkalinesecurity.com>
 A symbolic execution tool using r2 and boolector
 

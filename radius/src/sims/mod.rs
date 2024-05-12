@@ -44,29 +44,42 @@ pub fn ret(state: &mut State, _args: &[Value]) -> Value {
     uncon
 }*/
 
+/*
+add fortify versions
+memcpy, mempcpy, memmove, memset, strcpy, stpcpy, stncpy, 
+strcat, strncat, sprintf, vsprintf, snprintf, vsnprintf, gets.
+*/
+
 // get a vec of all available Sims
 pub fn get_sims() -> Vec<Sim> {
     vec![
         make_sim("puts", libc::puts, 1),
         make_sim("gets", libc::gets, 1),
+        make_sim("__gets_chk", libc::gets, 1),
         make_sim("putchar", libc::putchar, 1),
         make_sim("putwchar", libc::putchar, 1),
         make_sim("getchar", libc::getchar, 0),
         make_sim("fgets", libc::fgets, 1),
+        make_sim("__fgets_chk", libc::fgets, 1),
         make_sim("fgetc", libc::fgets, 1),
         make_sim("fputs", libc::fputs, 2),
         make_sim("fputc", libc::fputc, 2),
         make_sim("feof", libc::feof, 1),
         make_sim("fprintf", libc::fprintf, 2),
         make_sim("printf", libc::printf, 1),
-        make_sim("sprintf", libc::sprintf, 1),
+        make_sim("sprintf", libc::sprintf, 2),
+        make_sim("__sprintf_chk", libc::sprintf, 2),
+        make_sim("snprintf", libc::snprintf, 3),
+        make_sim("__snprintf_chk", libc::snprintf, 3),
         make_sim("vprintf", libc::printf, 1),   // fix
-        make_sim("vsprintf", libc::sprintf, 1), // fix
+        make_sim("vsprintf", libc::sprintf, 2), // fix
+        make_sim("__vsprintf_chk", libc::sprintf, 2),
         make_sim("perror", libc::perror, 1),
         make_sim("fflush", libc::fflush, 0),
         make_sim("scanf", libc::scanf, 1),
         make_sim("sscanf", libc::sscanf, 1),
         make_sim("__isoc99_scanf", libc::scanf, 1),
+        make_sim("__isoc99_sscanf", libc::sscanf, 1),
         make_sim("fopen", libc::fopen, 2),
         make_sim("freopen", libc::fopen, 3),
         make_sim("fread", libc::fread, 4),
@@ -80,10 +93,14 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("strnlen", libc::strnlen, 2),
         make_sim("strstr", libc::strstr, 2),
         make_sim("strcpy", libc::strcpy, 2),
+        make_sim("__strcpy_chk", libc::strcpy_chk, 2),
         make_sim("stpcpy", libc::stpcpy, 2),
+        make_sim("__stpcpy_chk", libc::stpcpy_chk, 2),
         make_sim("strncpy", libc::strncpy, 3),
+        make_sim("__strncpy_chk", libc::strncpy_chk, 3),
         make_sim("strxfrm", libc::strncpy, 3),
         make_sim("strcat", libc::strcat, 2),
+        make_sim("__strcat_chk", libc::strcat_chk, 2),
         make_sim("strncat", libc::strncat, 3),
         make_sim("strdup", libc::strdup, 1),
         make_sim("strndup", libc::strndup, 2),
@@ -91,18 +108,24 @@ pub fn get_sims() -> Vec<Sim> {
         make_sim("strndupa", libc::strndupa, 2),
         make_sim("strfry", libc::strfry, 1),
         make_sim("strchr", libc::strchr, 2),
+        make_sim("__strchr_chk", libc::strchr, 2),
         make_sim("strrchr", libc::strrchr, 2),
         make_sim("strstr", libc::strstr, 2),
         make_sim("strcmp", libc::strcmp, 2),
         make_sim("strcoll", libc::strcmp, 2),
         make_sim("strncmp", libc::strncmp, 3),
         make_sim("memmove", libc::memmove, 3),
+        make_sim("__memmove_chk", libc::memmove_chk, 3),
         make_sim("memcpy", libc::memcpy, 3),
+        make_sim("__memcpy_chk", libc::memcpy_chk, 3),
         make_sim("memccpy", libc::memccpy, 3),
         make_sim("mempcpy", libc::mempcpy, 3),
+        make_sim("__mempcpy_chk", libc::mempcpy_chk, 3),
         make_sim("memfrob", libc::memfrob, 2),
         make_sim("memset", libc::memset, 3),
+        make_sim("__memset_chk", libc::memset_chk, 3),
         make_sim("memchr", libc::memchr, 3),
+        make_sim("__memchr_chk", libc::memchr, 3),
         make_sim("memrchr", libc::memrchr, 3),
         make_sim("memcmp", libc::memcmp, 3),
         make_sim("bcmp", libc::memcmp, 3),

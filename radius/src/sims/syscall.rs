@@ -221,9 +221,10 @@ pub fn stat(state: &mut State, args: &[Value]) -> Value {
 
 pub fn fstat(state: &mut State, args: &[Value]) -> Value {
     let fd = state.solver.evalcon_to_u64(&args[0]).unwrap();
-    let path = state.filesystem.getpath(fd as usize);
-    state.filesystem.stat(path.unwrap().as_str());
-    Value::Concrete(0, 0)
+    let path = state.filesystem.getpath(fd as usize).unwrap_or_default();
+    let path_addr = state.memory.alloc(&Value::Concrete(path.len() as u64, 0));
+    state.memory_write_string(path_addr, &path);
+    stat(state, &[Value::Concrete(path_addr, 0), args[1].clone()])
 }
 
 // TODO handle symbolic links

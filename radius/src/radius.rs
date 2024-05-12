@@ -546,10 +546,23 @@ impl Radius {
     }
 
     /// Execute function at address and return the resulting state
+    /// if there are multiple result states, merge them all
     pub fn call_address(&mut self, addr: u64, mut state: State, args: Vec<Value>) -> Option<State> {
         state.set_args(args);
         state.registers.set_pc(vc(addr));
-        self.processor.run(state, RunMode::Single).pop()
+
+        let mut states = self.run_all(state);
+        let count = states.len();
+
+        if !states.is_empty() {
+            let mut end = states.remove(0);
+            for _ in 1..count {
+                end.merge(&mut states.remove(0));
+            }
+            Some(end)
+        } else {
+            None
+        }
     }
 
     /// Simple way to execute until a given target address while avoiding a vec of other addrs

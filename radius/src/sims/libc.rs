@@ -86,6 +86,15 @@ pub fn sprintf(state: &mut State, args: &[Value]) -> Value {
     ret
 }
 
+pub fn snprintf(state: &mut State, args: &[Value]) -> Value {
+    let mut formatted = format::format(state, &args[2..]);
+    formatted.push(vc(0));
+    let ret = vc(formatted.len() as u64);
+    let length = state.cond(&args[1].ult(&ret), &args[1], &ret);
+    state.memory_write(&args[0], &formatted, &length);
+    ret
+}
+
 pub fn printf(state: &mut State, args: &[Value]) -> Value {
     let formatted = format::format(state, args);
     let ret = vc(formatted.len() as u64);
@@ -122,11 +131,21 @@ pub fn memmove(state: &mut State, args: &[Value]) -> Value {
     args[0].to_owned()
 }
 
+pub fn memmove_chk(state: &mut State, args: &[Value]) -> Value {
+    state.assert(&args[2].ulte(&args[3])); // assert length < size
+    memmove(state, args)
+}
+
 pub fn memcpy(state: &mut State, args: &[Value]) -> Value {
     // TODO make actual memcpy that does overlaps right
     // how often do memcpys actually do that? next to never probably
     state.memory_move(&args[0], &args[1], &args[2].slice(31, 0));
     args[0].to_owned()
+}
+
+pub fn memcpy_chk(state: &mut State, args: &[Value]) -> Value {
+    state.assert(&args[2].ulte(&args[3])); // assert length < size
+    memcpy(state, args)
 }
 
 pub fn bcopy(state: &mut State, args: &[Value]) -> Value {
@@ -141,6 +160,10 @@ pub fn bzero(state: &mut State, args: &[Value]) -> Value {
 
 pub fn mempcpy(state: &mut State, args: &[Value]) -> Value {
     memcpy(state, args).add(&args[2])
+}
+
+pub fn mempcpy_chk(state: &mut State, args: &[Value]) -> Value {
+    memcpy_chk(state, args).add(&args[2])
 }
 
 pub fn memccpy(state: &mut State, args: &[Value]) -> Value {
@@ -214,9 +237,21 @@ pub fn strcpy(state: &mut State, args: &[Value]) -> Value {
     args[0].to_owned()
 }
 
+pub fn strcpy_chk(state: &mut State, args: &[Value]) -> Value {
+    let length = state.memory_strlen(&args[1], &vc(MAX_LEN)) + vc(1);
+    state.assert(&length.ulte(&args[2])); // assert length < size
+    state.memory_move(&args[0], &args[1], &length);
+    args[0].to_owned()
+}
+
 pub fn stpcpy(state: &mut State, args: &[Value]) -> Value {
     let length = state.memory_strlen(&args[1], &vc(MAX_LEN));
     strcpy(state, args) + length
+}
+
+pub fn stpcpy_chk(state: &mut State, args: &[Value]) -> Value {
+    let length = state.memory_strlen(&args[1], &vc(MAX_LEN));
+    strcpy_chk(state, args) + length
 }
 
 pub fn strdup(state: &mut State, args: &[Value]) -> Value {
@@ -251,6 +286,13 @@ pub fn strfry(_state: &mut State, args: &[Value]) -> Value {
 
 pub fn strncpy(state: &mut State, args: &[Value]) -> Value {
     let length = state.memory_strlen(&args[1], &args[2].slice(31, 0));
+    state.assert(&length.ulte(&args[3])); // assert length < size
+    state.memory_move(&args[0], &args[1], &length);
+    args[0].to_owned()
+}
+
+pub fn strncpy_chk(state: &mut State, args: &[Value]) -> Value {
+    let length = state.memory_strlen(&args[1], &args[2].slice(31, 0));
     state.memory_move(&args[0], &args[1], &length);
     args[0].to_owned()
 }
@@ -258,6 +300,14 @@ pub fn strncpy(state: &mut State, args: &[Value]) -> Value {
 pub fn strcat(state: &mut State, args: &[Value]) -> Value {
     let length1 = state.memory_strlen(&args[0], &vc(MAX_LEN));
     let length2 = state.memory_strlen(&args[1], &vc(MAX_LEN)) + vc(1);
+    state.memory_move(&args[0].add(&length1), &args[1], &length2);
+    args[0].to_owned()
+}
+
+pub fn strcat_chk(state: &mut State, args: &[Value]) -> Value {
+    let length1 = state.memory_strlen(&args[0], &vc(MAX_LEN));
+    let length2 = state.memory_strlen(&args[1], &vc(MAX_LEN)) + vc(1);
+    state.assert(&length1.add(&length2).ulte(&args[3])); // assert length < size
     state.memory_move(&args[0].add(&length1), &args[1], &length2);
     args[0].to_owned()
 }
@@ -278,6 +328,11 @@ pub fn memset(state: &mut State, args: &[Value]) -> Value {
 
     state.memory_write(&args[0], &data, &args[2]);
     args[0].to_owned()
+}
+
+pub fn memset_chk(state: &mut State, args: &[Value]) -> Value {
+    state.assert(&args[2].ulte(&args[3])); // assert length < size
+    memset(state, args)
 }
 
 fn memchr_helper(state: &mut State, args: &[Value], reverse: bool) -> Value {
@@ -323,7 +378,8 @@ pub fn strcmp(state: &mut State, args: &[Value]) -> Value {
 pub fn strncmp(state: &mut State, args: &[Value]) -> Value {
     let len1 = state.memory_strlen(&args[0], &args[2]);
     let len2 = state.memory_strlen(&args[1], &args[2]);
-    let length = state.cond(&(len1.ult(&len2)), &len1, &len2) + vc(1);
+    let mut length = state.cond(&(len1.ult(&len2)), &len1, &len2);
+    length = state.cond(&(length.ult(&args[2])), &length.add(&vc(1)), &args[2]);
 
     state.memory_compare(&args[0], &args[1], &length)
 }

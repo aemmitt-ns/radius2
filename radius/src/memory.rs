@@ -19,10 +19,10 @@ const HEAP_SIZE: u64 = 0x040000;
 const ALIGN: u64 = 16;
 
 // i think these are different on darwin
-const PROT_NONE: u64 = 0x0;
-const PROT_READ: u64 = 0x1;
+const PROT_NONE:  u64 = 0x0;
+const PROT_READ:  u64 = 0x1;
 const PROT_WRITE: u64 = 0x2;
-const PROT_EXEC: u64 = 0x4;
+const PROT_EXEC:  u64 = 0x4;
 
 /// The virtual memory of the program state
 ///
