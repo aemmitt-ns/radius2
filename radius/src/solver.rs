@@ -16,6 +16,12 @@ pub struct Solver {
     pub eval_max: usize,
 }
 
+impl Solver {
+    pub fn print_solver_ptr(&self) {
+        println!("Solver at: {:x}", Arc::as_ptr(&self.btor) as u64);
+    }
+}
+
 impl Default for Solver {
     fn default() -> Self {
         Self::new(EVAL_MAX)

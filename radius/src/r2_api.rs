@@ -542,6 +542,7 @@ impl R2Api {
         r2api
     }
 
+    /// Run a command on the `r2` CLI and return its output.
     pub fn cmd(&mut self, cmd: &str) -> R2Result<String> {
         Ok(self.r2p.lock().unwrap().cmd(cmd).unwrap_or_default())
     }
@@ -988,6 +989,7 @@ impl R2Api {
         r2_result(serde_json::from_str(json.as_str()))
     }
 
+    /// Call into `r2` to disassemble `num` instructions at `addr`.
     pub fn disassemble(&mut self, addr: u64, num: usize) -> R2Result<Vec<Instruction>> {
         let cmd = format!("pdj {} @ {}", num, addr);
         let json = self.cmd(cmd.as_str())?;

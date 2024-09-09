@@ -219,7 +219,7 @@ impl Radius {
         let mut state = self.init_state();
         state.memory.add_stack();
         state.memory.add_heap();
-        state.memory.add_std_streams();
+        //state.memory.add_std_streams();
         state
     }
 

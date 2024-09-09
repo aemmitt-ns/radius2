@@ -1,3 +1,8 @@
+/// ESIL operations.
+///
+/// Types to represent ESIL operations.
+/// Functions to manipulate the VM's stack.
+/// Functions to emulate the effect of ESIL operations on a state.
 use crate::state::{StackItem, State};
 use crate::value::{vc, Value};
 use std::f64;
@@ -8,8 +13,9 @@ pub const OPS: [&str; 16] = [
 
 pub const SIZE: u64 = 64;
 
+/// An ESIL operation.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Operations {
+pub enum Operation {
     Trap,
     Interrupt,
     Syscall,
@@ -82,7 +88,7 @@ pub enum Operations {
     Number,
     Clear,
     Break,
-    Repeat,
+    //Repeat, // Not in current r2.
     GoTo,
     PrintStack,
     ToDo,
@@ -110,123 +116,132 @@ pub enum Operations {
     Ds,
     JumpTarget,
     Js,
-    R,
+    //R, // Unused in current r2.
+    SetD,
+    SetJt,
 
+    /// Everything that is not implemented gets deserialized to this.
     Unknown,
 }
 
-impl Operations {
+impl Operation {
     pub fn from_string(s: &str) -> Self {
         match s {
-            "TRAP" => Operations::Trap,
-            "$" => Operations::Interrupt,
-            "()" => Operations::Syscall,
-            "$$" => Operations::PcAddress, // this is whack
-            "?{" => Operations::If,
-            "}{" => Operations::Else,
-            "}" => Operations::EndIf,
-            "==" => Operations::Compare,
-            "<" => Operations::LessThan,
-            "<=" => Operations::LessThanEq,
-            ">" => Operations::GreaterThan,
-            ">=" => Operations::GreaterThanEq,
-            "<<" => Operations::LeftShift,
-            ">>" => Operations::LogicalRightShift,
-            ">>>>" => Operations::RightShift,
-            "<<<" => Operations::LeftRotation,
-            ">>>" => Operations::RightRotation,
-            "~" => Operations::SignExtend,
-            "SIGN" => Operations::SignExtend,
-            "&" => Operations::And,
-            "|" => Operations::Or,
-            "^" => Operations::Xor,
-            "+" => Operations::Add,
-            "-" => Operations::Subtract,
-            "*" => Operations::Multiply,
-            "L*" => Operations::LongMultiply,
-            "/" => Operations::Divide,
-            "L/" => Operations::LongDivide,
-            "%" => Operations::Modulo,
-            "L%" => Operations::LongModulo,
-            "~/" => Operations::SignedDivide,
-            "~%" => Operations::SignedModulo,
-            "!" => Operations::Not,
-            "++" => Operations::Increment,
-            "--" => Operations::Decrement,
-            "=" => Operations::Equal,
-            ":=" => Operations::WeakEqual,
-            "[1]" => Operations::Peek(1),
-            "[2]" => Operations::Peek(2),
-            "[4]" => Operations::Peek(4),
-            "[8]" => Operations::Peek(8),
-            "[16]" => Operations::Peek(16),
-            "=[1]" => Operations::Poke(1),
-            "=[2]" => Operations::Poke(2),
-            "=[4]" => Operations::Poke(4),
-            "=[8]" => Operations::Poke(8),
-            "=[16]" => Operations::Poke(16),
-            "=[]" => Operations::PokeBits,
-            "[]" => Operations::PeekBits,
-            "=[n]" => Operations::PokeSize,
-            "[n]" => Operations::PeekSize,
-            "=[*]" => Operations::PokeMany,
-            "[*]" => Operations::PeekMany,
-            "POPCOUNT" => Operations::PopCount,
-            "CEIL" => Operations::Ceiling,
-            "FLOOR" => Operations::Floor,
-            "ROUND" => Operations::Round,
-            "SQRT" => Operations::SquareRoot,
-            "D2I" => Operations::DoubleToInt,
-            "I2D" => Operations::SignedToDouble,
-            "S2D" => Operations::SignedToDouble,
-            "U2D" => Operations::UnsignedToDouble,
-            "F2D" => Operations::FloatToDouble,
-            "D2F" => Operations::DoubleToFloat,
-            "F+" => Operations::FloatAdd,
-            "F-" => Operations::FloatSubtract,
-            "F*" => Operations::FloatMultiply,
-            "F/" => Operations::FloatDivide,
-            "F==" => Operations::FloatCompare,
-            "F<" => Operations::FloatLessThan,
-            "NAN" => Operations::NaN,
-            "-F" => Operations::FloatNegate,
-            "SWAP" => Operations::Swap,
-            "PICK" => Operations::Pick,
-            "RPICK" => Operations::ReversePick,
-            "POP" => Operations::Pop,
-            "DUP" => Operations::Duplicate,
-            "NUM" => Operations::Number,
-            "CLEAR" => Operations::Clear,
-            "BREAK" => Operations::Break,
-            "REPEAT" => Operations::Repeat,
-            "GOTO" => Operations::GoTo,
-            "STACK" => Operations::PrintStack,
-            "TODO" => Operations::ToDo,
-            "" => Operations::NoOperation,
+            "$" => Operation::Interrupt,
+            "()" => Operation::Syscall,
+            "$$" => Operation::PcAddress, // this is whack
+            "?{" => Operation::If,
+            "}{" => Operation::Else,
+            "}" => Operation::EndIf,
+            "==" => Operation::Compare,
+            "<" => Operation::LessThan,
+            "<=" => Operation::LessThanEq,
+            ">" => Operation::GreaterThan,
+            ">=" => Operation::GreaterThanEq,
+            "<<" => Operation::LeftShift,
+            ">>" => Operation::LogicalRightShift,
+            ">>>>" => Operation::RightShift,
+            "<<<" => Operation::LeftRotation,
+            ">>>" => Operation::RightRotation,
+            "~" => Operation::SignExtend,
+            "SIGN" => Operation::SignExtend,
+            "&" => Operation::And,
+            "|" => Operation::Or,
+            "^" => Operation::Xor,
+            "+" => Operation::Add,
+            "-" => Operation::Subtract,
+            "*" => Operation::Multiply,
+            "L*" => Operation::LongMultiply,
+            "/" => Operation::Divide,
+            "L/" => Operation::LongDivide,
+            "%" => Operation::Modulo,
+            "L%" => Operation::LongModulo,
+            "~/" => Operation::SignedDivide,
+            "~%" => Operation::SignedModulo,
+            "!" => Operation::Not,
+            "++" => Operation::Increment,
+            "--" => Operation::Decrement,
+            "=" => Operation::Equal,
+            ":=" => Operation::WeakEqual,
+            "[1]" => Operation::Peek(1),
+            "[2]" => Operation::Peek(2),
+            "[4]" => Operation::Peek(4),
+            "[8]" => Operation::Peek(8),
+            "[16]" => Operation::Peek(16),
+            "=[1]" => Operation::Poke(1),
+            "=[2]" => Operation::Poke(2),
+            "=[4]" => Operation::Poke(4),
+            "=[8]" => Operation::Poke(8),
+            "=[16]" => Operation::Poke(16),
+            "=[]" => Operation::PokeBits,
+            "[]" => Operation::PeekBits,
+            "=[n]" => Operation::PokeSize,
+            "[n]" => Operation::PeekSize,
+            "=[*]" => Operation::PokeMany,
+            "[*]" => Operation::PeekMany,
+            "POPCOUNT" => Operation::PopCount,
+            "CEIL" => Operation::Ceiling,
+            "FLOOR" => Operation::Floor,
+            "ROUND" => Operation::Round,
+            "SQRT" => Operation::SquareRoot,
+            "D2I" => Operation::DoubleToInt,
+            "I2D" => Operation::SignedToDouble,
+            "S2D" => Operation::SignedToDouble,
+            "U2D" => Operation::UnsignedToDouble,
+            "F2D" => Operation::FloatToDouble,
+            "D2F" => Operation::DoubleToFloat,
+            "F+" => Operation::FloatAdd,
+            "F-" => Operation::FloatSubtract,
+            "F*" => Operation::FloatMultiply,
+            "F/" => Operation::FloatDivide,
+            "F==" => Operation::FloatCompare,
+            "F<" => Operation::FloatLessThan,
+            "NAN" => Operation::NaN,
+            "-F" => Operation::FloatNegate,
+
+            "TRAP" => Operation::Trap,
+            "SWAP" => Operation::Swap,
+            "PICK" => Operation::Pick,
+            "RPICK" => Operation::ReversePick,
+            "POP" => Operation::Pop,
+            "DUP" => Operation::Duplicate,
+            "NUM" => Operation::Number,
+            "CLEAR" => Operation::Clear,
+            "BREAK" => Operation::Break,
+            //"REPEAT" => Operation::Repeat, // Does not exist in current r2.
+            "GOTO" => Operation::GoTo,
+            "STACK" => Operation::PrintStack,
+            "TODO" => Operation::ToDo,
+            "" => Operation::NoOperation,
 
             // hax for use in the cli / plugin
-            "." => Operations::Print,
-            ".." => Operations::PrintDebug,
-            "BT" => Operations::Backtrace,
-            "_" => Operations::Constrain,
-            "_=" => Operations::ConstrainEqual,
-            "_+" => Operations::ConstraintPush,
-            "_-" => Operations::ConstraintPop,
-            "!!" => Operations::Terminate, // state.set_break()
-            "!_" => Operations::Discard,   // state.set_inactive()
+            "." => Operation::Print,
+            ".." => Operation::PrintDebug,
+            "BT" => Operation::Backtrace,
+            "_" => Operation::Constrain,
+            "_=" => Operation::ConstrainEqual,
+            "_+" => Operation::ConstraintPush,
+            "_-" => Operation::ConstraintPop,
+            "!!" => Operation::Terminate, // state.set_break()
+            "!_" => Operation::Discard,   // state.set_inactive()
 
-            "$z" => Operations::Zero,
-            "$c" => Operations::Carry,
-            "$b" => Operations::Borrow,
-            "$p" => Operations::Parity,
-            "$o" => Operations::Overflow,
+            // Writing internal ESIL VM flags.
+            "SETD" => Operation::SetD,
+            "SETJT" => Operation::SetJt,
+
+            // Reading internal ESIL VM flags.
+            "$z" => Operation::Zero,
+            "$c" => Operation::Carry,
+            "$b" => Operation::Borrow,
+            "$p" => Operation::Parity,
+            "$o" => Operation::Overflow,
             //"$so" => Operations::SubOverflow,
-            "$s" => Operations::S,
-            "$ds" => Operations::Ds,
-            "$jt" => Operations::JumpTarget,
-            "$js" => Operations::Js,
-            "$r" => Operations::R,
-            _ => Operations::Unknown,
+            "$s" => Operation::S,
+            "$ds" => Operation::Ds,
+            "$jt" => Operation::JumpTarget,
+            "$js" => Operation::Js,
+            //"$r" => Operation::R, // Unused in current r2.
+            _ => Operation::Unknown,
         }
     }
 }
@@ -292,6 +307,7 @@ pub fn pop_value(state: &mut State, set_size: bool, sign_ext: bool) -> Value {
 }
 
 #[inline]
+#[allow(dead_code)]
 pub fn pop_stack_value(
     state: &mut State,
     stack: &mut Vec<StackItem>,
@@ -378,16 +394,7 @@ pub fn do_equal(state: &mut State, reg: StackItem, value: Value, set_esil: bool)
         let size = register.reg_info.size as usize;
         let prev = state.registers.get_value(index);
 
-        if let Some(cond) = &state.condition {
-            state.registers.set_value(
-                index,
-                state
-                    .solver
-                    .conditional(&Value::Symbolic(cond.to_owned(), 0), &value, &prev),
-            );
-        } else {
-            state.registers.set_value(index, value.to_owned());
-        }
+        state.registers.set_value(index, value.to_owned());
 
         if set_esil {
             state.esil.last_sz = size;
@@ -432,68 +439,76 @@ pub fn genmask(bits: u64) -> u64 {
     }
 }
 
-pub fn do_operation(state: &mut State, operation: &Operations) {
+/// Computes the effect of a __non-control-flow__ `operation` on the given
+/// `state`.
+///
+/// Control-flow constructs like ITE and GOTO must be handled separately.
+/// Some "special" operations are also not handled here.
+pub fn do_operation(state: &mut State, operation: &Operation) {
     match operation {
-        Operations::Trap => {}
-        Operations::Interrupt => {}
-        Operations::Syscall => {}
-        Operations::PcAddress => {
-            push_value(state, state.esil.prev_pc.clone());
+        // Control flow Constructs are handled separately.
+        Operation::Trap
+        | Operation::If
+        | Operation::Else
+        | Operation::EndIf
+        | Operation::GoTo
+        | Operation::Interrupt
+        | Operation::Syscall
+        | Operation::Break => {}
+        Operation::PcAddress => {
+            push_value(state, state.esil.insn_address.clone());
         }
-        Operations::If => {} // these are handled in processor
-        Operations::Else => {}
-        Operations::EndIf => {}
-        Operations::Compare => {
+        Operation::Compare => {
             let arg1 = pop_value(state, true, false);
             let arg2 = pop_value(state, false, false);
             state.esil.current = arg1.to_owned() - arg2;
             state.esil.previous = arg1;
         }
-        Operations::LessThan => {
+        Operation::LessThan => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
             push_value(state, arg1.slt(&arg2));
         }
-        Operations::LessThanEq => {
+        Operation::LessThanEq => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
             push_value(state, arg1.slte(&arg2));
         }
-        Operations::GreaterThan => {
+        Operation::GreaterThan => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
             push_value(state, arg1.sgt(&arg2));
         }
-        Operations::GreaterThanEq => {
+        Operation::GreaterThanEq => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
             push_value(state, arg1.sgte(&arg2));
         }
-        Operations::LeftShift => {
+        Operation::LeftShift => {
             binary_operation!(state, <<);
         }
-        Operations::LogicalRightShift => {
+        Operation::LogicalRightShift => {
             binary_operation!(state, >>);
         }
-        Operations::RightShift => {
+        Operation::RightShift => {
             let sz = get_size(state);
             let arg1 = pop_value(state, false, true);
             let arg2 = pop_value(state, false, true);
             push_value(state, arg1.asr(arg2, sz));
         }
-        Operations::LeftRotation => {
+        Operation::LeftRotation => {
             let sz = get_size(state);
             let arg1 = pop_value(state, false, false);
             let arg2 = pop_value(state, false, false);
             push_value(state, arg1.rol(arg2, sz));
         }
-        Operations::RightRotation => {
+        Operation::RightRotation => {
             let sz = get_size(state);
             let arg1 = pop_value(state, false, false);
             let arg2 = pop_value(state, false, false);
             push_value(state, arg1.ror(arg2, sz));
         }
-        Operations::SignExtend => {
+        Operation::SignExtend => {
             let arg1 = pop_value(state, false, false);
             let arg2 = pop_concrete(state, false, false);
 
@@ -510,27 +525,27 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                 }
             }
         }
-        Operations::And => {
+        Operation::And => {
             binary_operation!(state, &);
         }
-        Operations::Or => {
+        Operation::Or => {
             binary_operation!(state, |);
         }
-        Operations::Xor => {
+        Operation::Xor => {
             binary_operation!(state, ^);
         }
-        Operations::Add => {
+        Operation::Add => {
             binary_operation!(state, +);
         }
-        Operations::Subtract => {
+        Operation::Subtract => {
             binary_operation!(state, -);
         }
-        Operations::Multiply => {
+        Operation::Multiply => {
             binary_operation!(state, *);
         }
         // here, unlike anywhere else, long means 128 bit
         // it should be long long long long multiply
-        Operations::LongMultiply => {
+        Operation::LongMultiply => {
             let arg1 = pop_value(state, false, false);
             let arg2 = pop_value(state, false, false);
 
@@ -563,14 +578,14 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                 }
             }
         }
-        Operations::LongDivide => {
+        Operation::LongDivide => {
             let arg1 = pop_bv(state, 128);
             let arg2 = pop_bv(state, 128);
             let arg3 = pop_bv(state, 128);
 
             push_value(state, ((arg2 << vc(64)) + arg1) / arg3);
         }
-        Operations::LongModulo => {
+        Operation::LongModulo => {
             let arg1 = pop_bv(state, 128);
             let arg2 = pop_bv(state, 128);
             let arg3 = pop_bv(state, 128);
@@ -578,41 +593,41 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             //println!("{:?} {:?} {:?}", arg1, arg2, arg3);
             push_value(state, ((arg2 << vc(64)) + arg1) % arg3);
         }
-        Operations::Divide => {
+        Operation::Divide => {
             binary_operation!(state, /);
         }
-        Operations::Modulo => {
+        Operation::Modulo => {
             binary_operation!(state, %);
         }
-        Operations::SignedDivide => {
+        Operation::SignedDivide => {
             binary_method!(state, sdiv);
         }
-        Operations::SignedModulo => {
+        Operation::SignedModulo => {
             binary_method!(state, srem);
         }
-        Operations::Not => {
+        Operation::Not => {
             let arg1 = pop_value(state, false, false);
             push_value(state, !arg1);
         }
-        Operations::Increment => {
+        Operation::Increment => {
             let arg1 = pop_value(state, false, false);
             push_value(state, arg1 + Value::Concrete(1, 0));
         }
-        Operations::Decrement => {
+        Operation::Decrement => {
             let arg1 = pop_value(state, false, false);
             push_value(state, arg1 - Value::Concrete(1, 0));
         }
-        Operations::Equal => {
+        Operation::Equal => {
             let reg_arg = state.stack.pop().unwrap();
             let value = pop_value(state, false, false);
             do_equal(state, reg_arg, value, true);
         }
-        Operations::WeakEqual => {
+        Operation::WeakEqual => {
             let reg_arg = state.stack.pop().unwrap();
             let value = pop_value(state, false, false);
             do_equal(state, reg_arg, value, false);
         }
-        Operations::Peek(n) => {
+        Operation::Peek(n) => {
             let addr = pop_value(state, false, false);
 
             let val = state.memory_read_value(&addr, *n);
@@ -622,28 +637,17 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             state.esil.previous = addr;
             state.esil.last_sz = 8 * (*n);
         }
-        Operations::Poke(n) => {
+        Operation::Poke(n) => {
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
 
-            if let Some(cond) = &state.condition.to_owned() {
-                let prev = state.memory_read_value(&addr, *n);
-                state.memory_write_value(
-                    &addr,
-                    &state
-                        .solver
-                        .conditional(&Value::Symbolic(cond.to_owned(), 0), &value, &prev),
-                    *n,
-                );
-            } else {
-                state.memory_write_value(&addr, &value, *n);
-            }
+            state.memory_write_value(&addr, &value, *n);
 
             //state.memory.write_value(addr, value, n);
             state.esil.previous = addr;
             state.esil.last_sz = 8 * (*n);
         }
-        Operations::PeekBits => {
+        Operation::PeekBits => {
             let n = (state.memory.bits / 8) as usize;
             let addr = pop_value(state, false, false);
 
@@ -654,29 +658,18 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             state.esil.previous = addr;
             state.esil.last_sz = 8 * n;
         }
-        Operations::PokeBits => {
+        Operation::PokeBits => {
             let n = (state.memory.bits / 8) as usize;
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
 
-            if let Some(cond) = &state.condition.to_owned() {
-                let prev = state.memory_read_value(&addr, n);
-                state.memory_write_value(
-                    &addr,
-                    &state
-                        .solver
-                        .conditional(&Value::Symbolic(cond.to_owned(), 0), &value, &prev),
-                    n,
-                );
-            } else {
-                state.memory_write_value(&addr, &value, n);
-            }
+            state.memory_write_value(&addr, &value, n);
 
             //state.memory.write_value(addr, value, n);
             state.esil.previous = addr;
             state.esil.last_sz = 8 * n;
         }
-        Operations::PeekSize => {
+        Operation::PeekSize => {
             let n = pop_concrete(state, false, false) as usize;
             let addr = pop_value(state, false, false);
 
@@ -687,29 +680,18 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             state.esil.previous = addr;
             state.esil.last_sz = 8 * n;
         }
-        Operations::PokeSize => {
+        Operation::PokeSize => {
             let n = pop_concrete(state, false, false) as usize;
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
 
-            if let Some(cond) = &state.condition.to_owned() {
-                let prev = state.memory_read_value(&addr, n);
-                state.memory_write_value(
-                    &addr,
-                    &state
-                        .solver
-                        .conditional(&Value::Symbolic(cond.to_owned(), 0), &value, &prev),
-                    n,
-                );
-            } else {
-                state.memory_write_value(&addr, &value, n);
-            }
+            state.memory_write_value(&addr, &value, n);
 
             //state.memory.write_value(addr, value, n);
             state.esil.previous = addr;
             state.esil.last_sz = 8 * n;
         }
-        Operations::PeekMany => {
+        Operation::PeekMany => {
             let mut addr = pop_value(state, false, false);
             let num = pop_concrete(state, false, false);
 
@@ -722,7 +704,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                 }
             }
         }
-        Operations::PokeMany => {
+        Operation::PokeMany => {
             let mut addr = pop_value(state, false, false);
             let num = pop_concrete(state, false, false);
 
@@ -736,17 +718,17 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             }
         }
         // this is a hack to do op pokes ~efficiently
-        Operations::AddressStore => {
+        Operation::AddressStore => {
             let addr = pop_value(state, false, false);
             state.esil.stored_address = Some(addr.to_owned());
             push_value(state, addr);
         }
-        Operations::AddressRestore => {
+        Operation::AddressRestore => {
             let addr = state.esil.stored_address.as_ref().unwrap().to_owned();
             push_value(state, addr);
             state.esil.stored_address = None;
         }
-        Operations::PopCount => {
+        Operation::PopCount => {
             let arg1 = pop_value(state, false, false);
             match arg1 {
                 Value::Concrete(val, t) => {
@@ -762,43 +744,43 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                 }
             }
         }
-        Operations::Ceiling => {
+        Operation::Ceiling => {
             let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
             push_value(state, Value::Concrete(f64::to_bits(arg1.ceil()), t));
         }
-        Operations::Floor => {
+        Operation::Floor => {
             let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
             push_value(state, Value::Concrete(f64::to_bits(arg1.floor()), t));
         }
-        Operations::Round => {
+        Operation::Round => {
             let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
             push_value(state, Value::Concrete(f64::to_bits(arg1.round()), t));
         }
-        Operations::SquareRoot => {
+        Operation::SquareRoot => {
             let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
             push_value(state, Value::Concrete(f64::to_bits(arg1.sqrt()), t));
         }
-        Operations::DoubleToInt => {
+        Operation::DoubleToInt => {
             let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
             push_value(state, Value::Concrete(arg1 as u64, t));
         }
-        Operations::SignedToDouble => {
+        Operation::SignedToDouble => {
             let t = get_stack_taint(state, 1);
             let arg1 = pop_concrete(state, false, true);
             let value = Value::Concrete(f64::to_bits(arg1 as i64 as f64), t);
             push_value(state, value);
         }
-        Operations::UnsignedToDouble => {
+        Operation::UnsignedToDouble => {
             let t = get_stack_taint(state, 1);
             let arg1 = pop_concrete(state, false, false);
             push_value(state, Value::Concrete(f64::to_bits(arg1 as f64), t));
         }
-        Operations::FloatToDouble => {
+        Operation::FloatToDouble => {
             let val = pop_value(state, false, false);
             push_value(state, val.to_owned());
 
@@ -814,7 +796,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             };
             push_value(state, value);
         }
-        Operations::DoubleToFloat => {
+        Operation::DoubleToFloat => {
             let t = get_stack_taint(state, 1);
 
             let arg1 = pop_double(state);
@@ -828,88 +810,80 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             };
             push_value(state, value);
         }
-        Operations::FloatAdd => {
+        Operation::FloatAdd => {
             binary_float_operation!(state, +);
         }
-        Operations::FloatSubtract => {
+        Operation::FloatSubtract => {
             binary_float_operation!(state, -);
         }
-        Operations::FloatMultiply => {
+        Operation::FloatMultiply => {
             binary_float_operation!(state, *);
         }
-        Operations::FloatDivide => {
+        Operation::FloatDivide => {
             binary_float_operation!(state, /);
         }
-        Operations::FloatCompare => {
+        Operation::FloatCompare => {
             let t = get_stack_taint(state, 2);
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
             push_value(state, Value::Concrete((arg1 - arg2 == 0.0) as u64, t));
         }
-        Operations::FloatLessThan => {
+        Operation::FloatLessThan => {
             let t = get_stack_taint(state, 2);
             let arg1 = pop_double(state);
             let arg2 = pop_double(state);
             push_value(state, Value::Concrete((arg1 < arg2) as u64, t));
         }
-        Operations::NaN => {
+        Operation::NaN => {
             let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
             push_value(state, Value::Concrete(arg1.is_nan() as u64, t));
         }
-        Operations::FloatNegate => {
+        Operation::FloatNegate => {
             let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
             push_value(state, Value::Concrete(f64::to_bits(-arg1), t));
         }
-        Operations::Swap => {
+        Operation::Swap => {
             let arg1 = state.stack.pop().unwrap();
             let arg2 = state.stack.pop().unwrap();
             state.stack.push(arg1);
             state.stack.push(arg2);
         }
-        Operations::Pick => {
+        Operation::Pick => {
             let n = pop_concrete(state, false, false);
             let item = state.stack[state.stack.len() - n as usize].to_owned();
             state.stack.push(item);
         }
-        Operations::ReversePick => {
+        Operation::ReversePick => {
             let n = pop_concrete(state, false, false);
             let item = state.stack[n as usize].to_owned();
             state.stack.push(item);
         }
-        Operations::Pop => {
+        Operation::Pop => {
             state.stack.pop();
         }
-        Operations::Duplicate => {
+        Operation::Duplicate => {
             let item = state.stack.pop().unwrap();
             state.stack.push(item.clone());
             state.stack.push(item);
         }
-        Operations::Number => {
+        Operation::Number => {
             let value = pop_value(state, false, false);
             push_value(state, value);
         }
-        Operations::Clear => {
+        Operation::Clear => {
             state.stack.clear();
         }
-        Operations::PrintStack => {
+        Operation::PrintStack => {
             for value in state.stack.iter().rev() {
                 println!("{:?}", value);
             }
         }
-        Operations::Break => {}
-        Operations::Repeat => {}
-        Operations::GoTo => {}
-        Operations::NoOperation => {}
+        Operation::NoOperation => {}
 
-        Operations::Print => {
+        Operation::Print => {
             let value = pop_value(state, false, false);
-            if let Some(cond) = &state.condition {
-                state.solver.push();
-                let condition = cond.clone();
-                state.assert_bv(&condition);
-            }
             let ip = state.registers.get_pc().as_u64().unwrap_or_default();
             if let Some(bv) = state.solver.eval_to_bv(&value) {
                 let hex = state.solver.hex_solution(&bv).unwrap();
@@ -921,62 +895,60 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             } else {
                 println!("\n0x{:08x}    unsat\n", ip);
             }
-            if state.condition.is_some() {
-                state.solver.pop();
-            }
         }
-        Operations::PrintDebug => {
+        Operation::PrintDebug => {
             let value = pop_value(state, false, false);
             let ip = state.registers.get_pc().as_u64().unwrap_or_default();
             println!("\n0x{:08x}    {:?}\n", ip, value);
         }
-        Operations::Backtrace => {
+        Operation::Backtrace => {
             state.print_backtrace();
         }
-        Operations::Constrain => {
+        Operation::Constrain => {
             let value = pop_value(state, false, false);
             state.assert(&value);
         }
         // im gettin tired of writing x,y,-,!,_
-        Operations::ConstrainEqual => {
+        Operation::ConstrainEqual => {
             let val1 = pop_value(state, false, false);
             let val2 = pop_value(state, false, false);
             state.assert(&val1.eq(&val2));
         }
-        Operations::ConstraintPush => {
+        Operation::ConstraintPush => {
             state.solver.push();
         }
-        Operations::ConstraintPop => {
+        Operation::ConstraintPop => {
             state.solver.pop();
         }
-        Operations::Terminate => {
-            if let Some(cond) = &state.condition {
-                let cond_value = Value::Symbolic(cond.to_owned(), 0);
-                if state.solver.check_sat(&cond_value) {
-                    state.solver.assert(&cond_value);
-                    state.set_break();
-                }
-            } else {
-                state.set_break();
-            }
+        Operation::Terminate => {
+            state.set_break();
         }
-        Operations::Discard => {
+        Operation::Discard => {
             state.set_inactive();
         }
-        Operations::ToDo => {
-            if state.strict {
-                //unimplemented!();
-                state.set_inactive();
-            }
+
+        Operation::ToDo => {
+            panic!("Attempt to execute TODO.");
         }
 
-        Operations::Zero => {
+        // Writing internal ESIL VM flags.
+        Operation::SetD => {
+            let delay = pop_concrete(state, false, false) != 0;
+            state.esil.delay = delay;
+        }
+        Operation::SetJt => {
+            let jump_target = pop_value(state, false, false);
+            state.esil.jump_target = Some(jump_target);
+        }
+
+        // Reading internal ESIL VM flags.
+        Operation::Zero => {
             let cur = &state.esil.current;
             let mask = Value::Concrete(genmask((state.esil.last_sz - 1) as u64), 0);
             let zf = !(cur.and(&mask));
             push_value(state, zf);
         }
-        Operations::Carry => {
+        Operation::Carry => {
             let bits = pop_concrete(state, false, false);
             let mask = Value::Concrete(genmask(bits & 0x3f), 0);
             let cur = &state.esil.current;
@@ -985,7 +957,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let cf = cur.and(&mask).ult(&old.and(&mask));
             push_value(state, cf);
         }
-        Operations::Borrow => {
+        Operation::Borrow => {
             let bits = pop_concrete(state, false, false);
             let mask = Value::Concrete(genmask(bits & 0x3f), 0);
             let cur = &state.esil.current;
@@ -994,7 +966,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let cf = old.and(&mask).ult(&cur.and(&mask));
             push_value(state, cf);
         }
-        Operations::Parity => match &state.esil.current {
+        Operation::Parity => match &state.esil.current {
             Value::Concrete(val, t) => {
                 let pf = Value::Concrete(!((val & 0xff).count_ones() % 2) as u64, *t);
                 push_value(state, pf);
@@ -1011,7 +983,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                 push_value(state, pf);
             }
         },
-        Operations::Overflow => {
+        Operation::Overflow => {
             let bits = pop_concrete(state, false, false);
             let mask1 = Value::Concrete(genmask(bits & 0x3f), 0);
             let mask2 = Value::Concrete(genmask((bits + 0x3f) & 0x3f), 0);
@@ -1024,28 +996,27 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let of = c_in ^ c_out;
             push_value(state, of);
         }
-        Operations::S => {
+        Operation::S => {
             let size = pop_value(state, false, false);
             let cur = state.esil.current.to_owned();
             let value = (cur >> size) & Value::Concrete(1, 0);
             push_value(state, value);
         }
-        Operations::Ds => {
-            let cur = state.esil.current.to_owned();
-            let sz = Value::Concrete(state.esil.last_sz as u64, 0);
-            let ds = (cur >> sz) & Value::Concrete(1, 0);
-            push_value(state, ds);
+        Operation::Ds => {
+            let delay = state.esil.delay;
+            push_value(state, vc(delay as u64));
         }
-        Operations::JumpTarget => {}
-        Operations::Js => {}
-        Operations::R => {
-            push_value(state, Value::Concrete(64 >> 3, 0));
+        Operation::JumpTarget => {
+            // `$jt` panics if SETJT was not executed before.
+            let jump_target = state.esil.jump_target.clone().unwrap();
+            push_value(state, jump_target);
         }
-        Operations::Unknown => {
-            if state.strict {
-                // still panic here, we should support all ESIL
-                panic!("Encountered an unknown word!");
-            }
+        Operation::Js => {
+            let jump_target_set = state.esil.jump_target.is_some();
+            push_value(state, vc(jump_target_set as u64));
+        }
+        Operation::Unknown => {
+            panic!("Encountered an unknown word: {:?}", operation);
         }
     }
 }

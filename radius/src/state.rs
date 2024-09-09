@@ -10,37 +10,61 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::u8;
 
+use rand::random;
+
 // event hooks could be a performance issue at some point
 // prolly not now cuz there are 10000 slower things
 // but also i hate the code for them and want to remove it
 pub const DO_EVENT_HOOKS: bool = false;
 
+/// Specifies a location relative to an event.
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum EventTrigger {
-    Before, // call hook before event occurs
-    After,  // call hook after
+    /// Call hook before event occurs.
+    Before,
+    /// Call hook after.
+    After,
 }
 
+/// Specifies an event that can occur during symbolic execution.
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum Event {
-    SymbolicRead(EventTrigger),    // read from symbolic address
-    SymbolicWrite(EventTrigger),   // write to symbolic address
-    SymbolicExec(EventTrigger),    // execute symbolic address
-    Alloc(EventTrigger),           // allocate memory
-    SymbolicAlloc(EventTrigger),   // allocate symbolic length
-    Free(EventTrigger),            // free memory
-    SymbolicFree(EventTrigger),    // free symbolic address
-    Search(EventTrigger),          // mem search (strchr, memmem)
-    SymbolicSearch(EventTrigger),  // search with symbolic addr, needle, or length
-    Compare(EventTrigger),         // compare memory (memcmp, strcmp)
-    SymbolicCompare(EventTrigger), // symbolic compare
-    StringLength(EventTrigger),    // string length check (strlen)
-    SymbolicStrlen(EventTrigger),  // strlen of symbolic address
-    Move(EventTrigger),            // move bytes from src to dst (memcpy, memmove)
-    SymbolicMove(EventTrigger),    // symbolic move (memcpy, memmove)
-    All(EventTrigger),             // gotta hook em all, ra! - di! - us!
+    /// Read from symbolic address.
+    SymbolicRead(EventTrigger),
+    /// Write to symbolic address.
+    SymbolicWrite(EventTrigger),
+    /// Execute symbolic address.
+    SymbolicExec(EventTrigger),
+    /// Allocate memory (e.g., `malloc`).
+    Alloc(EventTrigger),
+    /// Allocate memory with a symbolic length (e.g., `malloc`).
+    SymbolicAlloc(EventTrigger),
+    /// Free memory (e.g., `free`).
+    Free(EventTrigger),
+    /// Free symbolic address (e.g., `free`).
+    SymbolicFree(EventTrigger),
+    /// Memory search (e.g., `strchr`, `memmem`).
+    Search(EventTrigger),
+    /// Memory search with symbolic addr, needle, or length.
+    SymbolicSearch(EventTrigger),
+    /// Compare memory (e.g., `memcmp`, `strcmp`).
+    Compare(EventTrigger),
+    /// Compare memory with symbolic arguments (e.g., `memcmp`, `strcmp`).
+    SymbolicCompare(EventTrigger),
+    /// String length check (e.g., `strlen`).
+    StringLength(EventTrigger),
+    /// String length check of symbolic address (e.g., `strlen`).
+    SymbolicStrlen(EventTrigger),
+    /// Move `len` bytes from `src` to `dst` (e.g., `memcpy`, `memmove`).
+    Move(EventTrigger),
+    /// Move `len` bytes from `src` to `dst` with symbolic argument
+    /// (e.g., `memcpy`, `memmove`).
+    SymbolicMove(EventTrigger),
+    /// Gotta hook em all, ra! - di! - us!
+    All(EventTrigger),
 }
 
+/// Information available to an [`Event`] hook.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventContext {
     ReadContext(Value, Value),
@@ -54,30 +78,112 @@ pub enum EventContext {
     MoveContext(Value, Value, Value),
 }
 
+/// A callback that can be attached to an [`Event`].
 pub type EventHook = dyn Fn(&mut State, &EventContext);
 
+/// State of the ESIL interpreter related to ITE statements.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ExecMode {
-    If,     // in a symbolic if clause ?{,...,}
-    Else,   // in a symbolic else clause ?{,---,}{,...,}
-    Exec,   // in a clause that is always executed 1,?{,...,}
-    NoExec, // in a clause that is never executed 0,?{,...,}
-    Uncon,  // not in an if or else, regular parsing
+pub enum EsilIteContext {
+    /// In an ITE branch that is always executed `1,?{,...,}`.
+    Exec,
+    /// In an ITE branch that is never executed `0,?{,...,}`.
+    NoExec,
+    /// Not in an ITE statement.
+    UnCon,
+    /// After executing a GOTO, before hitting the next IF, ELSE, or ENDIF.
+    ///
+    /// We essentially do not know our ITE context here.
+    Goto,
 }
 
 #[derive(Debug, Clone)]
 pub struct EsilState {
-    pub mode: ExecMode,
-    pub prev_pc: Value,
+    /// Current ITE context.
+    pub exec_ctx: EsilIteContext,
+    /// Before executing the ESIL words belonging to a machine instruction we
+    /// have to check whether the instruction is to be executed in a delay slot
+    /// of a taken branch or not. This is necessary to deduce the address of the
+    /// next instruction to be executed.
+    /// During emulation, the address of next instruction is determined as
+    /// follows:
+    /// ```
+    ///     let in_delay = state.esil.delay;
+    ///     // emulate insn words
+    ///     if in_delay {
+    ///         let jump_target = state.esil.jump_target;
+    ///         state.esil.delay = false;
+    ///         state.esil.jump_target = None;
+    ///         jump_target
+    ///     } else {
+    ///         state.registers.get_pc()
+    ///     }
+    /// ```
+    /// If delay slots are not in use, this means that the address of the next
+    /// instruction is simply `PC` after executing the instruction.
+    ///
+    /// The implementation relies on the following invariants:
+    ///
+    /// - Instructions that __may__ set `PC` or `delay` __never ever__ appear in
+    ///   a delay slot. (Their ESIL __must__ include code to trap if this does
+    ///   happen.)
+    /// - If an instruction sets `delay`, after it finishes executing PC
+    ///   __must__ be set to the address of the delay slot and the address of
+    ///   the instruction to be executed after the delay slot __must__ be
+    ///   recorded in `jump_target`.
+    ///
+    /// The current implementation is able to handle a single delay slot. It
+    /// should be straight forward to extend it for multiple delay slots by
+    /// making `delay` a counter.
+    ///
+    /// # Example: MIPS
+    ///
+    /// ESIL of all instructions with non-fall-through semantics is prefixed
+    /// with code that traps if executed in a delay slot, e.g.,
+    /// `$ds,!,!,?{TRAP}`.
+    ///
+    /// Direct branch:
+    ///   without delay slot:   `0x1337,pc,:=`
+    ///   with delay slot:      `0x1337,SETJT,1,SETD`
+    /// Direct call:
+    ///   without delay slot:   `pc,ra,=,0x1337,pc,:=`
+    ///   with delay slot:      `pc,4,+,ra,=,0x1337,SETJT,1,SETD`
+    /// Conditional direct branch:
+    ///   without delay slot:   `...,?{,0x1337,pc,:=,}`
+    ///   with delay slot:      `...,?{,0x1337,SETJT,1,SETD,}`
+    /// Indirect (conditional) branch/call:
+    ///   0x1337 -> rs
+    ///
+    /// # Symbolic Execution
+    ///
+    /// The above scheme works well for concrete execution. For symbolic
+    /// execution, emulation of a single instruction may leave us with a bunch
+    /// of states. The above scheme to determine the new PC has to be repeated
+    /// for each new state. Afterwards, some states may end up with a symbolic
+    /// PC. In this case one could try tp concretize (and fork as necessary),
+    /// however, we currently just give up on this state.
+    ///
+    /// `$ds` flag of the ESIL VM.
+    pub delay: bool,
+    /// Combined `$js` and `$jt` flag of the ESIL VM.
+    pub jump_target: Option<Value>,
+    /// Address of the current instruction.
+    ///
+    /// Before executing the ESIL words belonging to a machine instruction, PC
+    /// holds the address of the next __sequential__ instruction, i.e., the
+    /// address of the first byte that does not belong to the instruction we
+    /// are about to execute. Consequently, reading PC will __not__ give you the
+    /// address of the current instruction. This also means that ESIL for
+    /// instructions with fall-through semantics does not need to update PC.
+    pub insn_address: Value,
     pub previous: Value,
     pub current: Value,
     pub last_sz: usize,
     pub stored_address: Option<Value>,
-    pub temp1: Vec<StackItem>,
-    pub temp2: Vec<StackItem>,
-    pub pcs: Vec<u64>,
 }
 
+/// Item on the stack of the ESIL VM.
+///
+/// The stack may hold registers or values.
 #[derive(Debug, Clone)]
 pub enum StackItem {
     StackRegister(usize),
@@ -92,45 +198,99 @@ impl Default for StackItem {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateStatus {
+    /// State is ready to take a step.
     Active,
+    /// State has hit a breakpoint.
     Break,
+    /// State has to be merged brefore it can take a step.
     Merge,
-    PostMerge, // so we dont get caught in merge loop
+    /// State was just merged and may take a step.
+    PostMerge,
+    /// State has a not sat path condition or encountered an ITE where both
+    /// branches are not sat.
     Unsat,
+    /// State stepping is suspended since it hit an internal limitation of
+    /// the engine.
     Inactive,
+    /// State has violated memory permissions.
     Crash(u64, char),
+    /// State has reached the end of the program.
     Exit,
 }
 
-/// A program state, including memory, registers, and solver data
+/// Unique identifier of a state.
+pub type StateUid = u64;
+
+/// For states that were forked of another state, this includes information
+/// about the forking event.
+#[derive(Clone)]
+pub struct ForkContext {
+    /// State that was forked.
+    pub parent: StateUid,
+    /// Fork depth.
+    ///
+    /// How many forks relate this state to the initial state.
+    pub fork_depth: u64,
+    /// Address of the instruction that caused the fork.
+    pub insn_address: u64,
+    /// Index of the word that caused the fork.
+    pub word_index: u32,
+    /// Condition that caused the fork and is true for this child.
+    pub condition: Value,
+}
+
+/// A symbolic program state, including memory, registers, path condition,
+/// and solver data
 #[derive(Clone)]
 pub struct State {
+    /// Handle to the boolector SMT solver.
     pub solver: Solver,
+    /// Handle to r2.
     pub r2api: R2Api,
+    /// Meta data about the program corresponding to this state.
     pub info: Information,
+    /// Stack of the ESIL VM.
     pub stack: Vec<StackItem>,
+    /// State of the ESIL VM.
     pub esil: EsilState,
-    pub condition: Option<BitVec>,
+    /// Map of CPU registers to bitvectors.
     pub registers: Registers,
+    /// Map of memory addresses to 8-bit bitvectors.
     pub memory: Memory,
     pub filesystem: SimFilesytem,
+    /// Status of this state.
     pub status: StateStatus,
     pub context: HashMap<String, Vec<Value>>,
     pub taints: HashMap<String, u64>,
-    pub hooks: HashMap<Event, Rc<EventHook>>,
+    pub event_hooks: HashMap<Event, Rc<EventHook>>,
+    /// Map of PC address to number of times that the corresponding instruction
+    /// was visited.
     pub visits: HashMap<u64, usize>,
-    pub pid: u64,
+    /// Unique identifier of this state.
+    pub uid: StateUid,
+    /// If this state came to live by forking execution at a conditional, this
+    /// records information about the forking event.
+    pub fork_ctx: Option<Box<ForkContext>>,
+    /// Call stack: (callee address, return address)
     pub backtrace: Vec<(u64, u64)>,
+    /// Sequence of PCs that this state has traversed.
+    pub path: Vec<u64>,
+    /// Whether to symbol-fill uninitialized memory.
     pub blank: bool,
+    /// Whether to print extra debugging information.
     pub debug: bool,
-    pub check: bool,
+    /// Whether to check memory permissions.
+    pub check_mem_perms: bool,
+    /// Whether to panic when hitting unimplemented or not properly handled
+    /// cases. Else the state is set inactive.
     pub strict: bool,
     pub has_event_hooks: bool,
+    pub steps: u64,
 }
 
-// state equality is based on PC visit count
-// in order to use a priority queue to manage states
 impl PartialEq for State {
+    /// Two states are equal iff they have the same visit count for their
+    /// current PC.
     fn eq(&self, other: &Self) -> bool {
         other.get_visit() == self.get_visit()
     }
@@ -139,6 +299,10 @@ impl PartialEq for State {
 impl Eq for State {}
 
 impl Ord for State {
+    /// Ordering of states is based on the number of visits that they have for
+    /// for their current PC value.
+    ///
+    /// States with lower visits are "larger".
     fn cmp(&self, other: &Self) -> Ordering {
         other.get_visit().cmp(&self.get_visit())
     }
@@ -151,7 +315,7 @@ impl PartialOrd for State {
 }
 
 impl State {
-    /// Create a new state, should generally not be called directly
+    /// Create a new state, should generally not be called directly.
     pub fn new(
         r2api: &mut R2Api,
         eval_max: usize,
@@ -161,15 +325,14 @@ impl State {
         strict: bool,
     ) -> Self {
         let esil_state = EsilState {
-            mode: ExecMode::Uncon,
-            prev_pc: Value::Concrete(0, 0),
+            exec_ctx: EsilIteContext::UnCon,
+            delay: false,
+            jump_target: None,
+            insn_address: Value::Concrete(0, 0),
             previous: Value::Concrete(0, 0),
             current: Value::Concrete(0, 0),
             last_sz: 64,
             stored_address: None,
-            temp1: vec![], // these instances are actually not used
-            temp2: vec![],
-            pcs: Vec::with_capacity(64),
         };
 
         let solver = Solver::new(eval_max);
@@ -182,28 +345,30 @@ impl State {
             info: r2api.info.clone(),
             stack: Vec::with_capacity(128),
             esil: esil_state,
-            condition: None,
             registers,
             memory,
             filesystem: SimFilesytem::new(),
             status: StateStatus::Active,
             context: HashMap::new(),
             taints: HashMap::new(),
-            hooks: HashMap::new(),
+            event_hooks: HashMap::new(),
             visits: HashMap::with_capacity(512),
             backtrace: Vec::with_capacity(128),
-            pid: 1337, // sup3rh4x0r
+            path: Vec::with_capacity(0),
+            uid: random(),
             blank,
             debug,
-            check,
+            check_mem_perms: check,
             strict,
             has_event_hooks: false,
+            fork_ctx: None,
+            steps: 0,
         }
     }
 
     /// duplicate state is different from clone as it creates
     /// a duplicate solver instead of another reference to the old one
-    pub fn duplicate(&mut self) -> Self {
+    pub fn fork(&mut self, insn_address: u64, word_index: u32, condition: Value) -> Self {
         let solver = self.solver.duplicate();
 
         let mut registers = self.registers.clone();
@@ -216,7 +381,6 @@ impl State {
 
         let mut memory = self.memory.clone();
         memory.solver = solver.clone();
-
         let addrs = memory.addresses();
         for addr in addrs {
             let values = memory.mem.remove(&addr).unwrap();
@@ -241,15 +405,18 @@ impl State {
         }
 
         let esil_state = EsilState {
-            mode: ExecMode::Uncon,
-            prev_pc: self.esil.prev_pc.clone(),
+            exec_ctx: EsilIteContext::UnCon,
+            delay: self.esil.delay,
+            jump_target: self
+                .esil
+                .jump_target
+                .clone()
+                .map(|v| solver.translate_value(&v)),
+            insn_address: solver.translate_value(&self.esil.insn_address),
             previous: vc(0),
             current: vc(0),
             last_sz: 64,
             stored_address: None,
-            temp1: Vec::with_capacity(128),
-            temp2: Vec::with_capacity(128),
-            pcs: Vec::with_capacity(64),
         };
 
         State {
@@ -258,35 +425,58 @@ impl State {
             info: self.info.clone(),
             stack: Vec::with_capacity(128),
             esil: esil_state,
-            condition: None,
             registers,
             memory,
             filesystem,
             status: self.status.clone(),
             context,
             taints: self.taints.clone(),
-            hooks: self.hooks.clone(),
+            event_hooks: self.event_hooks.clone(),
             visits: self.visits.clone(),
+            fork_ctx: Some(self.gen_fork_ctx_for_child(insn_address, word_index, condition)),
             backtrace: self.backtrace.clone(),
-            pid: self.pid,
+            path: self.path.clone(),
+            uid: random(),
             blank: self.blank,
             debug: self.debug,
-            check: self.check,
+            check_mem_perms: self.check_mem_perms,
             strict: self.strict,
             has_event_hooks: self.has_event_hooks,
+            steps: self.steps,
         }
+    }
+
+    /// Returns the fork context for a child created at the given point with
+    /// the given condition.
+    pub fn gen_fork_ctx_for_child(
+        &self,
+        insn_address: u64,
+        word_index: u32,
+        condition: Value,
+    ) -> Box<ForkContext> {
+        Box::new(ForkContext {
+            parent: self.uid,
+            fork_depth: if let Some(fork_ctx) = &self.fork_ctx {
+                fork_ctx.fork_depth + 1
+            } else {
+                1
+            },
+            insn_address,
+            word_index,
+            condition,
+        })
     }
 
     pub fn hook_event(&mut self, event: Event, hook: Rc<EventHook>) {
         self.has_event_hooks = true;
-        self.hooks.insert(event, hook);
+        self.event_hooks.insert(event, hook);
     }
 
     pub fn do_hooked(&mut self, event: &Event, event_context: &EventContext) {
-        if !self.hooks.contains_key(event) {
+        if !self.event_hooks.contains_key(event) {
             return;
         }
-        let hook = self.hooks.get(event).unwrap().clone();
+        let hook = self.event_hooks.get(event).unwrap().clone();
         hook(self, event_context)
     }
 
@@ -326,7 +516,7 @@ impl State {
             self.do_hooked(&event, &EventContext::FreeContext(addr.to_owned()));
         }
 
-        if self.check && self.check_crash(addr, &vc(1), 'r') {
+        if self.check_mem_perms && self.check_crash(addr, &vc(1), 'r') {
             return vc(-1i64 as u64);
         }
 
@@ -354,7 +544,7 @@ impl State {
             );
         }
 
-        if self.check && self.check_crash(address, length, 'r') {
+        if self.check_mem_perms && self.check_crash(address, length, 'r') {
             return vec![];
         }
 
@@ -381,7 +571,7 @@ impl State {
             );
         }
 
-        if self.check && self.check_crash(address, length, 'r') {
+        if self.check_mem_perms && self.check_crash(address, length, 'r') {
             return;
         }
         let ret = self
@@ -409,7 +599,7 @@ impl State {
             );
         }
 
-        if self.check && self.check_crash(address, &vc(length as u64), 'r') {
+        if self.check_mem_perms && self.check_crash(address, &vc(length as u64), 'r') {
             return vc(-1i64 as u64);
         }
 
@@ -435,7 +625,7 @@ impl State {
             );
         }
 
-        if self.check && self.check_crash(address, &vc(length as u64), 'w') {
+        if self.check_mem_perms && self.check_crash(address, &vc(length as u64), 'w') {
             return;
         }
 
@@ -474,7 +664,7 @@ impl State {
             );
         }
 
-        if self.check && self.check_crash(addr, &vc(1), 'r') {
+        if self.check_mem_perms && self.check_crash(addr, &vc(1), 'r') {
             return vc(-1i64 as u64);
         }
 
@@ -512,7 +702,8 @@ impl State {
             );
         }
 
-        if self.check && (self.check_crash(src, &vc(1), 'r') || self.check_crash(dst, &vc(1), 'r'))
+        if self.check_mem_perms
+            && (self.check_crash(src, &vc(1), 'r') || self.check_crash(dst, &vc(1), 'r'))
         {
             return vc(-1i64 as u64);
         }
@@ -549,7 +740,7 @@ impl State {
         }
 
         // eh don't use the length here
-        if self.check && self.check_crash(addr, &vc(1), 'r') {
+        if self.check_mem_perms && self.check_crash(addr, &vc(1), 'r') {
             return vc(-1i64 as u64);
         }
 
@@ -584,7 +775,8 @@ impl State {
             );
         }
 
-        if self.check && (self.check_crash(src, length, 'r') || self.check_crash(dst, length, 'w'))
+        if self.check_mem_perms
+            && (self.check_crash(src, length, 'r') || self.check_crash(dst, length, 'w'))
         {
             return;
         }
@@ -758,7 +950,7 @@ impl State {
             };
 
             for i in 0..READ_CACHE {
-                if newvec.len() > i && curvec.len() > i {   
+                if newvec.len() > i && curvec.len() > i {
                     newvec[i] = state.cond(&asserted, &curvec[i], &newvec[i]);
                 }
             }
@@ -781,7 +973,7 @@ impl State {
         for file in &state.filesystem.files {
             for cfile in &mut self.filesystem.files {
                 if file.path == cfile.path {
-                    let mlen = if file.content.len() > cfile.content.len() { 
+                    let mlen = if file.content.len() > cfile.content.len() {
                         file.content.len()
                     } else {
                         cfile.content.len()
@@ -866,7 +1058,7 @@ impl State {
         }
     }
 
-    /// Check if the `value` is tainted with the given `taint`  
+    /// Check if the `value` is tainted with the given `taint`
     pub fn is_tainted_with(&mut self, value: &Value, taint: &str) -> bool {
         (value.get_taint() & self.get_tainted_identifier(taint)) != 0
     }
@@ -986,8 +1178,12 @@ impl State {
         }
     }
 
-    /// Increment visit counter
+    /// Increment visit counter.
+    ///
+    /// The visit counter maps PC values to the number of times that the
+    /// corresponding instruction was executed.
     pub fn visit(&mut self) {
+        self.steps += 1;
         if let Some(pc) = self.registers.get_pc().as_u64() {
             self.visits.entry(pc).and_modify(|c| *c += 1).or_insert(1);
         }

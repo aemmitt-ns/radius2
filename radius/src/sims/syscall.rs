@@ -301,8 +301,8 @@ pub fn sbrk(state: &mut State, args: &[Value]) -> Value {
 // will result in a split state when used to branch
 // essentially recreating a fork. pretty cool!
 pub fn fork(state: &mut State, _args: &[Value]) -> Value {
-    let cpid = state.pid + 1;
-    state.pid = cpid;
+    let cpid = state.uid + 1;
+    state.uid = cpid;
     let pid = state.bv(format!("pid_{}", cpid).as_str(), 64);
     let a = pid
         ._eq(&state.bvv(cpid, 64))
@@ -314,7 +314,7 @@ pub fn fork(state: &mut State, _args: &[Value]) -> Value {
 }
 
 pub fn getpid(state: &mut State, _args: &[Value]) -> Value {
-    Value::Concrete(state.pid, 0)
+    Value::Concrete(state.uid, 0)
 }
 
 pub fn getuid(_state: &mut State, _args: &[Value]) -> Value {
