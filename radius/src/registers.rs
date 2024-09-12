@@ -113,6 +113,11 @@ impl Registers {
         registers
     }
 
+    /// Returns `true` iff this register is the PC.
+    pub fn is_pc(&self, reg: &Register) -> bool {
+        self.pc.as_ref().unwrap().index == reg.index
+    }
+
     /// Get the value of the register `reg`
     #[inline]
     pub fn get(&self, reg: &str) -> Value {

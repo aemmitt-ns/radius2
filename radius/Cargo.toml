@@ -10,7 +10,7 @@ repository = "https://github.com/aemmitt-ns/radius"
 readme = "README.md"
 
 [dependencies]
-r2pipe = "0.7.0"
+r2pipe = { path = "../../r2pipe.rs/" }
 serde_json = "1.0.59"
 serde = { version = "1.0.117", features = ["derive"] }
 boolector = "0.4.3"

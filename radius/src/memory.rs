@@ -19,10 +19,10 @@ const HEAP_SIZE: u64 = 0x040000;
 const ALIGN: u64 = 16;
 
 // i think these are different on darwin
-const PROT_NONE:  u64 = 0x0;
-const PROT_READ:  u64 = 0x1;
+const PROT_NONE: u64 = 0x0;
+const PROT_READ: u64 = 0x1;
 const PROT_WRITE: u64 = 0x2;
-const PROT_EXEC:  u64 = 0x4;
+const PROT_EXEC: u64 = 0x4;
 
 /// The virtual memory of the program state
 ///
@@ -40,6 +40,16 @@ pub struct Memory {
     pub endian: Endian,
     pub segs: Vec<MemorySegment>,
     pub blank: bool,
+}
+
+impl Memory {
+    pub fn print_cached_addresses(&self) {
+        print!("Cached data for: ");
+        for addr in self.mem.keys() {
+            print!("{:x},", addr);
+        }
+        println!("");
+    }
 }
 
 pub enum Permission {
@@ -106,7 +116,12 @@ impl Memory {
     pub fn alloc(&mut self, length: &Value) -> u64 {
         let len = length.as_u64().unwrap();
         // aligning makes some runs take much longer wtaf
-        let len = len + if len % ALIGN != 0 { ALIGN - len % ALIGN } else { 0 };
+        let len = len
+            + if len % ALIGN != 0 {
+                ALIGN - len % ALIGN
+            } else {
+                0
+            };
 
         let addr = self.heap.alloc(len);
         //let canary = self.heap_canary.clone();
@@ -418,7 +433,7 @@ impl Memory {
                 if *res != 0 {
                     break;
                 }
-            } 
+            }
             if value.id(needle).as_u64().unwrap() == 1 {
                 // this is weird but cuts searches on identical values
                 break;
@@ -512,18 +527,25 @@ impl Memory {
             let caddr = (addr & mask) + size * count;
             let mut offset = (addr & not_mask) * (count == 0) as u64;
 
+            //println!("Request to read {:x}:{}: chunk {:x}:{}.", addr, length, caddr, size);
+            //self.solver.print_solver_ptr();
+            //self.print_cached_addresses();
             let mem = if let Some(m) = self.mem.get(&caddr) {
+                //println!("cache hit!");
                 m
             } else if make_sym {
+                //print!("Cache miss! ...");
                 let mut vals = Vec::with_capacity(READ_CACHE);
                 for i in 0..size {
                     let sym_name = format!("mem_{:08x}", caddr + i);
+                    //print!("{},", sym_name);
                     vals.push(Value::Symbolic(self.solver.bv(&sym_name, 8), 0));
                 }
+                //println!(" Inserting at {:x}", caddr);
                 self.mem.entry(caddr).or_insert(vals)
             } else {
                 let bytes = self.r2api.read(caddr, READ_CACHE).unwrap();
-                // println!("{:x} {:?}", caddr, bytes);
+                println!("READ: from {:x} -> {:?}", caddr, bytes);
                 let vals = bytes
                     .iter()
                     .map(|b| Value::Concrete(*b as u64, 0))
@@ -760,7 +782,7 @@ impl Heap {
         let addr = last.addr + last.size;
         self.chunks.push(Chunk {
             addr,
-            size //: size + HEAP_CANARY_SIZE,
+            size, //: size + HEAP_CANARY_SIZE,
         });
         addr
     }

@@ -1,48 +1,58 @@
-use crate::operations::{
-    do_operation, pop_concrete, pop_stack_value, pop_value, push_value, Operations, OPS,
-};
+use crate::operations::{do_operation, pop_concrete, pop_value, Operation, OPS};
 use crate::r2_api::{hex_decode, CallingConvention, Instruction, Syscall};
-use crate::value::{vc, Value};
-
-use crate::state::{
-    Event, EventContext, EventTrigger, ExecMode, StackItem, State, StateStatus, DO_EVENT_HOOKS,
-};
-
 use crate::sims::syscall::syscall;
 use crate::sims::{Sim, SimMethod};
+use crate::state::{EsilIteContext, StackItem, State, StateStatus};
+use crate::value::{vc, Value};
 
-use std::collections::BinaryHeap;
+use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
+use std::iter::Extend;
 use std::mem;
+use std::ops::Not;
 use std::rc::Rc;
+
 use colored::*;
 
-use std::collections::BTreeMap;
-use std::collections::{HashMap, HashSet};
-
+/// Number of instructions to disassemble on a instruction cache miss.
 const INSTR_NUM: usize = 64;
-// const COLOR: bool = true;
+/// ESILs internal identifier for "call-like" instructions.
 const CALL_TYPE: i64 = 3;
+/// ESILs internal identifier for "return-like" instructions.
 const RETN_TYPE: i64 = 5;
-// const NOP_TYPE: i64 = 8;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Word {
     Literal(Value),
     Register(usize),
-    Operator(Operations),
+    Operator(Operation),
     Unknown(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RunMode {
+    /// Runs until some state hits a BP.
     Single,
+    /// Runs the state for a single step.
     Step,
+    /// Runs the state until it splits or hits a BP.
     Parallel,
+    /// Runs until there are no more states that can take a step.
+    ///
+    /// Does NOT immediately return if a breakpoint is hit.
     Multiple,
 }
 
 pub type HookMethod = fn(&mut State) -> bool;
 
+/// An abstract processor that can be used to run different symbolic states.
+///
+/// Takes case of things like:
+/// - running user-defined hooks,
+/// - handling special events like breakpoints, interrupts, syscalls, traps,
+/// - caching instructions,
+/// - merging states,
+/// - avoiding paths,
+/// - some other settings
 #[derive(Clone)]
 pub struct Processor {
     pub instructions: BTreeMap<u64, InstructionEntry>,
@@ -69,9 +79,10 @@ pub struct Processor {
     pub steps: u64,        // number of state steps
 }
 
+/// Signals special actions to be taken when encountering a particular
+/// instruction.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InstructionFlag {
-    //None,
     Hook,
     ESILHook,
     Sim,
@@ -80,6 +91,9 @@ pub enum InstructionFlag {
     Break,
 }
 
+/// A particular instruction in the program.
+///
+/// Also includes tokenized ESIL and flags.
 #[derive(Debug, Clone)]
 pub struct InstructionEntry {
     pub instruction: Instruction,
@@ -124,6 +138,7 @@ impl Processor {
         }
     }
 
+    /// Parse the `esil` line into a stream of tokens that can be executed.
     pub fn tokenize(&self, state: &mut State, esil: &str) -> Vec<Word> {
         let mut tokens: Vec<Word> = Vec::with_capacity(128);
         let split_esil = esil.split(',');
@@ -146,15 +161,15 @@ impl Processor {
                 let operator = self.get_operator(&s[..l - 1]).unwrap();
                 tokens.push(operator);
                 tokens.push(reg_word);
-                tokens.push(Word::Operator(Operations::Equal));
+                tokens.push(Word::Operator(Operation::Equal));
             } else if l > 4 && &s[l - 1..] == "]" && OPS.contains(&&s[..l - 4]) {
-                tokens.push(Word::Operator(Operations::AddressStore));
+                tokens.push(Word::Operator(Operation::AddressStore));
                 let peek = self.get_operator(&s[l - 3..]).unwrap();
                 tokens.push(peek);
                 let operator = self.get_operator(&s[..l - 4]).unwrap();
                 tokens.push(operator);
                 let poke = self.get_operator(&s[l - 4..]).unwrap();
-                tokens.push(Word::Operator(Operations::AddressRestore));
+                tokens.push(Word::Operator(Operation::AddressRestore));
                 tokens.push(poke);
             } else if let Some(values) = state.context.get(s) {
                 tokens.extend(
@@ -170,7 +185,7 @@ impl Processor {
         tokens
     }
 
-    /// attempt to tokenize word as number literal (eg. 0x8)
+    /// Attempt to tokenize word as number literal (eg. 0x8).
     #[inline]
     pub fn get_literal(&self, word: &str) -> Option<Word> {
         if let Ok(i) = word.parse::<u64>() {
@@ -185,7 +200,7 @@ impl Processor {
         }
     }
 
-    /// attempt to tokenize word as register (eg. rbx)
+    /// Attempt to tokenize word as register (eg. rbx).
     #[inline]
     pub fn get_register(&self, state: &mut State, word: &str) -> Option<Word> {
         let name = if let Some(alias) = state.registers.aliases.get(word) {
@@ -199,22 +214,23 @@ impl Processor {
             .map(|reg| Word::Register(reg.index))
     }
 
-    /// attempt to tokenize word as operation (eg. +)
+    /// Attempt to tokenize word as operation (eg. +).
     #[inline]
     pub fn get_operator(&self, word: &str) -> Option<Word> {
-        match Operations::from_string(word) {
-            Operations::Unknown => None,
+        match Operation::from_string(word) {
+            Operation::Unknown => None,
             op => Some(Word::Operator(op)),
         }
     }
 
-    /// print instruction if debug output is enabled
+    /// Print instruction if debug output is enabled.
     pub fn print_instr(&self, state: &mut State, instr: &Instruction) {
         if let Some(sim) = self.sims.get(&instr.offset) {
             println!(
                 "\n0x{:08x}      ( {} {} )\n",
                 instr.offset,
-                "simulated", sim.symbol.blue()
+                "simulated",
+                sim.symbol.blue()
             );
         } else if !self.color {
             println!(
@@ -232,7 +248,7 @@ impl Processor {
         }
     }
 
-    // perform an emulated syscall using the definitions in syscall.rs
+    /// Perform an emulated syscall using the definitions in syscall.rs.
     pub fn do_syscall(&self, state: &mut State) {
         let sys_val = state.registers.get_with_alias("SN");
         let sys_num = state.solver.evalcon_to_u64(&sys_val).unwrap();
@@ -249,175 +265,220 @@ impl Processor {
         }
     }
 
-    // for one-off parsing of strings
+    /// Parse and execute the untokenized ESIL line.
     pub fn parse_expression(&self, state: &mut State, esil: &str) {
         let words = self.tokenize(state, esil);
-        self.parse(state, &words);
+        self.parse(state, words.as_slice());
     }
 
-    /**
-     * Parse and execute the vector of tokenized ESIL words.
-     * The difficult parts here are the temporary stacks for IF/ELSE
-     * When a conditional is symbolic the stack needs to be copied
-     * into separate stacks for the if and else portions
-     * after ENDIF (}) these stacks are unwound into a single vec of
-     * conditional bitvectors IF(cond, IF_VAL, ELSE_VAL)
-     */
-    pub fn parse(&self, state: &mut State, words: &[Word]) {
+    /// Parse and execute the vector of tokenized ESIL words.
+    ///
+    /// Before calling this function, PC must be set to the first byte __after__
+    /// the instruction that corresponds to `words`. This is what ESIL
+    /// expects.
+    ///
+    /// Execution of the ESIL may cause the `state` to fork. Any additional
+    /// states may also generate more states. All returned states are either
+    /// run till the end of the current line or became unsat along the way.
+    pub fn parse(&self, state: &mut State, words: &[Word]) -> Vec<State> {
         state.stack.clear();
 
-        let mut word_index = 0;
-        let words_len = words.len();
+        // Running a state may generate additional states if there are
+        // conditionals for which both branches are feasible.
+        // But usually there won't be so we don't preallocate.
+        let mut additional_states: Vec<(State, usize)> = Vec::with_capacity(0);
 
-        while word_index < words_len {
-            let word = &words[word_index];
-            word_index += 1;
+        // States that we are actively exploring via `worklist_refs`.
+        let mut worklist: Vec<(State, usize)> = Vec::with_capacity(0);
 
-            // this is weird...
-            if state.esil.mode == ExecMode::NoExec {
-                match &word {
-                    Word::Operator(Operations::Else) | Word::Operator(Operations::EndIf) => {}
-                    _ => continue,
+        // States that were generated while driving a state down the line and
+        // postponed for later exploration.
+        let mut generated_states: Vec<(State, usize)> = Vec::with_capacity(0);
+
+        // Pointers into worklist so that we can handle the initial ref and
+        // generated (owned) states on the same footing.
+        // (state, index of next word to be executed on this state)
+        let mut worklist_refs: Vec<(&mut State, usize)> = vec![(state, 0)];
+
+        loop {
+            // Select a state to run, stop if there are no more.
+            if worklist_refs.is_empty() {
+                // `worklist_refs` being empty implies that we have driven all
+                // states in `worklist` till the end.
+                additional_states.append(&mut worklist);
+                // Refill `worklist` from `generated_states`.
+                mem::swap(&mut generated_states, &mut worklist);
+                worklist_refs = worklist.iter_mut().map(|(s, i)| (s, *i)).collect();
+                if worklist_refs.is_empty() {
+                    // We are done.
+                    break;
                 }
             }
+            let (cur_state, mut word_index) = worklist_refs.pop().unwrap();
 
-            match word {
-                Word::Literal(val) => {
-                    state.stack.push(StackItem::StackValue(val.to_owned()));
-                }
-                Word::Register(index) => {
-                    state.stack.push(StackItem::StackRegister(*index));
-                }
-                Word::Operator(op) => {
-                    match op {
-                        Operations::If => {
-                            let arg1 = pop_value(state, false, false);
+            // Drive the selected state till the end. Collect all states that
+            // are generated along the way.
+            while let Some(word) = words.get(word_index) {
+                word_index += 1;
 
-                            match (arg1, &state.esil.mode) {
-                                (Value::Concrete(val1, _t), ExecMode::Uncon) => {
-                                    state.esil.mode = if val1 == 0 {
-                                        ExecMode::NoExec
-                                    } else {
-                                        ExecMode::Exec
-                                    };
-                                }
-                                (Value::Symbolic(val1, _t), ExecMode::Uncon) => {
-                                    //println!("if {:?}", val1);
-                                    state.esil.mode = ExecMode::If;
-                                    state.esil.temp1 = state.stack.to_owned();
-                                    let cond_bv = val1._eq(&state.bvv(0, val1.get_width())).not();
-
-                                    state.condition = Some(cond_bv);
-                                }
-                                _ => {
-                                    println!("Bad ESIL?");
-                                }
-                            }
-                        }
-                        Operations::Else => match &state.esil.mode {
-                            ExecMode::Exec => state.esil.mode = ExecMode::NoExec,
-                            ExecMode::NoExec => state.esil.mode = ExecMode::Exec,
-                            ExecMode::If => {
-                                state.esil.mode = ExecMode::Else;
-                                state.condition = Some(state.condition.as_ref().unwrap().not());
-                                state.esil.temp2 = mem::take(&mut state.stack);
-                                state.stack = mem::take(&mut state.esil.temp1);
-                            }
-                            _ => {}
-                        },
-                        Operations::EndIf => {
-                            match &state.esil.mode {
-                                ExecMode::If | ExecMode::Else => {}
-                                _ => {
-                                    state.esil.mode = ExecMode::Uncon;
-                                    continue;
-                                }
-                            };
-
-                            let mut new_temp = match &state.esil.mode {
-                                ExecMode::If => mem::take(&mut state.esil.temp1),
-                                ExecMode::Else => mem::take(&mut state.esil.temp2),
-                                _ => vec![], // won't happen
-                            };
-
-                            // this is weird but just a trick to not have to alloc a new vec
-                            let mut new_stack = mem::take(&mut state.esil.temp1);
-                            let mut old_stack = mem::take(&mut state.stack);
-                            while !old_stack.is_empty() && !new_temp.is_empty() {
-                                let if_val = pop_stack_value(state, &mut old_stack, false, false);
-                                let else_val = pop_stack_value(state, &mut new_temp, false, false);
-                                let cond_val = state.solver.conditional(
-                                    &Value::Symbolic(
-                                        state.condition.as_ref().unwrap().to_owned(),
-                                        0,
-                                    ),
-                                    &if_val,
-                                    &else_val,
-                                );
-
-                                new_stack.push(StackItem::StackValue(cond_val));
-                            }
-
-                            new_stack.reverse();
-                            state.stack = new_stack;
-                            state.condition = None;
-
-                            state.esil.mode = ExecMode::Uncon;
-                        }
-                        Operations::GoTo => {
-                            let n = pop_concrete(state, false, false);
-                            if let Some(cond) = &state.condition.clone() {
-                                if !state.check(&Value::Symbolic(cond.not(), 0)) {
-                                    state.esil.mode = ExecMode::Uncon;
-                                    word_index = n as usize;
-                                } else {
-                                    state.assert_bv(&cond.not());
-                                }
-                            } else {
-                                state.esil.mode = ExecMode::Uncon;
-                                word_index = n as usize;
-                            }
-                        }
-                        Operations::Break => {
-                            if let Some(cond) = &state.condition.clone() {
-                                if !state.check(&Value::Symbolic(cond.not(), 0)) {
-                                    state.esil.mode = ExecMode::Uncon;
-                                    break;
-                                } else {
-                                    state.assert_bv(&cond.not());
-                                }
-                            } else {
-                                state.esil.mode = ExecMode::Uncon;
-                                break;
-                            }
-                        }
-                        Operations::Interrupt => {
-                            let _value = pop_value(state, false, false);
-                        }
-                        Operations::Trap => {
-                            let trap = pop_concrete(state, false, false);
-                            let sys_val = state.registers.get_with_alias("SN");
-                            if let Some(trap_sim) = self.traps.get(&trap) {
-                                // provide syscall args
-                                let cc = state.r2api.get_syscall_cc().unwrap_or_default();
-                                let mut args = vec![sys_val];
-                                for arg in cc.args {
-                                    args.push(state.registers.get(arg.as_str()));
-                                }
-                                let ret = trap_sim(state, &args);
-                                state.registers.set(cc.ret.as_str(), ret);
-                            }
-                        }
-                        Operations::Syscall => self.do_syscall(state),
-                        _ => do_operation(state, op),
+                // Skips words inside conditional if we know for sure that they
+                // will not be executed.
+                if cur_state.esil.exec_ctx == EsilIteContext::NoExec {
+                    match &word {
+                        Word::Operator(Operation::Else) | Word::Operator(Operation::EndIf) => {}
+                        _ => continue,
                     }
                 }
-                Word::Unknown(s) => {
-                    push_value(state, Value::Concrete(0, 0));
-                    println!("Unknown word: {}", s);
+
+                match word {
+                    Word::Literal(val) => {
+                        cur_state.stack.push(StackItem::StackValue(val.to_owned()));
+                    }
+                    Word::Register(index) => {
+                        cur_state.stack.push(StackItem::StackRegister(*index));
+                    }
+                    Word::Operator(op) => {
+                        match op {
+                            Operation::If => {
+                                // A GOTO got us in front of this ITE.
+                                if matches!(cur_state.esil.exec_ctx, EsilIteContext::Goto) {
+                                    cur_state.esil.exec_ctx = EsilIteContext::UnCon;
+                                }
+
+                                assert_eq!(
+                                    cur_state.esil.exec_ctx,
+                                    EsilIteContext::UnCon,
+                                    "Nested conditional."
+                                );
+
+                                // Get the condition.
+                                let cond_item = pop_value(cur_state, false, false);
+
+                                // We only go down a branch if we can prove that it
+                                // is possible under the current path constraints.
+                                let do_if_case = cur_state.check(&cond_item.eq(&vc(0)).not());
+                                let do_else_case = cur_state.check(&cond_item.eq(&vc(0)));
+
+                                print!("[PARSE] Encountered ITE at word {}: ", word_index);
+                                match (do_if_case, do_else_case) {
+                                    (true, true) => {
+                                        println!("both branches are feasible.");
+                                        // We must fork the current state.
+
+                                        // Use the current state to go down the
+                                        // IF case,
+                                        cur_state.esil.exec_ctx = EsilIteContext::Exec;
+
+                                        // Fork state and let it go down the
+                                        // ELSE case.
+                                        let mut else_state = cur_state.fork(
+                                            cur_state.esil.insn_address.as_u64().unwrap(),
+                                            (word_index - 1) as u32,
+                                            cond_item.clone(),
+                                        );
+                                        else_state.esil.exec_ctx = EsilIteContext::NoExec;
+
+                                        println!(
+                                            "[PARSE] Forked state: parent {:x}, child {:x}",
+                                            cur_state.uid, else_state.uid
+                                        );
+
+                                        // Record path conditions.
+                                        cur_state.assert(&cond_item.eq(&vc(0)).not());
+                                        let tmp_cond = else_state
+                                            .solver
+                                            .translate_value(&cond_item.eq(&vc(0)));
+                                        else_state.assert(&tmp_cond);
+
+                                        // Postpone exploration of this branch
+                                        // for later.
+                                        generated_states.push((else_state, word_index));
+                                    }
+                                    (true, false) => {
+                                        println!("only IF branch is feasible.");
+                                        // Do IF. Skip over ELSE.
+                                        cur_state.esil.exec_ctx = EsilIteContext::Exec;
+
+                                        // Record path conditions.
+                                        // Not redundant since ELSE case might have
+                                        // timed out.
+                                        cur_state.assert(&cond_item.eq(&vc(0)).not());
+                                    }
+                                    (false, true) => {
+                                        println!("only ELSE branch is feasible.");
+                                        // Skip over IF. Do ELSE.
+                                        cur_state.esil.exec_ctx = EsilIteContext::NoExec;
+
+                                        // Record path conditions.
+                                        // Not redundant since IF case might have
+                                        // timed out.
+                                        cur_state.assert(&cond_item.eq(&vc(0)));
+                                    }
+                                    (false, false) => {
+                                        // We cannot prove that there is a feasible
+                                        // branch.
+                                        cur_state.status = StateStatus::Unsat;
+                                        // Stop running it.
+                                        break;
+                                    }
+                                }
+                            }
+                            Operation::Else => match &cur_state.esil.exec_ctx {
+                                // Current state took the IF-branch. Skip ELSE.
+                                EsilIteContext::Exec => {
+                                    cur_state.esil.exec_ctx = EsilIteContext::NoExec
+                                }
+                                // We jumped into an IF-case. Skip ELSE.
+                                EsilIteContext::Goto => {
+                                    cur_state.esil.exec_ctx = EsilIteContext::NoExec
+                                }
+                                // Current state takes the ELSE-branch.
+                                EsilIteContext::NoExec => {
+                                    cur_state.esil.exec_ctx = EsilIteContext::Exec
+                                }
+                                EsilIteContext::UnCon => {
+                                    panic!("Bad ESIL?")
+                                }
+                            },
+                            Operation::EndIf => {
+                                match &cur_state.esil.exec_ctx {
+                                    EsilIteContext::Goto
+                                    | EsilIteContext::Exec
+                                    | EsilIteContext::NoExec => {
+                                        // Return to regular parsing.
+                                        cur_state.esil.exec_ctx = EsilIteContext::UnCon;
+                                    }
+                                    EsilIteContext::UnCon => {
+                                        panic!("Bad ESIL?")
+                                    }
+                                };
+                            }
+                            Operation::GoTo => {
+                                // We do __not__ fork on symbolic GOTOs. We
+                                // simply go down one feasible branch. We add
+                                // this concretization to the path constraints.
+                                // Panics if we find no solution.
+                                let n = pop_concrete(cur_state, false, false);
+                                word_index = n as usize;
+                                cur_state.esil.exec_ctx = EsilIteContext::Goto;
+                            }
+                            Operation::Interrupt
+                            | Operation::Trap
+                            | Operation::Syscall
+                            | Operation::Break => {
+                                panic!("Unsupported operation: {:?}", op);
+                            }
+                            _ => do_operation(cur_state, op),
+                        }
+                    }
+                    Word::Unknown(s) => {
+                        panic!("Unknown word: {}", s);
+                    }
                 }
             }
         }
+
+        additional_states.into_iter().map(|(s, _)| s).collect()
     }
 
     /// removes words that weak set flag values that are never read, and words that are NOPs
@@ -426,10 +487,10 @@ impl Processor {
         let prev_instr = &self.instructions[&prev_pc];
         if !prev_instr
             .tokens
-            .contains(&Word::Operator(Operations::WeakEqual))
+            .contains(&Word::Operator(Operation::WeakEqual))
             || !curr_instr
                 .tokens
-                .contains(&Word::Operator(Operations::WeakEqual))
+                .contains(&Word::Operator(Operation::WeakEqual))
         {
             return;
         }
@@ -444,7 +505,7 @@ impl Processor {
                     let next = &curr_instr.tokens[i + 1];
                     if let Word::Operator(op) = next {
                         match op {
-                            Operations::WeakEqual | Operations::Equal => {
+                            Operation::WeakEqual | Operation::Equal => {
                                 regs_written.push(*index);
                             }
                             _ => regs_read.push(*index),
@@ -459,9 +520,9 @@ impl Processor {
         let mut remove: Vec<usize> = Vec::with_capacity(32);
         for (i, word) in prev_instr.tokens.iter().enumerate() {
             if let Word::Operator(op) = word {
-                if let Operations::NoOperation = op {
+                if let Operation::NoOperation = op {
                     remove.push(i); // remove nops
-                } else if let Operations::WeakEqual = op {
+                } else if let Operation::WeakEqual = op {
                     let reg = &prev_instr.tokens[i - 1];
                     if let Word::Register(index) = reg {
                         if !regs_read.iter().any(|r| state.registers.is_sub(*r, *index))
@@ -472,18 +533,16 @@ impl Processor {
                             let val = &prev_instr.tokens[i - 2];
                             if let Word::Operator(op) = val {
                                 match op {
-                                    Operations::Zero => remove.extend(vec![i - 2, i - 1, i]),
-                                    Operations::Carry => {
+                                    Operation::Zero => remove.extend(vec![i - 2, i - 1, i]),
+                                    Operation::Carry => remove.extend(vec![i - 3, i - 2, i - 1, i]),
+                                    Operation::Borrow => {
                                         remove.extend(vec![i - 3, i - 2, i - 1, i])
                                     }
-                                    Operations::Borrow => {
+                                    Operation::Parity => remove.extend(vec![i - 2, i - 1, i]),
+                                    Operation::Overflow => {
                                         remove.extend(vec![i - 3, i - 2, i - 1, i])
                                     }
-                                    Operations::Parity => remove.extend(vec![i - 2, i - 1, i]),
-                                    Operations::Overflow => {
-                                        remove.extend(vec![i - 3, i - 2, i - 1, i])
-                                    }
-                                    Operations::S => remove.extend(vec![i - 3, i - 2, i - 1, i]),
+                                    Operation::S => remove.extend(vec![i - 3, i - 2, i - 1, i]),
                                     _ => {}
                                 }
                             }
@@ -530,84 +589,89 @@ impl Processor {
         args
     }
 
-    /**
-     * Update the status of the state and execute the instruction at PC
-     * If the instruction is hooked or the method is simulated perform the
-     * respective callback. Hooks returning false will skip the instruction
-     */
+    /// Update the status of the `state` according to the effects of the
+    /// instruction.
+    ///
+    /// Returns any additional states that are generated as a consequence of
+    /// the update.
     pub fn execute(
         &self,
         state: &mut State,
         instr: &Instruction,
         flags: &HashSet<InstructionFlag>,
         words: &[Word],
-    ) {
-        if state.check && state.check_crash(&vc(instr.offset), &vc(instr.size), 'x') {
-            return;
+    ) -> Option<Vec<State>> {
+        // Check memory executable permissions.
+        if state.check_mem_perms && state.check_crash(&vc(instr.offset), &vc(instr.size), 'x') {
+            return None;
         }
 
-        let pc = instr.offset;
-        state.esil.prev_pc = vc(pc);
-        let new_pc = instr.offset.wrapping_add(instr.size);
+        let insn_address = instr.offset;
+        state.esil.insn_address = vc(insn_address);
+        // In ESIL, the PC is always directly __AFTER__ the instruction that
+        // is being executed.
+        let nxt_seq_insn_addr = instr.offset.wrapping_add(instr.size);
 
-        state.esil.pcs.clear();
-        if instr.jump != 0 {
-            state.esil.pcs.push(instr.jump as u64);
-
-            if instr.fail != 0 {
-                state.esil.pcs.push(instr.fail as u64);
-            }
-        }
-
-        //let mut new_status = status;
         let mut new_flags = flags.clone();
         if state.status == StateStatus::PostMerge && flags.contains(&InstructionFlag::Merge) {
             state.status = StateStatus::Active;
             new_flags.remove(&InstructionFlag::Merge);
         }
 
+        // Update the call stack on calls.
         if instr.type_num == CALL_TYPE {
-            state.backtrace.push((instr.jump as u64, new_pc));
+            state.backtrace.push((instr.jump as u64, instr.fail as u64));
         }
 
-        // skip executing this instruction
+        // Run hooks before executing the instruction, PC is still pointing
+        // at the instruction.
         let mut skip = false;
         let mut update = true;
         if !new_flags.is_empty() {
+            // Run hooks.
             if new_flags.contains(&InstructionFlag::Hook) {
-                let hooks = &self.hooks[&pc];
+                let hooks = &self.hooks[&insn_address];
                 for hook in hooks {
                     skip = !hook(state) || skip;
                 }
             }
             if new_flags.contains(&InstructionFlag::ESILHook) {
-                let esils = &self.esil_hooks[&pc];
+                let esils = &self.esil_hooks[&insn_address];
                 for esil in esils {
                     self.parse_expression(state, esil);
                     let val = pop_concrete(state, false, false);
                     skip = (val != 0) || skip;
                 }
             }
-            if state.registers.get_pc() != vc(pc) {
-                update = false; // hook changed pc dont update
+            // If some hook changed PC we do not update. Else we update as
+            // usual.
+            if state.registers.get_pc() != vc(insn_address) {
+                update = false;
             }
+            // Stub functions.
             if new_flags.contains(&InstructionFlag::Sim) {
-                let sim = &self.sims[&pc];
-                let cc = state.r2api.get_cc(pc).unwrap_or_default();
+                let sim = &self.sims[&insn_address];
+                let cc = state.r2api.get_cc(insn_address).unwrap_or_default();
                 let args = self.get_args(state, &cc);
 
                 let ret = (sim.function)(state, &args);
                 state.registers.set_with_alias(cc.ret.as_str(), ret);
 
-                // don't ret if sim changes the PC value
-                // this is bad hax because thats all i do
-                if state.registers.get_pc() == vc(pc) {
+                // Don't ret if sim changes the PC value.
+                // Else this stubbs the call.
+                if state.registers.get_pc() == vc(insn_address) {
                     self.ret(state);
                 }
+
+                // We already handled the "effects" of this instruction.
                 skip = true;
                 update = false;
             }
             if new_flags.contains(&InstructionFlag::Break) {
+                println!(
+                    "[EXECUTE] BP hit: state {:}, bp {:x}",
+                    state.uid, insn_address
+                );
                 state.status = StateStatus::Break;
                 skip = true;
                 update = false;
@@ -618,6 +682,10 @@ impl Processor {
                 update = false;
             }
             if new_flags.contains(&InstructionFlag::Avoid) {
+                println!(
+                    "[EXECUTE] Avoided instruction: state {:}, insn {:x}",
+                    state.uid, insn_address
+                );
                 state.status = StateStatus::Inactive;
                 skip = true;
                 update = false;
@@ -625,43 +693,38 @@ impl Processor {
         }
 
         if update {
-            let pc_val = Value::Concrete(new_pc, 0);
-            state.registers.set_pc(pc_val);
+            // Execution of ESIL expects PC to be __AFTER__ instruction that is
+            // being executed.
+            state.registers.set_pc(vc(nxt_seq_insn_addr));
         }
 
-        if !skip {
+        let additional_states = if !skip {
             if state.strict && instr.disasm == "invalid" {
-                //panic!("Executed invalid instruction");
-                state.set_inactive();
+                panic!("Executed invalid instruction!");
             } else {
-                self.parse(state, words);
+                // Update the state according to the effect of the instruction.
+                // May fork the state.
+                self.parse(state, words)
             }
-        }
+        } else {
+            Vec::with_capacity(0)
+        };
 
-        if instr.type_num == RETN_TYPE {
-            if state.backtrace.is_empty() && new_flags.is_empty() {
-                // try to avoid returning outside valid context
-                if let Value::Concrete(v, _) = state.registers.get_pc() {
-                    if v == 0 || !state.memory.check_permission(v, 1, 'x') {
-                        // if it looks invalid
-                        let avoid = !self.breakpoints.is_empty() || (!self.automerge && !self.esil_hooks.is_empty());
-                        if  avoid {
-                            state.status = StateStatus::Inactive;
-                        } else {
-                            // break if there are no other breakpoints/hooks
-                            state.status = StateStatus::Break;
-                        }
-                    }
-                }
+        if instr.type_num == RETN_TYPE && update && !skip {
+            if state.backtrace.is_empty() {
+                panic!("Attempt to return out of valid context!");
             } else {
+                // Remove current function from call stack.
                 state.backtrace.pop();
             }
-        } else if self.automerge && instr.type_num < 2 { 
+        } else if self.automerge && instr.type_num < 2 {
             state.status = StateStatus::Merge;
         }
+
+        Some(additional_states)
     }
 
-    // weird method that just performs a return
+    /// Method that just performs a return.
     pub fn ret(&self, state: &mut State) {
         let ret_esil = state.r2api.get_ret().unwrap_or_default();
         if ret_esil != "" {
@@ -672,10 +735,12 @@ impl Processor {
         }
     }
 
-    // get the instruction, set its status, tokenize if necessary
-    // and optimize if enabled. TODO this has become so convoluted, fix it
+    /// Get the instruction, set its status, tokenize if necessary
+    /// and optimize if enabled.
+    // TODO: This has become so convoluted, fix it.
     pub fn fetch_instruction(&mut self, state: &mut State, pc_val: u64) {
         let has_instr = self.instructions.contains_key(&pc_val);
+
         if self.selfmodify || !has_instr {
             let mut pc_tmp = pc_val;
             let instrs = if self.selfmodify {
@@ -751,183 +816,173 @@ impl Processor {
         }
     }
 
-    pub fn execute_instruction(&mut self, state: &mut State, pc_val: u64) {
+    /// Update `state` according to the effect of the instruction at `pc_val`.
+    ///
+    /// Any additional states due to forking are returned.
+    pub fn execute_instruction(&mut self, state: &mut State, pc_val: u64) -> Option<Vec<State>> {
         self.fetch_instruction(state, pc_val);
 
-        // the hash lookup is done twice, needs fixing
+        // The hash lookup is done twice, needs fixing.
         let instr = self.instructions.get(&pc_val).unwrap();
 
         if self.debug {
             self.print_instr(state, &instr.instruction);
         }
-        self.execute(state, &instr.instruction, &instr.flags, &instr.tokens);
+
+        self.execute(state, &instr.instruction, &instr.flags, &instr.tokens)
     }
 
-    /// Take single step with the state provided
+    /// Run the provided `state` for a single step.
+    ///
+    /// Returns any additional states that were generated as a result of
+    /// forking at conditionals.
     pub fn step(&mut self, state: &mut State) -> Vec<State> {
         self.steps += 1;
         state.visit();
 
-        let pc_allocs = 32;
-        let pc_value = state.registers.get_pc();
+        // At the beginning of a step the PC must be concrete. It points to the
+        // instruction to be executed.
+        let pc_value = state
+            .registers
+            .get_pc()
+            .as_u64()
+            .expect("Attempt to step state with symbolic PC.");
+        // Tells us whether or not the instruction is to be executed in the
+        // delay slot of a taken branch. This is needed to decide where to
+        // continue execution after this instruction.
+        let in_delay = state.esil.delay;
 
-        if let Some(pc_val) = pc_value.as_u64() {
-            self.execute_instruction(state, pc_val);
-        } else {
-            panic!("got an unexpected sym PC: {:?}", pc_value);
+        if in_delay && self.debug {
+            println!(
+                "[STEP] State has delayed jump to: {:x}.",
+                state.esil.jump_target.as_ref().unwrap().as_u64().unwrap()
+            );
         }
 
-        let new_pc = state.registers.get_pc();
-        //let pcs;
-
-        if self.force && !state.esil.pcs.is_empty() {
-            // we just use the pcs in state.esil.pcs
-        } else if let Some(pc) = new_pc.as_u64() {
-            state.esil.pcs.clear();
-            state.esil.pcs.push(pc);
-        } else {
-            let pc_val = new_pc.as_bv().unwrap();
-            if self.debug {
-                println!("\n{} : {:?}\n", "symbolic PC".red(), pc_val);
+        if self.debug {
+            state.path.push(pc_value);
+            print!("[STEP] History: ",);
+            for pc in state.path.iter() {
+                print!("->{:X}", pc);
             }
-
-            if DO_EVENT_HOOKS && state.has_event_hooks {
-                state.do_hooked(
-                    &Event::SymbolicExec(EventTrigger::Before),
-                    &EventContext::ExecContext(new_pc.clone(), vec![]),
-                );
-            }
-
-            if !self.lazy && !state.esil.pcs.is_empty() {
-                // testing sat without modelgen is a bit faster than evaluating
-                state.esil.pcs = state
-                    .esil
-                    .pcs
-                    .clone()
-                    .into_iter()
-                    .filter(|x| state.check(&new_pc.eq(&vc(*x))))
-                    .collect();
-            } else if state.esil.pcs.is_empty() {
-                let bps = self.breakpoints.clone();
-                state.esil.pcs = bps.into_iter()
-                    .filter(|bp| state.check(&new_pc.eq(&vc(*bp))))
-                    .collect();
-
-                if state.esil.pcs.is_empty() {
-                    state.esil.pcs = state.evaluate_many(&pc_val);
-                }
-            }
-
-            if DO_EVENT_HOOKS && state.has_event_hooks {
-                state.do_hooked(
-                    &Event::SymbolicExec(EventTrigger::After),
-                    &EventContext::ExecContext(new_pc.clone(), state.esil.pcs.clone()),
-                );
-            }
+            println!("");
         }
 
-        if state.esil.pcs.len() > 1 || new_pc.as_u64().is_none() {
-            let mut states: Vec<State> = Vec::with_capacity(pc_allocs);
+        // Update the state according to the effect of the instruction at PC.
+        let mut additional_states = self.execute_instruction(state, pc_value);
 
-            // this function is kind of a mess this should be refactored
-            if state.esil.pcs.is_empty() && new_pc.as_u64().is_none() {
-                state.set_inactive();
-                return states;
-            }
-
-            let last = state.esil.pcs.len() - 1;
-            for new_pc_val in &state.esil.pcs[..last] {
-                let mut new_state = state.clone();
-                if let Some(pc_val) = new_pc.as_bv() {
-                    let a = pc_val._eq(&new_state.bvv(*new_pc_val, pc_val.get_width()));
-                    new_state.solver.assert_bv(&a);
-                }
-                new_state.registers.set_pc(Value::Concrete(*new_pc_val, 0));
-                states.push(new_state);
-            }
-
-            let new_pc_val = state.esil.pcs[last];
-            if let Some(pc_val) = new_pc.as_bv() {
-                let pc_bv = pc_val;
-                let a = pc_bv._eq(&state.bvv(new_pc_val, pc_bv.get_width()));
-                state.solver.assert_bv(&a);
-            }
-            state.registers.set_pc(Value::Concrete(new_pc_val, 0));
-            states
-        } else if self.selfmodify {
-            let mut states: Vec<State> = Vec::with_capacity(pc_allocs);
-
-            // this is bad, 8 bytes is not enough, but this is what it is for now
-            let mem = state.memory_read_value(&new_pc, 8);
-            if let Value::Symbolic(bv, _t) = &mem {
-                let possible = state.evaluate_many(bv);
-                if !possible.is_empty() {
-                    let last = possible.len() - 1;
-                    for pos in &possible[..last] {
-                        let mut new_state = state.clone();
-                        new_state.assert(&mem.eq(&vc(*pos)));
-                        states.push(new_state);
+        // If we were in the delay slot of a taken branch, update PC to the
+        // correct target.
+        if in_delay {
+            let do_delayed_jump = |state: &mut State| {
+                let jump_target = state.esil.jump_target.take().unwrap();
+                println!(
+                    "[STEP] Executing delayed jump: state {:x}, to {:x}",
+                    state.uid,
+                    if let Some(target) = jump_target.as_u64() {
+                        target
+                    } else {
+                        0
                     }
-                    state.assert(&mem.eq(&vc(possible[last])));
+                );
+                state.esil.delay = false;
+                state.registers.set_pc(jump_target);
+            };
+            do_delayed_jump(state);
+            additional_states.as_mut().map(|additional_states| {
+                for s in additional_states.iter_mut() {
+                    do_delayed_jump(s)
                 }
-            }
-            states
+            });
         } else {
-            vec![]
+            // PC already holds the address of the next instruction to be
+            // executed.
+        }
+
+        // Handle symbolic PCs. May happen as the result of computed branches.
+        // Currently we do not handle those at all.
+        let handle_symbolic_pc = |state: &mut State| {
+            let new_pc = state.registers.get_pc();
+            if new_pc.is_symbolic() {
+                println!("[STEP] State has symbolic PC: {:x}", state.uid);
+
+                state.set_inactive();
+            }
+        };
+        handle_symbolic_pc(state);
+        additional_states.as_mut().map(|additional_states| {
+            for s in additional_states.iter_mut() {
+                handle_symbolic_pc(s)
+            }
+        });
+
+        if let Some(additional_states) = additional_states {
+            additional_states
+        } else {
+            Vec::with_capacity(0)
         }
     }
 
-    /// run the state until completion based on mode
+    /// Run the [`State`] until completion based on the selected [`RunMode`].
     pub fn run(&mut self, state: State, mode: RunMode) -> Vec<State> {
-        // use binary heap as priority queue to prioritize states
-        // that have the lowest number of visits for the current PC
+        // Use binary heap as priority queue to prioritize states
+        // that have the lowest number of visits for the current PC.
         let mut states = BinaryHeap::new();
         let mut results = vec![];
         states.push(Rc::new(state));
 
-        // run until empty for single, until split for parallel
-        // or until every state is at the breakpoint for multiple
-        let split = mode == RunMode::Parallel;
-        let step = mode == RunMode::Step;
+        // run until empty for single, until split for parallel,
+        // or until every state is at the breakpoint for multiple.
+        let run_mode_is_parallel = mode == RunMode::Parallel;
+        let run_mode_is_step = mode == RunMode::Step;
 
         loop {
-            //println!("{} states", states.len());
+            println!("\n[RUN] Got {} states to run.", states.len());
+
+            // Select a state to run.
             if states.is_empty() {
+                // Try to refill from merges.
                 if self.merges.is_empty() {
                     return results;
-                } else {
-                    // pop one out of mergers
-                    // let key = *self.merges.keys().next().unwrap();
-                    // let mut merge = self.merges.remove(&key).unwrap();
-                    let (_k, mut merge) = self.merges.pop_first().unwrap();
-                    merge.status = StateStatus::PostMerge;
-                    states.push(Rc::new(merge));
                 }
+                let (_k, mut merge) = self.merges.pop_first().unwrap();
+                merge.status = StateStatus::PostMerge;
+                states.push(Rc::new(merge));
             }
+            let mut current_state_rc = states.pop().unwrap();
+            let current_state = Rc::make_mut(&mut current_state_rc);
 
-            let mut current_rc = states.pop().unwrap();
-            let current_state = Rc::make_mut(&mut current_rc);
+            println!(
+                "[RUN] Selected state: {:x}, {:?}, {}",
+                current_state.uid, current_state.status, current_state.steps
+            );
 
-            match current_state.status {
+            match &current_state.status {
                 StateStatus::Active | StateStatus::PostMerge => {
+                    // Run the selected state for one step.
                     let new_states = self.step(current_state);
-                    // ugly but prevents lots of wasted effort, needs serious refactor
-                    if current_state.status == StateStatus::Break && current_state.is_sat() {
-                        if mode != RunMode::Multiple {
-                            results.push(current_state.to_owned());
-                            return results;
-                        }
+                    if current_state.status == StateStatus::Break
+                        && mode != RunMode::Multiple
+                        && current_state.is_sat()
+                    {
+                        // In all modes but `Multiple` we return as soon
+                        // as a BP is hit (and the state is sat).
+                        results.push(current_state.to_owned());
+                        return results;
                     }
                     for mut state in new_states {
-                        if state.status == StateStatus::Break && state.is_sat() {
-                            if mode != RunMode::Multiple {
-                                results.push(state.to_owned());
-                                return results;
-                            }
+                        if state.status == StateStatus::Break
+                            && mode != RunMode::Multiple
+                            && state.is_sat()
+                        {
+                            results.push(state.to_owned());
+                            return results;
                         }
+                        // Add new state to the queue.
                         states.push(Rc::new(state));
                     }
-                    states.push(current_rc);
+                    // Return this state to the queue.
+                    states.push(current_state_rc);
                 }
                 StateStatus::Merge => {
                     self.merge(current_state.to_owned());
@@ -946,8 +1001,10 @@ impl Processor {
                 _ => {}
             }
 
-            // single step mode always returns states
-            if step || (split && states.len() > 1) {
+            // Single step mode always returns after single loop iteration.
+            if run_mode_is_step || (run_mode_is_parallel && states.len() > 1) {
+                // In `Step` mode we always return after one step.
+                // In `Parallel` mode we return after generating new states.
                 while let Some(mut state) = states.pop() {
                     results.push(Rc::make_mut(&mut state).to_owned());
                 }
