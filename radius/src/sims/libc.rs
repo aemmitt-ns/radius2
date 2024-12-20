@@ -72,7 +72,7 @@ pub fn getchar(state: &mut State, _args: &[Value]) -> Value {
 pub fn fprintf(state: &mut State, args: &[Value]) -> Value {
     let fd = fileno(state, &args[0..1]);
     let fdn = state.solver.evalcon_to_u64(&fd).unwrap_or(1);
-    let formatted = format::format(state, args);
+    let formatted = format::format(state, &args[1..]);
     let ret = vc(formatted.len() as u64);
     state.filesystem.write(fdn as usize, formatted);
     ret
@@ -688,16 +688,17 @@ pub fn zero(_state: &mut State, _args: &[Value]) -> Value {
 }
 
 pub fn rand(state: &mut State, _args: &[Value]) -> Value {
-    let r = rand::thread_rng().gen::<u64>();
-    let rand = state.symbolic_value(&format!("rand_{}", r), 64);
+    // let r = rand::thread_rng().gen::<u64>();
+    // let rand = state.symbolic_value(&format!("rand_{}", r), 64);
 
-    let rand_vec = &mut state
-        .context
-        .entry("rand".to_string())
-        .or_insert_with(Vec::new);
+    // let rand_vec = &mut state
+    //     .context
+    //     .entry("rand".to_string())
+    //     .or_insert_with(Vec::new);
 
-    rand_vec.push(rand.clone());
-    rand
+    // rand_vec.push(rand.clone());
+    // rand
+    vc(4) // https://xkcd.com/221
 }
 
 pub fn srand(_state: &mut State, _args: &[Value]) -> Value {

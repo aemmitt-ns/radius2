@@ -504,6 +504,15 @@ impl Radius {
         self.processor.sims.insert(addr, sim);
     }
 
+    /// assign an existing sim to an address (for static binaries)
+    pub fn assign_sim(&mut self, addr: u64, name: &str) {
+        // TODO: get_sims should return a HashMap idk why it doesnt
+        get_sims()
+            .into_iter()
+            .find(|s| s.symbol == name)
+            .map(|s| self.simulate(addr, s));
+    }
+
     /// Add a breakpoint at the provided address.
     /// This is where execution will stop after `run` is called
     pub fn breakpoint(&mut self, addr: u64) {

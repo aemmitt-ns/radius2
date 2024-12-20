@@ -1,4 +1,3 @@
-use radius2::sims::{libc, make_sim};
 use radius2::{vc, Radius, RadiusOption};
 
 fn main() {
@@ -8,7 +7,7 @@ fn main() {
     );
 
     // Hooking library functions can save a lot of time
-    radius.simulate(0x40145e, make_sim("strcmp", libc::strcmp, 2));
+    radius.assign_sim(0x40145e, "strcmp");
 
     let mut state = radius.call_state(0x40102b); // start at main
     let flag = state.symbolic_value("flag", 15 * 8); // flag is 15 bytes long

@@ -778,7 +778,6 @@ impl Processor {
         }
 
         let new_pc = state.registers.get_pc();
-        //let pcs;
 
         if self.force && !state.esil.pcs.is_empty() {
             // we just use the pcs in state.esil.pcs

@@ -210,6 +210,22 @@ pub struct SearchResult {
     pub data: String,
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisasmSearchResult {
+    pub addr: u64,
+    pub size: u64,
+    pub opstr: String,
+    pub r#type: String
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisasmSearchResults {
+    pub cmd: String,
+    pub arg: String,
+    pub result: Vec<DisasmSearchResult>
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrossRef {
     pub addr: u64,
@@ -1009,6 +1025,12 @@ impl R2Api {
         // this is unfortunately necessary as there is no padj @, i need to make one
         let cmd = format!("wx {} @ {}; pij {} @ {}", hex_encode(data), addr, num, addr);
 
+        let json = self.ccmd(cmd.as_str())?;
+        r2_result(serde_json::from_str(json.as_str()))
+    }
+
+    pub fn search_disasm(&mut self, opcode: &str) -> R2Result<DisasmSearchResults> {
+        let cmd = format!("/amj {}", opcode);
         let json = self.ccmd(cmd.as_str())?;
         r2_result(serde_json::from_str(json.as_str()))
     }

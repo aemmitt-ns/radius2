@@ -12,7 +12,8 @@ const NONUINTS: [char; 15] = [
 ];
 
 // the value returned is the formatted string
-pub fn format(state: &mut State, args: &[Value]) -> Vec<Value> {
+pub fn format(state: &mut State, vargs: &[Value]) -> Vec<Value> {
+    let args = get_fmt_args(state, vargs);
     let length = state.memory_strlen(&args[0], &vc(MAXLEN as u64));
     let mut formatstr = state.memory_read(&args[0], &length);
     let mut result = Vec::with_capacity(MAXLEN);
@@ -57,6 +58,26 @@ pub fn must_be_formats(state: &mut State, c: &Value, formats: &[char]) {
             asserts.push(state.solver.to_bv(&c.eq(&vc(*f as u64)), 1));
         }
         state.assert_bv(&state.solver.or_all(&asserts));
+    }
+}
+
+// get format args (from x9 on *OS)
+pub fn get_fmt_args(state: &mut State, args: &[Value]) -> Vec<Value> {
+    // this is dumb, we need to fix the calling convention stuff in r2
+    if state.info.bin.bintype == "mach0" && state.info.bin.arch == "arm" {
+        let mut newargs = args[..1].to_owned();
+        // read args from stack?
+        let mut argp = state.registers.get("x9");
+        let length = state.memory.bits as usize / 8;
+
+        for _ in 0..8 { // do 8 idk
+            let value = state.memory_read_value(&argp, length);
+            argp = argp + vc(length as u64);
+            newargs.push(value);
+        }
+        newargs
+    } else {
+        args.to_owned()
     }
 }
 
@@ -196,7 +217,8 @@ fn format_string(state: &mut State, _c: &Value, arg: &Value, pre: &str) -> Vec<V
     result
 }
 
-pub fn scan(state: &mut State, args: &[Value]) -> Value {
+pub fn scan(state: &mut State, vargs: &[Value]) -> Value {
+    let args = get_fmt_args(state, vargs);
     let flength = state.memory_strlen(&args[1], &vc(MAXLEN as u64));
     let mut formatstr = state.memory_read(&args[1], &(flength + vc(1)));
     let mut data = args[0].to_owned();
